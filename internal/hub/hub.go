@@ -239,13 +239,10 @@ func (h *Hub) handleCreate(c *client, m protocol.Msg) {
 	if id == "" {
 		id = h.newSessionID()
 	}
-	s, reused, err := h.mgr.Create(id, m.Cols, m.Rows, m.Cwd, m.Shell)
+	s, err := h.Create(id, m.Cols, m.Rows, m.Cwd, m.Shell)
 	if err != nil {
 		c.fail(protocol.ErrBadRequest, err.Error(), id)
 		return
-	}
-	if !reused {
-		go h.watchSession(s)
 	}
 	c.send(protocol.Msg{T: protocol.STCreated, SessionID: s.ID})
 	h.attach(c, s, 0)

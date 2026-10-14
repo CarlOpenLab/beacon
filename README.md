@@ -3,9 +3,10 @@
 One terminal fleet, controlled from anywhere.
 
 `tfd` owns the PTY sessions on a machine and serves them over a single
-WebSocket. A desktop client built with Mygo (Go + a system WebView) and a
-mobile client both attach to that same connection, so every terminal tab on
-the phone is the same shell as the tab on the desktop.
+WebSocket. A desktop client built with Mygo — a native window, drawn by Mygo's
+own UI toolkit and terminal rather than a WebView — and a browser or phone
+client all attach to that same connection, so every terminal tab on the phone
+is the same shell as the tab on the desktop.
 
 Machines can also dial *out* to a relay (`tfrelay`) on a public server, so the
 fleet is reachable from outside the LAN without a port forward, a public
@@ -25,9 +26,13 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   copy, reopen-from-cursor after a dropped link, and a machine-grouped sidebar
   when more than one machine is reachable.
 - It is served by the daemon *and* by the relay, from one build: the server
-  reports which transport it speaks (`/tf/config`), so the desktop shell, a
-  browser tab and a phone all load the same code.
-- `tfdesktop`: the same daemon behind a Mygo window.
+  reports which transport it speaks (`/tf/config`), so a browser tab and a
+  phone load the same code. The desktop window is native, and attaches to the
+  same sessions rather than loading that code.
+- `tfdesktop`: the same daemon behind a native Mygo window — mygo's `ui`
+  controls and its terminal plugin draw the tabs, so there is no WebView and no
+  xterm in the PC client. A tab there is a real shell on the machine, and the
+  daemon underneath is what lets a browser drive the very shell on screen.
 - `tfrelay` + `agent`: machines dial out to a public relay and are controllable
   from anywhere; a dropped link is a routing outage, not data loss — sessions
   and their output history live in the member and survive it.
@@ -46,11 +51,12 @@ client token in the first frame rather than in the URL.
 
 ```
 cmd/tfd/               the daemon
-cmd/tfdesktop/         the desktop shell: same daemon, plus a Mygo window
+cmd/tfdesktop/         the desktop shell: same daemon, plus a native Mygo window
 cmd/tfrelay/           the public-side router: enroll members, route streams
 internal/protocol/     the wire format, shared with clients
 internal/tunnel/       the relay envelope; the session protocol rides inside it
 internal/session/      PTY, output ring buffer, session manager
+internal/native/       adapts a session to a native terminal view (mygo plugin)
 internal/hub/          WebSocket fan-out and who-may-type policy
 internal/relay/        member registry, stream routing, presence
 internal/agent/        dials out to a relay, projects streams onto the hub
@@ -72,10 +78,12 @@ The client is embedded with `go:embed`, so build the web step first. A bare
 pnpm --dir web install
 pnpm run build            # web + tfd + tfdesktop into bin/
 ./bin/tfd                 # listens on 127.0.0.1:7678, serves the client at /
-./bin/tfdesktop           # same thing in a window, on a free loopback port
+./bin/tfdesktop           # a native window on the same sessions, free loopback port
 ```
 
-For UI work, skip the recompile: build the assets and point the daemon at them.
+For UI work on the browser client, skip the recompile: build the assets and
+point the server at them. The window's own UI is Go, so changing it needs
+`pnpm run build:desktop`.
 
 ```sh
 pnpm run build:web
@@ -96,6 +104,9 @@ by accident.
 | `-relay` | dial this relay member endpoint; empty keeps the machine LAN-only |
 | `-device-id` / `-device-secret` | this machine's relay credential |
 | `-machine-name` | the name shown in the relay's machine list |
+
+`tfdesktop` takes `-addr` and `-web-dir` as well, plus `-shell` (the shell new
+tabs run) and `-cwd` (their working directory).
 
 Endpoints: `GET /` (client), `GET /healthz`, `GET /ws` (WebSocket).
 
