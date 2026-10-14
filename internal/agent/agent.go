@@ -17,6 +17,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"sync"
@@ -91,6 +92,9 @@ type Agent struct {
 func New(cfg Config) (*Agent, error) {
 	if cfg.URL == "" {
 		return nil, errors.New("agent: no relay URL")
+	}
+	if u, err := url.Parse(cfg.URL); err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" {
+		return nil, fmt.Errorf("agent: relay URL must be ws:// or wss://, got %q", cfg.URL)
 	}
 	if cfg.DeviceID == "" || cfg.Secret == "" {
 		return nil, errors.New("agent: device id and secret are required")

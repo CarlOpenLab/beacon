@@ -254,6 +254,9 @@ NAT / CGNAT。没配 `-relay` 时 `tfd` 的行为一个字都不变，局域网�
   初期是自己的服务器 + TLS + 鉴权，够用；但它一旦被拿下就是全线失守
 - 标签栏的辨识度：同一目录下的多个 shell 标题相同。现在靠 tooltip 带
   `sessionId` / `cwd` 区分，是否要给 shell 注入 OSC 标题（或加序号）待定
+- PC 端接中继现在有两处入口：`tfd` 的命令行 flag，和 `tfdesktop` 的设置窗口
+  （写进 `settings.json`）。要不要再给 `tfdesktop` 补一套 `-relay` 系 flag，
+  以及这些设置项要不要在服务端/中继之间共享，待定
 
 ## 9. 安全底线（现在就写下来）
 

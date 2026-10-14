@@ -14,6 +14,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
@@ -37,6 +38,10 @@ type Options struct {
 	WebDir string
 	// Client overrides the browser client handler. Tests and alternate frontends.
 	Client http.Handler
+	// Hub, when set, is used instead of a fresh one. The desktop shell owns a
+	// hub that outlives the local service, so turning that service off and on
+	// again keeps the shells its window is showing.
+	Hub *hub.Hub
 }
 
 // Server is a bound, not yet necessarily serving, term-fleet host.
@@ -55,17 +60,23 @@ func New(opts Options) (*Server, error) {
 	if err := ValidateBinding(opts.Addr, opts.Token); err != nil {
 		return nil, err
 	}
-	hostname, _ := os.Hostname()
-	h := hub.New(hub.Options{
-		Host: protocol.Host{
-			Hostname: hostname,
-			Platform: runtime.GOOS,
-			Arch:     runtime.GOARCH,
-		},
-		Token:          opts.Token,
-		OriginPatterns: opts.OriginPatterns,
-		IdleTimeout:    opts.IdleTimeout,
-	})
+	// A caller that owns a hub passes it in; the desktop shell does, because its
+	// hub must outlive the local service so turning that service off keeps the
+	// shells the window is showing.
+	h := opts.Hub
+	if h == nil {
+		hostname, _ := os.Hostname()
+		h = hub.New(hub.Options{
+			Host: protocol.Host{
+				Hostname: hostname,
+				Platform: runtime.GOOS,
+				Arch:     runtime.GOARCH,
+			},
+			Token:          opts.Token,
+			OriginPatterns: opts.OriginPatterns,
+			IdleTimeout:    opts.IdleTimeout,
+		})
+	}
 
 	ln, err := net.Listen("tcp", opts.Addr)
 	if err != nil {
@@ -161,6 +172,36 @@ func (s *Server) Serve(ctx context.Context) error {
 
 // Close releases the listener without waiting for Serve.
 func (s *Server) Close() error { return s.ln.Close() }
+
+// Start serves the bound listener in the background and returns a stop
+// function that shuts the HTTP service down.
+//
+// Stopping detaches every client but leaves the hub — and the sessions in it —
+// running, which is what lets the desktop shell turn its local service off and
+// on again without ending the shells its window is showing. Deciding when those
+// sessions end belongs to whoever owns the hub; Serve keeps that role for a
+// daemon that owns its own.
+func (s *Server) Start() (stop func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		<-ctx.Done()
+		sctx, c := context.WithTimeout(context.Background(), 3*time.Second)
+		defer c()
+		_ = s.srv.Shutdown(sctx)
+	}()
+	go func() { _ = s.srv.Serve(s.ln) }()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			cancel()
+			<-done
+			_ = s.Close()
+		})
+	}
+}
 
 // ValidateBinding enforces the one rule that keeps this daemon from becoming an
 // open remote shell: off loopback, a token is mandatory, not merely advisable.

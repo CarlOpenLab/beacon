@@ -12,9 +12,9 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/daemon"
 	"github.com/CarlOpenLab/term-fleet/internal/native"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/internal/settings"
 )
 
 // window is the desktop window's state: the shells on this machine, one native
@@ -24,9 +24,21 @@ import (
 // goroutine, but that goroutine only ever publishes through Window.Update, so
 // the state is written and read on one thread and needs no lock of its own.
 type window struct {
-	srv   *daemon.Server
+	fleet *fleet
+	store *settings.Store
+	font  terminal.Font
 	shell string
 	cwd   string
+
+	// win is the main window handle, kept so a settings change can re-letter
+	// the terminals through Update — they belong to this window's UI thread.
+	win *mygo.Window
+
+	// settingsWin is the preferences window while it is open, so a second
+	// click brings it forward instead of stacking another copy. It is reached
+	// from the window-opening goroutine and the close callback, hence the lock.
+	settingsMu  sync.Mutex
+	settingsWin *mygo.Window
 
 	order    []string // session ids, in tab order
 	tabs     map[string]*tab
@@ -41,9 +53,11 @@ type window struct {
 	focus atomic.Value  // string: the session to select once it appears
 }
 
-func newWindow(srv *daemon.Server, shell, cwd string) *window {
+func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 	w := &window{
-		srv:   srv,
+		fleet: f,
+		store: store,
+		font:  termFont(store.Get()),
 		shell: shell,
 		cwd:   cwd,
 		tabs:  make(map[string]*tab),
@@ -85,7 +99,10 @@ func (w *window) view(c *ui.Context) {
 			ui.Spacer(c)
 			// The address a browser on this machine can use to reach the same
 			// shells, which is the point of the daemon sitting underneath.
-			ui.Text(c, w.srv.BaseURL())
+			ui.Text(c, w.serviceLabel())
+			if ui.Button(c, "设置").Clicked() {
+				go w.openSettings()
+			}
 		})
 
 		if len(labels) == 0 {
@@ -103,7 +120,7 @@ func (w *window) view(c *ui.Context) {
 // goes through the daemon's hub rather than around it, so a browser attached
 // to the same hub sees this tab appear as it does its own.
 func (w *window) create() {
-	s, err := w.srv.Hub().Create("", 80, 24, w.cwd, w.shell)
+	s, err := w.fleet.Hub().Create("", 80, 24, w.cwd, w.shell)
 	if err != nil {
 		log.Printf("tfdesktop: new tab: %v", err)
 		return
@@ -115,7 +132,7 @@ func (w *window) create() {
 // kill ends the shell behind a tab. The tab itself goes when the watch loop
 // sees the session disappear.
 func (w *window) kill(id string) {
-	if err := w.srv.Hub().Kill(id); err != nil {
+	if err := w.fleet.Hub().Kill(id); err != nil {
 		log.Printf("tfdesktop: close tab: %v", err)
 		return
 	}
@@ -140,7 +157,7 @@ func (w *window) watch(win *mygo.Window) {
 		case <-tick.C:
 		case <-w.pokes:
 		}
-		live := w.srv.Hub().Sessions()
+		live := w.fleet.Hub().Sessions()
 		if signature(live) == w.published() {
 			continue
 		}
@@ -197,7 +214,7 @@ func (w *window) reconcile(live []protocol.Summary) {
 // session through native.Conn, so it draws the real shell — the same one a
 // browser sees — and types into it.
 func (w *window) mount(s protocol.Summary) (*tab, error) {
-	sess, ok := w.srv.Hub().Session(s.SessionID)
+	sess, ok := w.fleet.Hub().Session(s.SessionID)
 	if !ok {
 		return nil, fmt.Errorf("session is gone")
 	}
@@ -209,6 +226,9 @@ func (w *window) mount(s protocol.Summary) (*tab, error) {
 		Conn:    tb.conn,
 		OnTitle: tb.setTitle,
 		OnExit:  tb.finish,
+		// The font saved in settings, so a tab opened after a change — or on a
+		// later run — is lettered the same as the ones already on screen.
+		Font: w.font,
 	})
 	if err != nil {
 		_ = tb.conn.Close()
@@ -291,4 +311,62 @@ func (t *tab) close() {
 		_ = t.term.Close()
 	}
 	_ = t.conn.Close()
+}
+
+// serviceLabel is what the toolbar says about the local service: its address
+// while it is listening, and the fact that it is off when a setting turned it
+// off. The window keeps working either way.
+func (w *window) serviceLabel() string {
+	if url := w.fleet.BaseURL(); url != "" {
+		return url
+	}
+	return "本机服务已关闭"
+}
+
+// reletter re-letters every open terminal. The settings window calls it, and it
+// goes through Update so the terminals — which belong to this window's UI
+// thread — are never touched from another one. It also becomes the font of the
+// tabs opened afterwards.
+func (w *window) reletter(f terminal.Font) {
+	win := w.win
+	if win == nil {
+		return
+	}
+	win.Update(func() {
+		w.font = f
+		for _, tb := range w.tabs {
+			if tb.term != nil {
+				tb.term.SetFont(f)
+			}
+		}
+	})
+}
+
+// openSettings shows the preferences window, or brings the open one forward.
+// It runs off the UI thread, as New Tab does, so a click never re-enters the
+// render pass that drew the button.
+func (w *window) openSettings() {
+	w.settingsMu.Lock()
+	defer w.settingsMu.Unlock()
+	if w.settingsWin != nil {
+		w.settingsWin.Focus()
+		return
+	}
+	sw := newSettingsWindow(w, w.store, w.fleet)
+	win := mygo.NewWindow(mygo.WindowOptions{
+		Title:           "term-fleet 设置",
+		Width:           560,
+		Height:          460,
+		MinWidth:        460,
+		MinHeight:       340,
+		BackgroundColor: "#0b0e14",
+		StateKey:        "settings",
+		Content:         ui.View(sw.view),
+	})
+	w.settingsWin = win
+	win.OnClosed(func() {
+		w.settingsMu.Lock()
+		w.settingsWin = nil
+		w.settingsMu.Unlock()
+	})
 }

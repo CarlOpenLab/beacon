@@ -33,6 +33,9 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   controls and its terminal plugin draw the tabs, so there is no WebView and no
   xterm in the PC client. A tab there is a real shell on the machine, and the
   daemon underneath is what lets a browser drive the very shell on screen.
+  A Settings window (the toolbar's 设置 button) picks the terminal's font and
+  size, stores this machine's relay credential, and turns the local service on
+  or off — the same surface Gloss keeps, drawn the same way.
 - `tfrelay` + `agent`: machines dial out to a public relay and are controllable
   from anywhere; a dropped link is a routing outage, not data loss — sessions
   and their output history live in the member and survive it.
@@ -118,7 +121,11 @@ by accident.
 | `-machine-name` | the name shown in the relay's machine list |
 
 `tfdesktop` takes `-addr` and `-web-dir` as well, plus `-shell` (the shell new
-tabs run) and `-cwd` (their working directory).
+tabs run) and `-cwd` (their working directory). Its relay credential, the
+terminal's font and size, and whether the local service listens are not flags:
+the Settings window writes them to `settings.json` under the OS config
+directory (`TERM_FLEET_CONFIG_HOME` overrides it) and applies them as you change
+them, so this desktop shell can join a relay without a command line.
 
 Endpoints: `GET /` (client), `GET /healthz`, `GET /ws` (WebSocket).
 

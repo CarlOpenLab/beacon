@@ -17,13 +17,12 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
-	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/daemon"
+	"github.com/CarlOpenLab/term-fleet/internal/settings"
 )
 
 func main() {
@@ -42,25 +41,30 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	srv, err := daemon.New(daemon.Options{
-		Addr:        *addr,
-		IdleTimeout: 30 * time.Minute,
-		WebDir:      *webDir,
-	})
-	if err != nil {
-		log.Fatalf("tfdesktop: %v", err)
-	}
-	go func() {
-		if err := srv.Serve(ctx); err != nil {
-			log.Printf("tfdesktop: server stopped: %v", err)
-		}
-	}()
+	store := settings.Open(settings.Dir())
+	saved := store.Get()
 
-	url := srv.BaseURL()
-	if !srv.ClientPresent() {
+	f := newFleet(ctx, log.Default())
+	f.addr = *addr
+	f.webDir = *webDir
+
+	// Apply what was saved before the window opens, so the first tab already
+	// has the right font and the machine is already on the relay it joined.
+	if err := f.SetServer(!saved.ServerOff); err != nil {
+		log.Printf("tfdesktop: local service: %v", err)
+	}
+	if err := f.SetRelay(saved.RelayURL, saved.DeviceID, saved.DeviceSecret, saved.RelayOn); err != nil {
+		log.Printf("tfdesktop: relay: %v", err)
+	}
+
+	if !f.ClientPresent() {
 		log.Printf("tfdesktop: no built client; run `pnpm --dir web run build` to serve one")
 	}
-	log.Printf("tfdesktop: native window (%s/%s), browser client at %s/", runtime.GOOS, runtime.GOARCH, url)
+	if url := f.BaseURL(); url != "" {
+		log.Printf("tfdesktop: native window (%s/%s), browser client at %s/", runtime.GOOS, runtime.GOARCH, url)
+	} else {
+		log.Printf("tfdesktop: native window (%s/%s), local service off", runtime.GOOS, runtime.GOARCH)
+	}
 
 	// The terminal engine (libghostty-vt) loads on first use. Warm it here, off
 	// the UI thread, so a first run that has to fetch it does not stall the
@@ -71,7 +75,7 @@ func main() {
 		}
 	}()
 
-	app := newWindow(srv, *shell, *cwd)
+	app := newWindow(f, store, *shell, *cwd)
 
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
@@ -88,6 +92,7 @@ func main() {
 			stop()
 			mygo.App.Quit()
 		})
+		app.win = win
 		go app.watch(win)
 		// Open with one shell, as a terminal app does.
 		go app.create()
