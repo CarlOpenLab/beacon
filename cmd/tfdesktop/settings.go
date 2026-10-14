@@ -149,13 +149,13 @@ func (s *settingsWindow) terminalPane(c *ui.Context) {
 
 func (s *settingsWindow) relayPane(c *ui.Context) {
 	ui.Field(c, "公网地址", func() {
-		ui.EditableText(c, &s.relay).Fill()
+		ui.TextInput(c, &s.relay).Placeholder("wss://relay.example/relay/agent").Fill()
 	})
 	ui.Field(c, "设备 ID", func() {
-		ui.EditableText(c, &s.device)
+		ui.TextInput(c, &s.device).Placeholder("mac-mini").Fill()
 	})
 	ui.Field(c, "设备密钥", func() {
-		ui.EditableText(c, &s.secret)
+		ui.TextInput(c, &s.secret).Password().Fill()
 	})
 	ui.Field(c, "接入", func() {
 		ui.Switch(c, &s.relayOn).OnChange(func() { s.commit() })

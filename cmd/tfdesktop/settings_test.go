@@ -113,3 +113,40 @@ func TestSettingsApplyWritesTheStore(t *testing.T) {
 		t.Errorf("status after apply = %q, want a success summary", sw.status)
 	}
 }
+
+// The remote pane's three fields have to be real text inputs, not in-place
+// editable labels: clicking them and typing must reach the draft. This guards
+// a regression where they were drawn with EditableText, so the pane showed a
+// label with no input box under it.
+func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+	if err := tt.Click("远程"); err != nil {
+		t.Fatalf("Click(远程): %v", err)
+	}
+	tt.Frame()
+
+	cases := []struct {
+		label string
+		typed string
+		draft func() string
+	}{
+		{"公网地址", "wss://relay.example/relay/agent", func() string { return sw.relay }},
+		{"设备 ID", "mac-mini", func() string { return sw.device }},
+		{"设备密钥", "s3cret", func() string { return sw.secret }},
+	}
+	for _, tc := range cases {
+		rect, ok := tt.Find(tc.label)
+		if !ok {
+			t.Fatalf("Find(%q): the field label is missing from the pane", tc.label)
+		}
+		// The label sits above its input, so aim just below the label's box.
+		tt.ClickAt(rect.X+40, rect.Y+rect.H+12)
+		tt.Type(tc.typed)
+		tt.Frame()
+		if got := tc.draft(); got != tc.typed {
+			t.Errorf("%s: typed %q but the draft holds %q", tc.label, tc.typed, got)
+		}
+	}
+}
