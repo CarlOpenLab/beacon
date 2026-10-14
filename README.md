@@ -81,6 +81,18 @@ pnpm run build            # web + tfd + tfdesktop into bin/
 ./bin/tfdesktop           # a native window on the same sessions, free loopback port
 ```
 
+The desktop shell is also a Mygo CLI project. `mygo.json` names `cmd/tfdesktop`
+as the app, so the window can be built and run through the toolchain Mygo ships
+instead of plain `go build`: `go tool mygo dev` builds, launches, and rebuilds on
+Go changes, and `go tool mygo build` writes an app bundle to `dist/`. The other
+two binaries (`tfd`, `tfrelay`) are not Mygo apps and stay on `go build`.
+
+```sh
+pnpm run build:web        # the embedded client, once
+go tool mygo dev          # build + launch tfdesktop, rebuild on change
+go tool mygo build        # a distributable bundle in dist/
+```
+
 For UI work on the browser client, skip the recompile: build the assets and
 point the server at them. The window's own UI is Go, so changing it needs
 `pnpm run build:desktop`.

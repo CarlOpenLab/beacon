@@ -1,0 +1,7 @@
+{
+  "name": "term-fleet",
+  "identifier": "dev.carl.termfleet",
+  "version": "0.1.0",
+  "main": "./cmd/tfdesktop",
+  "buildCommand": "pnpm run build:web"
+}

@@ -3,6 +3,11 @@
 node_modules/
 .DS_Store
 
+# `mygo dev` / `mygo build` artifacts: the dev bundle and the Windows resource
+# file mygo compiles into the app's main package.
+/.mygo/
+mygo_windows_*.syso
+
 # Built frontend, embedded by internal/web. The marker is committed so a clean
 # checkout can still build the daemon before the web step has ever run.
 /internal/web/dist/*
