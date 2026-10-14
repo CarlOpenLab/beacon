@@ -20,6 +20,15 @@ const RELAY = `127.0.0.1:${RELAY_PORT}`
 const TOKEN = 'acceptance-client-token'
 const MARKER = 'RELAY_CHAIN_OK'
 
+// Windows builds are .exe, and its console needs CRLF: a bare LF sits in the
+// input buffer instead of ending the line. Everything else here is portable, so
+// the same run proves a ConPTY member on Windows and a PTY member on Unix.
+const IS_WIN = process.platform === 'win32'
+const EXE = IS_WIN ? '.exe' : ''
+const NL = IS_WIN ? '\r\n' : '\n'
+const RELAY_BIN = process.env.TFRELAY ?? join('bin', `tfrelay${EXE}`)
+const MEMBER_BIN = process.env.TFD ?? join('bin', `tfd${EXE}`)
+
 let pass = 0
 let fail = 0
 const check = (name, ok, detail = '') => {
@@ -134,7 +143,7 @@ const decodeInner = (f) => JSON.parse(Buffer.from(f.payload, 'base64').toString(
 
 async function main() {
   // 1. Mint a credential, the way an operator would.
-  const enroll = spawn(join('bin', 'tfrelay'), ['enroll', '-devices', devices, '-name', 'acceptance box'])
+  const enroll = spawn(RELAY_BIN, ['enroll', '-devices', devices, '-name', 'acceptance box'])
   let enrollOut = ''
   enroll.stdout.on('data', (d) => (enrollOut += d))
   const enrollCode = await new Promise((r) => enroll.on('exit', r))
@@ -153,7 +162,7 @@ async function main() {
   check('the registry holds the credential', Boolean(registry.devices?.[deviceId]?.secret))
 
   // 2. The relay, then a daemon that dials out to it.
-  launch(join('bin', 'tfrelay'), [
+  launch(RELAY_BIN, [
     '-addr', RELAY,
     '-devices', devices,
     '-client-token', TOKEN,
@@ -166,7 +175,7 @@ async function main() {
     'relay to answer',
   )
 
-  launch(join('bin', 'tfd'), [
+  launch(MEMBER_BIN, [
     '-addr', `127.0.0.1:${DAEMON_PORT}`,
     '-relay', `ws://${RELAY}/relay/agent`,
     '-device-id', deviceId,
@@ -212,7 +221,7 @@ async function main() {
   const role = await collect('role', (m) => m.t === 'role')
   check('the remote client controls the session', role.role === 'controller', role.role)
 
-  c.inner(STREAM, { t: 'input', sessionId: 's1', data: Buffer.from(`echo ${MARKER}\n`).toString('base64') })
+  c.inner(STREAM, { t: 'input', sessionId: 's1', data: Buffer.from(`echo ${MARKER}${NL}`).toString('base64') })
 
   let seen = ''
   const deadline = Date.now() + 20000
