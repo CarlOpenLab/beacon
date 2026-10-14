@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>term-fleet relay</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #1c2430;
+    --line: #2b3643;
+    --ink: #e6edf3;
+    --dim: #8b98a5;
+    --accent: #4cb782;
+    --accent-dim: #245c40;
+    --warn: #e3b341;
+    --danger: #f0776c;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+  h1 .dot { color: var(--accent); }
+  .host { color: var(--dim); font-family: var(--mono); font-size: 13px; }
+  .spacer { flex: 1; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 4px; }
+  .card p.hint { color: var(--dim); font-size: 13px; margin: 0 0 16px; }
+  label { display: block; font-size: 13px; color: var(--dim); margin: 12px 0 6px; }
+  input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    color: var(--ink);
+    padding: 9px 11px;
+    font: inherit;
+  }
+  input:focus { outline: none; border-color: var(--accent-dim); }
+  input.mono { font-family: var(--mono); font-size: 13px; }
+  button {
+    background: var(--accent);
+    color: #06210f;
+    border: 0;
+    border-radius: 7px;
+    padding: 9px 15px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.08); }
+  button.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    font-weight: 500;
+  }
+  button.ghost:hover { border-color: var(--dim); filter: none; }
+  button.danger { background: transparent; color: var(--danger); border: 1px solid var(--line); font-weight: 500; }
+  button.danger:hover { border-color: var(--danger); filter: none; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .row > .grow { flex: 1; min-width: 180px; }
+  .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  td.mono { font-family: var(--mono); font-size: 13px; }
+  .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); }
+  .pill.on { color: var(--accent); border-color: var(--accent-dim); }
+  .empty { color: var(--dim); font-size: 14px; padding: 12px 0; }
+  .secret {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 10px 12px;
+    word-break: break-all;
+    margin-top: 8px;
+  }
+  .note {
+    font-size: 13px;
+    color: var(--warn);
+    margin-top: 10px;
+  }
+  .err { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 18px; }
+  code, pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+  pre {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 8px 0 0;
+    color: var(--dim);
+  }
+  .muted { color: var(--dim); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>term-fleet <span class="dot">●</span> relay</h1>
+    <span class="host" id="host"></span>
+    <span class="spacer"></span>
+    <span class="host" id="who"></span>
+  </header>
+
+  <!-- first run -->
+  <section id="setup" hidden>
+    <div class="card">
+      <h2>Set up the relay</h2>
+      <p class="hint">One admin account guards this panel. It hands out shell credentials, so keep it to yourself.</p>
+      <label for="s-user">Admin name</label>
+      <input id="s-user" autocomplete="username" placeholder="carl">
+      <label for="s-pass">Password</label>
+      <input id="s-pass" type="password" autocomplete="new-password" placeholder="at least 8 characters">
+      <label for="s-pass2">Repeat password</label>
+      <input id="s-pass2" type="password" autocomplete="new-password">
+      <div class="actions"><button id="s-go">Create and sign in</button></div>
+      <div class="err" id="s-err"></div>
+    </div>
+  </section>
+
+  <!-- login -->
+  <section id="login" hidden>
+    <div class="card">
+      <h2>Sign in</h2>
+      <p class="hint">This relay is already set up.</p>
+      <label for="l-user">Admin name</label>
+      <input id="l-user" autocomplete="username">
+      <label for="l-pass">Password</label>
+      <input id="l-pass" type="password" autocomplete="current-password">
+      <div class="actions"><button id="l-go">Sign in</button></div>
+      <div class="err" id="l-err"></div>
+    </div>
+  </section>
+
+  <!-- dashboard -->
+  <section id="app" hidden>
+    <div class="card">
+      <h2>Machines</h2>
+      <p class="hint">Each machine here runs <code>tfd</code>. Its credentials are what let it dial in.</p>
+      <div id="devices"></div>
+      <div class="row" style="margin-top:16px">
+        <div class="grow">
+          <label for="d-name">Add a machine</label>
+          <input id="d-name" placeholder="mac-mini, work-laptop, …">
+        </div>
+        <button id="d-go">Generate credentials</button>
+      </div>
+      <div id="d-out"></div>
+      <div class="err" id="d-err"></div>
+    </div>
+
+    <div class="card">
+      <h2>Browser &amp; phone access</h2>
+      <p class="hint">This is the token you paste into <span class="mono">/termfleet/</span> to view the fleet. Everyone who views shares it.</p>
+      <div class="row">
+        <div class="grow">
+          <input id="t-val" class="mono" readonly type="password">
+        </div>
+        <button class="ghost" id="t-show">Reveal</button>
+        <button class="ghost" id="t-copy">Copy</button>
+        <button class="danger" id="t-rotate">Rotate</button>
+      </div>
+      <div class="note" id="t-note" hidden>Rotating signs everyone out. Open viewers must paste the new token.</div>
+    </div>
+
+    <div class="card">
+      <h2>Connect a machine</h2>
+      <p class="hint">Run this on the machine you just added. The CA file is what lets it trust this relay's TLS.</p>
+      <div class="row">
+        <div class="grow">
+          <label for="c-url">Relay address</label>
+          <input id="c-url" class="mono" readonly>
+        </div>
+        <button class="ghost" id="c-copy">Copy</button>
+        <button class="ghost" id="c-ca">Download CA</button>
+      </div>
+      <pre id="c-cmd"></pre>
+    </div>
+
+    <div class="card">
+      <h2>Account</h2>
+      <p class="hint">Signed in as <span id="a-user" class="mono"></span>.</p>
+      <label for="p-old">Current password</label>
+      <input id="p-old" type="password" autocomplete="current-password">
+      <label for="p-new">New password</label>
+      <input id="p-new" type="password" autocomplete="new-password">
+      <div class="actions">
+        <button id="p-go">Change password</button>
+        <button class="ghost" id="out">Sign out</button>
+      </div>
+      <div class="err" id="p-err"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  // Resolve everything relative to the page, so the panel works under a path
+  // prefix (a proxy in front) without knowing what that prefix is.
+  var BASE = location.pathname.replace(/\/+$/, "") + "/";
+  var $ = function (id) { return document.getElementById(id); };
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+    opts.credentials = "same-origin";
+    return fetch(BASE + "api/" + path, opts).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok) { throw new Error((body && body.error) || ("HTTP " + res.status)); }
+        return body;
+      });
+    });
+  }
+  function show(id) {
+    ["setup", "login", "app"].forEach(function (s) { $(s).hidden = (s !== id); });
+  }
+  function text(el, s) { el.textContent = s == null ? "" : s; }
+
+  function copy(value, btn) {
+    var label = btn.textContent;
+    function done(ok) {
+      btn.textContent = ok ? "Copied" : "Copy failed";
+      setTimeout(function () { btn.textContent = label; }, 1400);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(value).then(function () { done(true); }, function () { done(false); });
+    } else {
+      var ta = document.createElement("textarea");
+      ta.value = value; document.body.appendChild(ta); ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      done(ok);
+    }
+  }
+
+  var state = { relayUrl: "", ca: false };
+
+  function renderDevices(devices) {
+    var box = $("devices");
+    box.textContent = "";
+    if (!devices.length) {
+      var p = document.createElement("div");
+      p.className = "empty";
+      p.textContent = "No machines yet. Add one below.";
+      box.appendChild(p);
+      return;
+    }
+    var table = document.createElement("table");
+    var head = document.createElement("tr");
+    ["Name", "Machine id", "Status", "Added", ""].forEach(function (h) {
+      var th = document.createElement("th"); th.textContent = h; head.appendChild(th);
+    });
+    table.appendChild(head);
+    devices.forEach(function (d) {
+      var tr = document.createElement("tr");
+      var name = document.createElement("td"); name.textContent = d.name || "—";
+      var id = document.createElement("td"); id.className = "mono"; id.textContent = d.id;
+      var st = document.createElement("td");
+      var pill = document.createElement("span");
+      pill.className = "pill" + (d.online ? " on" : "");
+      pill.textContent = d.online ? "online" : "offline";
+      st.appendChild(pill);
+      var added = document.createElement("td");
+      added.className = "muted";
+      added.textContent = d.addedAt ? d.addedAt.slice(0, 10) : "—";
+      var act = document.createElement("td");
+      var rm = document.createElement("button");
+      rm.className = "danger"; rm.textContent = "Revoke";
+      rm.onclick = function () {
+        if (!confirm("Revoke " + (d.name || d.id) + "? It loses access immediately.")) return;
+        api("devices/revoke", { method: "POST", body: JSON.stringify({ id: d.id }) })
+          .then(refresh).catch(function (e) { text($("d-err"), e.message); });
+      };
+      act.appendChild(rm);
+      [name, id, st, added, act].forEach(function (c) { tr.appendChild(c); });
+      table.appendChild(tr);
+    });
+    box.appendChild(table);
+  }
+
+  function refresh() {
+    return api("devices").then(function (body) { renderDevices(body.devices || []); });
+  }
+
+  function loadDashboard(st) {
+    state.relayUrl = st.relayUrl || "";
+    state.ca = !!st.ca;
+    text($("who"), st.username ? ("signed in as " + st.username) : "");
+    text($("a-user"), st.username || "");
+    $("c-url").value = state.relayUrl;
+    $("c-ca").disabled = !state.ca;
+    updateCmd();
+    refresh().catch(function (e) { text($("d-err"), e.message); });
+    api("token").then(function (b) { $("t-val").value = b.token || ""; })
+      .catch(function (e) { text($("t-err"), e.message); });
+  }
+
+  function updateCmd() {
+    text($("c-cmd"),
+      "./tfd -addr 127.0.0.1:7678 \\\n" +
+      "  -relay " + (state.relayUrl || "wss://…/relay/agent") + " \\\n" +
+      "  -relay-ca relay-ca.pem \\\n" +
+      "  -device-id <machine id from above> \\\n" +
+      "  -device-secret <secret shown once, when you added it>");
+  }
+
+  function start() {
+    api("state").then(function (st) {
+      text($("host"), st.host || "");
+      if (!st.configured) { show("setup"); return; }
+      if (!st.authenticated) { show("login"); return; }
+      show("app");
+      loadDashboard(st);
+    }).catch(function (e) { text($("host"), e.message); });
+  }
+
+  // setup
+  $("s-go").onclick = function () {
+    text($("s-err"), "");
+    var u = $("s-user").value.trim(), p = $("s-pass").value, p2 = $("s-pass2").value;
+    if (p !== p2) { text($("s-err"), "Passwords do not match."); return; }
+    api("setup", { method: "POST", body: JSON.stringify({ username: u, password: p }) })
+      .then(start).catch(function (e) { text($("s-err"), e.message); });
+  };
+
+  // login
+  function login() {
+    text($("l-err"), "");
+    api("login", { method: "POST", body: JSON.stringify({ username: $("l-user").value.trim(), password: $("l-pass").value }) })
+      .then(start).catch(function (e) { text($("l-err"), e.message); });
+  }
+  $("l-go").onclick = login;
+  $("l-pass").onkeydown = function (e) { if (e.key === "Enter") login(); };
+
+  // enroll
+  $("d-go").onclick = function () {
+    text($("d-err"), "");
+    var name = $("d-name").value.trim();
+    if (!name) { text($("d-err"), "Give the machine a name."); return; }
+    api("devices", { method: "POST", body: JSON.stringify({ name: name }) }).then(function (b) {
+      $("d-name").value = "";
+      var out = $("d-out");
+      out.textContent = "";
+      var wrapEl = document.createElement("div");
+
+      var label = document.createElement("div");
+      label.className = "note";
+      label.textContent = "Shown once. Paste it into the machine now; it cannot be read back.";
+      var idLine = document.createElement("div");
+      idLine.className = "secret";
+      idLine.textContent = "device-id     " + b.id;
+      var secLine = document.createElement("div");
+      secLine.className = "secret";
+      secLine.textContent = "device-secret " + b.secret;
+      var btn = document.createElement("button");
+      btn.className = "ghost"; btn.style.marginTop = "10px";
+      btn.textContent = "Copy both";
+      btn.onclick = function () { copy("device-id " + b.id + "\ndevice-secret " + b.secret, btn); };
+
+      wrapEl.appendChild(label);
+      wrapEl.appendChild(idLine);
+      wrapEl.appendChild(secLine);
+      wrapEl.appendChild(btn);
+      out.appendChild(wrapEl);
+      refresh().catch(function () {});
+    }).catch(function (e) { text($("d-err"), e.message); });
+  };
+
+  // token
+  $("t-show").onclick = function () {
+    var f = $("t-val");
+    var reveal = f.type === "password";
+    f.type = reveal ? "text" : "password";
+    this.textContent = reveal ? "Hide" : "Reveal";
+  };
+  $("t-copy").onclick = function () { copy($("t-val").value, this); };
+  $("t-rotate").onclick = function () {
+    $("t-note").hidden = false;
+    if (!confirm("Rotate the client token? Everyone viewing right now will be cut off.")) return;
+    api("token/rotate", { method: "POST", body: "{}" }).then(function (b) {
+      $("t-val").value = b.token || "";
+      $("t-val").type = "text";
+      $("t-show").textContent = "Hide";
+    }).catch(function (e) { alert(e.message); });
+  };
+
+  // connect
+  $("c-copy").onclick = function () { copy($("c-url").value, this); };
+  $("c-ca").onclick = function () { window.location.href = BASE + "ca.pem"; };
+
+  // account
+  $("p-go").onclick = function () {
+    text($("p-err"), "");
+    api("password", { method: "POST", body: JSON.stringify({ current: $("p-old").value, next: $("p-new").value }) })
+      .then(function () {
+        $("p-old").value = ""; $("p-new").value = "";
+        alert("Password changed.");
+      }).catch(function (e) { text($("p-err"), e.message); });
+  };
+  $("out").onclick = function () {
+    api("logout", { method: "POST", body: "{}" }).then(start).catch(start);
+  };
+
+  start();
+})();
+</script>
+</body>
+</html>

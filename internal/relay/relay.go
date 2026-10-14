@@ -46,10 +46,21 @@ type Config struct {
 	// one shared secret: revoking a laptop must not require re-enrolling the
 	// fleet, and a leaked member secret must not expose another member's
 	// screens.
+	//
+	// Used only when Registry is nil; it is the fixed-map form, kept for tests
+	// and for a relay driven entirely from flags. The relay proper serves out of
+	// Registry, because machines are enrolled while it runs.
 	Devices map[string]string
+	// Registry is the live member registry. Nil means "wrap Devices in an
+	// in-memory registry that is never written anywhere".
+	Registry *Registry
 	// ClientToken is the shared secret a client presents. Browsers cannot set
 	// headers on a WebSocket, so it also arrives in the first frame.
-	ClientToken    string
+	ClientToken string
+	// Token is the live client-token store, so the admin page can rotate the
+	// token without a redeploy. Nil means "wrap ClientToken in an in-memory
+	// store". When set, it takes precedence over ClientToken.
+	Token          *TokenStore
 	OriginPatterns []string
 	// TrustProxy makes the relay read X-Forwarded-For for the limiter's source
 	// address. Only enable it behind a proxy you control: otherwise a caller can
@@ -69,6 +80,10 @@ type Relay struct {
 	cfg Config
 	log *log.Logger
 	lim *authLimiter
+	// reg and token are the parts of the configuration that can change while the
+	// relay runs. Everything else in cfg is read-only after New.
+	reg   *Registry
+	token *TokenStore
 
 	mu         sync.Mutex
 	members    map[string]*member
@@ -79,14 +94,23 @@ type Relay struct {
 	seq      int
 }
 
-// New builds a relay. Devices must be non-empty and ClientToken must be set: a
-// relay without authentication is a remote shell for whoever finds the port,
-// and by definition it is reachable from the open internet.
+// New builds a relay. A client token must be set: a relay without authentication
+// is a remote shell for whoever finds the port, and by definition it is reachable
+// from the open internet.
+//
+// An *empty* member registry is allowed. It is the state of a freshly deployed
+// relay whose operator has not enrolled a machine yet, and the admin page is the
+// intended way to leave that state. No member can dial in until one exists, so
+// the empty registry is inert rather than dangerous; the client token is what
+// keeps the port closed, and it is still required.
 func New(cfg Config) (*Relay, error) {
-	if len(cfg.Devices) == 0 {
-		return nil, errors.New("relay: no devices configured")
+	if cfg.Registry == nil {
+		cfg.Registry = inMemoryRegistry(cfg.Devices)
 	}
-	if cfg.ClientToken == "" {
+	if cfg.Token == nil {
+		cfg.Token = NewTokenStore(cfg.ClientToken, "")
+	}
+	if cfg.Token.Get() == "" {
 		return nil, errors.New("relay: no client token configured")
 	}
 	if cfg.Log == nil {
@@ -94,7 +118,7 @@ func New(cfg Config) (*Relay, error) {
 	}
 	// Defaults matter here: a relay reachable from the internet with no limiter
 	// at all is the one configuration that must not be reachable by accident.
-	if cfg.AuthMaxFailures == 0 && cfg.ClientToken != "" {
+	if cfg.AuthMaxFailures == 0 {
 		cfg.AuthMaxFailures = 10
 	}
 	if cfg.AuthWindow == 0 {
@@ -107,10 +131,26 @@ func New(cfg Config) (*Relay, error) {
 		cfg:     cfg,
 		log:     cfg.Log,
 		lim:     newAuthLimiter(cfg.AuthMaxFailures, cfg.AuthWindow, cfg.AuthCooldown, cfg.TrustProxy),
+		reg:     cfg.Registry,
+		token:   cfg.Token,
 		members: map[string]*member{},
 		roster:  map[*clientConn]struct{}{},
 	}, nil
 }
+
+// Devices exposes the live registry, for the admin page to enroll and revoke.
+func (r *Relay) Devices() *Registry { return r.reg }
+
+// ClientToken exposes the live token store, for the admin page to rotate.
+func (r *Relay) ClientToken() *TokenStore { return r.token }
+
+// Roster returns the current machine list as clients see it.
+func (r *Relay) Roster() []tunnel.Machine { return r.snapshot() }
+
+// RefreshRoster re-broadcasts the machine list. Call it after the registry
+// changes so connected browsers learn about a newly enrolled machine, and stop
+// offering one that was just revoked, without reconnecting.
+func (r *Relay) RefreshRoster() { r.broadcastMachines() }
 
 // ---------------------------------------------------------------- registry
 
@@ -135,13 +175,20 @@ func (r *Relay) snapshot() []tunnel.Machine {
 	}
 	r.mu.Unlock()
 
-	out := make([]tunnel.Machine, 0, len(r.cfg.Devices))
-	for id := range r.cfg.Devices {
-		m := tunnel.Machine{ID: id}
+	entries := r.reg.Entries()
+	out := make([]tunnel.Machine, 0, len(entries))
+	for _, e := range entries {
+		m := tunnel.Machine{ID: e.ID}
+		id := e.ID
 		if live, ok := members[id]; ok {
 			m.Name = live.name
 			m.Host = live.host
 			m.Online = true
+		}
+		// The enrolled name is the authoritative label: a member that renamed
+		// itself off-line should still be recognizable in the list.
+		if m.Name == "" {
+			m.Name = e.Name
 		}
 		out = append(out, m)
 	}
@@ -179,7 +226,7 @@ func (r *Relay) agentAuthOK(rq *http.Request) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	want, known := r.cfg.Devices[id]
+	want, known := r.reg.Secret(id)
 	if !known {
 		return "", false
 	}
@@ -191,7 +238,7 @@ func (r *Relay) agentAuthOK(rq *http.Request) (string, bool) {
 
 // tokenOK reports whether a presented client credential matches.
 func (r *Relay) tokenOK(got string) bool {
-	return subtle.ConstantTimeCompare([]byte(got), []byte(r.cfg.ClientToken)) == 1
+	return subtle.ConstantTimeCompare([]byte(got), []byte(r.token.Get())) == 1
 }
 
 // headerToken reads a client credential from an Authorization header. Usable by

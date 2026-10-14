@@ -137,22 +137,32 @@ member stream and forwards bytes. Members dial out, so nothing listens on the
 machine itself.
 
 ```sh
-./bin/tfrelay enroll -name "mac mini"     # prints a credential, writes devices.json (0600)
-./bin/tfrelay list                        # who is enrolled
-
 ./bin/tfrelay -addr 127.0.0.1:7698 -devices devices.json \
-              -client-token "$TOKEN" -tls-cert cert.pem -tls-key key.pem
+              -client-token "$TOKEN" -public-url wss://relay.example/relay/agent \
+              -tls-cert cert.pem -tls-key key.pem
 
 ./bin/tfd -addr 127.0.0.1:7678 \
           -relay wss://relay.example/relay/agent \
           -device-id mac-mini-1a2b3c -device-secret "$SECRET"
 ```
 
+### The admin panel
+
+The relay serves its own management page at `/admin` (`-admin-path`). Open it
+once and it asks you to create an admin account; after that it is where you add
+a machine, read the credential back, rotate the client token, and download the
+CA certificate for a member to pin. `tfrelay enroll` and `tfrelay list` still
+exist for scripted setup, but day-to-day there is no reason to reach for a
+shell — and `enroll` from the panel takes effect on the next dial, no restart.
+
+A fresh relay therefore starts with an *empty* registry: the first machine is
+created from the page. It still refuses to start without a client token, still
+refuses to listen off loopback without TLS unless you say `-insecure`, and the
+admin account is protected by a rate-limited login and a PBKDF2 hash, because it
+is the one credential that can mint all the others.
+
 Each machine gets its own credential rather than one shared fleet secret, so a
-laptop can be revoked without re-enrolling everything. The relay refuses to
-start with no devices or no client token, and refuses to listen off loopback
-without TLS unless you say `-insecure` — the same stance `tfd` takes, for the
-same reason: it fronts arbitrary command execution.
+laptop can be revoked without re-enrolling everything.
 
 The relay also serves the client bundle, so one URL is the whole thing: open
 `https://relay.example/` and it asks for the token, then lists every enrolled

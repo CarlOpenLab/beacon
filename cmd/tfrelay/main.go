@@ -15,9 +15,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/CarlOpenLab/term-fleet/internal/admin"
 	"github.com/CarlOpenLab/term-fleet/internal/relay"
 	"github.com/CarlOpenLab/term-fleet/internal/web"
 )
@@ -50,6 +52,11 @@ func usage() {
   tfrelay list [-devices devices.json]
   tfrelay [-addr host:port] [-devices devices.json] -client-token <token>
           [-tls-cert cert.pem -tls-key key.pem] [-insecure]
+
+Running the relay also serves a web admin panel at -admin-path (default
+/admin), where machines are enrolled, the client token is rotated, and the CA
+certificate is downloaded. The enroll and list subcommands remain for scripted
+setup.
 `)
 }
 
@@ -95,6 +102,12 @@ func runServe(args []string) {
 	addr := flag.String("addr", "127.0.0.1:7698", "listen address; loopback unless you mean it")
 	devices := flag.String("devices", "devices.json", "path to the member registry")
 	clientToken := flag.String("client-token", os.Getenv("TFRELAY_CLIENT_TOKEN"), "shared secret clients must present (required; defaults to $TFRELAY_CLIENT_TOKEN)")
+	tokenFile := flag.String("token-file", "", "where a rotated client token is persisted (default: token.txt beside -devices)")
+	adminOn := flag.Bool("admin", true, "serve the web admin panel")
+	adminPath := flag.String("admin-path", "/admin", "URL path the admin panel is mounted at")
+	adminStore := flag.String("admin-store", "", "admin account file (default: admin.json beside -devices)")
+	publicURL := flag.String("public-url", "", "relay URL shown in the panel, e.g. wss://relay.example/relay/agent (default: guessed from the request)")
+	caCert := flag.String("ca-cert", "", "PEM certificate offered for download from the panel, for members that must pin it")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate; enables HTTPS/WSS")
 	tlsKey := flag.String("tls-key", "", "TLS private key")
 	insecure := flag.Bool("insecure", false, "allow plain HTTP off loopback (development only)")
@@ -104,7 +117,15 @@ func runServe(args []string) {
 	maxFailures := flag.Int("auth-max-failures", 10, "rejected credentials per address before a lockout; 0 disables")
 	flag.Parse()
 
-	if *clientToken == "" {
+	stateDir := filepath.Dir(*devices)
+	if *tokenFile == "" {
+		*tokenFile = filepath.Join(stateDir, "token.txt")
+	}
+	if *adminStore == "" {
+		*adminStore = filepath.Join(stateDir, "admin.json")
+	}
+
+	if *clientToken == "" && !fileExists(*tokenFile) {
 		log.Fatal("tfrelay: -client-token is required: this relay fronts remote shells")
 	}
 	tlsOn := *tlsCert != "" && *tlsKey != ""
@@ -115,9 +136,19 @@ func runServe(args []string) {
 		log.Fatalf("tfrelay: %v", err)
 	}
 
-	devs, err := relay.LoadDevices(*devices)
+	// The registry is opened, not snapshotted: machines are enrolled from the
+	// admin panel while the relay runs, and a credential minted there has to be
+	// accepted on the very next dial.
+	reg, err := relay.OpenRegistry(*devices)
 	if err != nil {
 		log.Fatalf("tfrelay: %v", err)
+	}
+	token, err := relay.OpenTokenStore(*tokenFile, *clientToken)
+	if err != nil {
+		log.Fatalf("tfrelay: %v", err)
+	}
+	if token.Get() == "" {
+		log.Fatal("tfrelay: no client token: pass -client-token or set $TFRELAY_CLIENT_TOKEN")
 	}
 
 	var patterns []string
@@ -125,8 +156,8 @@ func runServe(args []string) {
 		patterns = splitAndTrim(*origins)
 	}
 	r, err := relay.New(relay.Config{
-		Devices:         devs,
-		ClientToken:     *clientToken,
+		Registry:        reg,
+		Token:           token,
 		OriginPatterns:  patterns,
 		TrustProxy:      *trustProxy,
 		AuthMaxFailures: *maxFailures,
@@ -144,6 +175,27 @@ func runServe(args []string) {
 	// transport to use. Without this a phone could not reach a fleet at all: the
 	// relay is the only address that is reachable from outside the LAN.
 	mux.HandleFunc("/tf/config", web.Config("relay", "/relay/client"))
+
+	if *adminOn {
+		panel, err := admin.New(admin.Options{
+			Path:       *adminStore,
+			Relay:      r,
+			PublicURL:  *publicURL,
+			CACertPath: *caCert,
+			BasePath:   *adminPath,
+			Log:        log.Default(),
+		})
+		if err != nil {
+			log.Fatalf("tfrelay: admin: %v", err)
+		}
+		panel.Register(mux)
+		if panel.Configured() {
+			log.Printf("tfrelay: admin panel at %s (account %q)", *adminPath, panel.Username())
+		} else {
+			log.Printf("tfrelay: admin panel at %s — open it to create the admin account", *adminPath)
+		}
+	}
+
 	// Probed by systemd and by whatever terminates TLS in front of this. It
 	// reports online members too, which is the one number worth watching.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -163,7 +215,10 @@ func runServe(args []string) {
 	if tlsOn {
 		scheme = "https"
 	}
-	log.Printf("tfrelay: %d machine(s) enrolled; listening on %s://%s", len(devs), scheme, *addr)
+	log.Printf("tfrelay: %d machine(s) enrolled; listening on %s://%s", reg.Len(), scheme, *addr)
+	if reg.Len() == 0 {
+		log.Printf("tfrelay: no machines yet — enrol them from the admin panel")
+	}
 	if !tlsOn {
 		log.Printf("tfrelay: TLS is off — put this behind a TLS terminator before exposing it")
 	}
@@ -212,4 +267,12 @@ func splitAndTrim(s string) []string {
 		}
 	}
 	return out
+}
+
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	st, err := os.Stat(path)
+	return err == nil && !st.IsDir() && st.Size() > 0
 }

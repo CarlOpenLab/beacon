@@ -77,6 +77,24 @@ sudo systemctl enable --now tfrelay
 The registry file is created on first use; keep it at mode 0600 — the member
 secrets in it are as sensitive as the machines they unlock.
 
+# 3b. Set up the admin panel
+
+Open the relay's management page once and create the admin account:
+
+```
+https://relay.example.com/admin        # or https://host/termfleet/admin/ behind a prefix
+```
+
+It is where machines are enrolled, the client token is read and rotated, and the
+CA certificate is downloaded. The account is stored hashed at
+`/var/lib/tfrelay/admin.json` (0600, override with `-admin-store`); losing the
+password means deleting that file and re-running setup. Turn the page off
+entirely with `-admin=false` if you would rather keep setup in the shell.
+
+Give it a non-default path with `-admin-path`, and a real relay URL to hand out
+with `-public-url wss://relay.example.com/relay/agent` — the relay cannot guess a
+URL that a proxy in front is rewriting.
+
 ### TLS
 
 **With a proxy (recommended).** Install Caddy, copy `deploy/Caddyfile`, replace
@@ -127,6 +145,12 @@ People then open `https://host/termfleet/`, while members still dial
 `X-Forwarded-For`. Only the three prefixes above are touched; the existing site
 keeps "/".
 
+The admin panel sits under the same prefix (`https://host/termfleet/admin/`)
+because its pages and API calls are relative to where the page is loaded. That is
+also why the relay answers `…/admin` and `…/admin/` rather than redirecting: a
+redirect to an absolute `/admin/` would escape the prefix and 404 against the
+other site.
+
 **Private CA or self-signed certificate.** A member verifies the relay's TLS
 certificate against the system roots, so a self-signed certificate (or one from
 a private CA) fails with `x509: certificate signed by unknown authority`. Point
@@ -147,13 +171,8 @@ show a one-time warning for a self-signed certificate.
 
 ## 4. Enroll each machine
 
-On the relay:
-
-```sh
-sudo -u tfrelay tfrelay enroll -devices /var/lib/tfrelay/devices.json -name "mac-mini"
-```
-
-It prints a device id and a secret **once**. Run the member with them:
+In the admin panel, add the machine. It shows a device id and a secret **once**;
+run the member with them:
 
 ```sh
 tfd -addr 127.0.0.1:7677 \
@@ -164,8 +183,19 @@ tfd -addr 127.0.0.1:7677 \
 
 Give each machine its own credential. That is what makes revocation mean
 something: a machine you sell, wipe or lose can be crossed out without touching
-the others. To revoke, remove its entry from the registry (killing the relay
-process first, so it does not rewrite the file from memory) and restart it.
+the others. Revoke from the panel — it takes effect on the next dial, and needs
+no restart. The registry is read live rather than snapshotted at startup, which
+is also what lets a machine enrolled after the relay started connect right away.
+
+For scripted setup the CLI still works, and writes the same file:
+
+```sh
+sudo -u tfrelay tfrelay enroll -devices /var/lib/tfrelay/devices.json -name "mac-mini"
+```
+
+A relay with no machines at all now starts, so that this step can come after
+installation: an empty registry is inert, because nothing can dial in without a
+credential.
 
 ### Member as a service
 
@@ -226,6 +256,13 @@ deployment: compromising it compromises every machine that has enrolled.
   header does not let a caller invent a new identity per attempt.
 - **One credential per machine.** A member presents its own secret, so revoking
   one machine does not disturb the rest.
+- **A guarded admin panel.** The account is stored as a PBKDF2 hash (210k
+  iterations, per-account salt), login attempts are throttled per address, the
+  session cookie is HttpOnly + SameSite=Strict + Secure behind TLS, mutating
+  requests are refused cross-origin, and the session store is in memory so a
+  restart signs everyone out. It is the credential that mints every other one,
+  so treat it like the root password of the fleet — and keep the whole
+  deployment behind HTTPS, since the admin password crosses this connection.
 - **The relay holds no root.** `deploy/tfrelay.service` runs with an empty
   capability set, a read-only filesystem, and no access to `/home`.
 
