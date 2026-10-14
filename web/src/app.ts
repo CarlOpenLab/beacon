@@ -120,6 +120,7 @@ export class App {
       sessions: (list) => {
         this.sessions = list
         this.renderFleet()
+        this.renderBanner()
         // Reflect host-side truth: an exit we missed, or someone else's control.
         for (const tab of this.tabs) {
           if (!tab.sessionId) continue
@@ -315,6 +316,17 @@ export class App {
         this.closeTab(tab)
       }
       btn.append(dot, label, close)
+      // Two shells started in the same directory look identical in the strip,
+      // so the tooltip carries what distinguishes them.
+      const summary = tab.sessionId ? this.sessions.find((s) => s.sessionId === tab.sessionId) : undefined
+      btn.title = [
+        tab.sessionId || '尚未创建',
+        summary?.cwd,
+        summary ? `${summary.cols}×${summary.rows}` : '',
+        summary?.controller ? `控制端 ${summary.controller}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
       btn.onclick = () => this.select(tab.key)
       this.tabStrip.append(btn)
     }
@@ -351,14 +363,31 @@ export class App {
 
   private renderBanner(): void {
     const tab = this.current()
+    this.banner.replaceChildren()
+
     let text = ''
-    if (tab?.sessionId && tab.alive && tab.role === ROLE.viewer) {
-      text = '只读：该会话正被另一个端控制'
-    } else if (tab?.sessionId && !tab.alive) {
+    let label = ''
+    let action: (() => void) | undefined
+
+    if (tab?.sessionId && !tab.alive) {
       text = '会话已退出，可读取输出后关闭标签'
+      label = '关闭标签'
+      action = () => this.closeTab(tab)
+    } else if (tab?.sessionId && tab.alive && tab.role !== ROLE.controller) {
+      // The sessions broadcast, not the role frame, is what tells us whether
+      // control is merely unclaimed or actually held elsewhere.
+      const holder = this.sessions.find((s) => s.sessionId === tab.sessionId)?.controller ?? ''
+      text = holder ? `只读：该会话正被 ${holder} 控制` : '只读：当前无人控制'
+      label = '接管'
+      action = () => this.fleet.claim(tab.sessionId)
     }
-    this.banner.textContent = text
+
     this.banner.classList.toggle('on', Boolean(text))
+    if (!text || !action || !tab) return
+    this.banner.append(el('span', undefined, text))
+    const button = el('button', 'tf-btn tf-btn-small', label)
+    button.onclick = action
+    this.banner.append(button)
   }
 
   private toast(text: string, kind: 'info' | 'warn' | 'error' = 'info'): void {
@@ -378,7 +407,7 @@ export class App {
     const bundle = createTerminal()
     const pane = el('div', 'tf-pane')
     bundle.term.open(pane)
-    this.attachClipboard(bundle)
+    this.wireTerminal(bundle)
     const tab: Tab = {
       key: this.nextKey++,
       sessionId,
@@ -497,8 +526,16 @@ export class App {
     }, 60)
   }
 
-  private attachClipboard(bundle: TerminalBundle): void {
+  private wireTerminal(bundle: TerminalBundle): void {
     const { term } = bundle
+    // Keystrokes are only forwarded while this client holds control. Viewers
+    // also have stdin disabled, so this guard is the second lock, not the first.
+    term.onData((data) => {
+      const tab = this.tabs.find((t) => t.bundle === bundle)
+      if (!tab || !tab.sessionId) return
+      if (tab.role === ROLE.viewer) return
+      this.fleet.input(tab.sessionId, data)
+    })
     term.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== 'keydown') return true
       const key = ev.key.toLowerCase()

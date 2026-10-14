@@ -14,6 +14,7 @@
     "dev:web": "pnpm run build:web && go run ./cmd/tfd -web-dir internal/web/dist",
     "dev:desktop": "pnpm run build:web && go run ./cmd/tfdesktop -web-dir internal/web/dist",
     "test": "go test ./...",
+    "acceptance": "pnpm run build:daemon && node scripts/acceptance.mjs",
     "check": "go vet ./... && pnpm --dir web run typecheck"
   }
 }

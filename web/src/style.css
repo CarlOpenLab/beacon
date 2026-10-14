@@ -116,6 +116,12 @@ body {
   background: #344778;
 }
 
+.tf-btn-small {
+  padding: 2px 9px;
+  font-size: 11px;
+  margin-left: 10px;
+}
+
 /* -------------------------------------------------------------------- body */
 
 .tf-body {
