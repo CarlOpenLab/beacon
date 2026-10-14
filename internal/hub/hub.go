@@ -149,7 +149,7 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	h.serve(conn)
+	h.serve(wsTransport{conn})
 }
 
 func (h *Hub) tokenOK(r *http.Request) bool {
@@ -160,8 +160,16 @@ func (h *Hub) tokenOK(r *http.Request) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(h.opts.Token)) == 1
 }
 
-func (h *Hub) serve(conn *websocket.Conn) {
-	c := h.newClient(conn)
+// ServeTransport attaches one client over an arbitrary transport and returns
+// when it goes away. The relay agent uses this to project a remote viewer onto
+// this hub, so a session controlled from the internet is arbitrated by exactly
+// the same code as one controlled from the same machine.
+func (h *Hub) ServeTransport(tp Transport) {
+	h.serve(tp)
+}
+
+func (h *Hub) serve(tp Transport) {
+	c := h.newClient(tp)
 
 	h.mu.Lock()
 	h.clients[c] = struct{}{}

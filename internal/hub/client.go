@@ -7,17 +7,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coder/websocket"
-
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 )
 
-// client is one WebSocket. Every session it watches shares this connection,
-// and it keeps a per-session cursor so the hub can send only what is new.
+// client is one attached viewer. Every session it watches shares this
+// transport, and it keeps a per-session cursor so the hub can send only what
+// is new.
 type client struct {
 	h    *Hub
 	id   string
-	conn *websocket.Conn
+	tp   Transport
 	out  chan protocol.Msg
 	done chan struct{}
 	once sync.Once
@@ -26,7 +25,7 @@ type client struct {
 	cursors map[string]int64
 }
 
-func (h *Hub) newClient(conn *websocket.Conn) *client {
+func (h *Hub) newClient(tp Transport) *client {
 	h.mu.Lock()
 	h.nextSeq++
 	seq := h.nextSeq
@@ -35,7 +34,7 @@ func (h *Hub) newClient(conn *websocket.Conn) *client {
 	return &client{
 		h:       h,
 		id:      fmt.Sprintf("c%d", seq),
-		conn:    conn,
+		tp:      tp,
 		out:     make(chan protocol.Msg, outboundQueue),
 		done:    make(chan struct{}),
 		cursors: map[string]int64{},
@@ -56,7 +55,7 @@ func (c *client) send(m protocol.Msg) {
 func (c *client) close(reason string) {
 	c.once.Do(func() {
 		close(c.done)
-		_ = c.conn.Close(websocket.StatusNormalClosure, reason)
+		_ = c.tp.Close(reason)
 	})
 }
 
@@ -83,7 +82,7 @@ func (c *client) setCursor(sessionID string, v int64) {
 
 func (c *client) readLoop(ctx context.Context) {
 	for {
-		_, data, err := c.conn.Read(ctx)
+		data, err := c.tp.Read(ctx)
 		if err != nil {
 			return
 		}
@@ -103,18 +102,18 @@ func (c *client) writeLoop(ctx context.Context) {
 			return
 		case <-c.done:
 			return
-		case m := <-c.out:
-			b, err := json.Marshal(m)
-			if err != nil {
-				continue
-			}
-			wctx, cancel := context.WithTimeout(ctx, writeTimeout)
-			err = c.conn.Write(wctx, websocket.MessageText, b)
-			cancel()
-			if err != nil {
-				c.close("write failed")
-				return
-			}
+			case m := <-c.out:
+				b, err := json.Marshal(m)
+				if err != nil {
+					continue
+				}
+				wctx, cancel := context.WithTimeout(ctx, writeTimeout)
+				err = c.tp.Write(wctx, b)
+				cancel()
+				if err != nil {
+					c.close("write failed")
+					return
+				}
 		}
 	}
 }
@@ -130,14 +129,14 @@ func (c *client) heartbeat(ctx context.Context) {
 			return
 		case <-c.done:
 			return
-		case <-t.C:
-			pctx, cancel := context.WithTimeout(ctx, pingTimeout)
-			err := c.conn.Ping(pctx)
-			cancel()
-			if err != nil {
-				c.close("ping timeout")
-				return
-			}
+			case <-t.C:
+				pctx, cancel := context.WithTimeout(ctx, pingTimeout)
+				err := c.tp.Ping(pctx)
+				cancel()
+				if err != nil {
+					c.close("ping timeout")
+					return
+				}
 		}
 	}
 }

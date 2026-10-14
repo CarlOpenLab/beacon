@@ -9,12 +9,14 @@
     "watch:web": "pnpm --dir web run watch",
     "typecheck:web": "pnpm --dir web run typecheck",
     "build:daemon": "pnpm run build:web && go build -o bin/tfd ./cmd/tfd",
+    "build:relay": "go build -o bin/tfrelay ./cmd/tfrelay",
     "build:desktop": "pnpm run build:web && go build -o bin/tfdesktop ./cmd/tfdesktop",
-    "build": "pnpm run build:web && go build -o bin/tfd ./cmd/tfd && go build -o bin/tfdesktop ./cmd/tfdesktop",
+    "build": "pnpm run build:web && go build -o bin/tfd ./cmd/tfd && go build -o bin/tfrelay ./cmd/tfrelay && go build -o bin/tfdesktop ./cmd/tfdesktop",
     "dev:web": "pnpm run build:web && go run ./cmd/tfd -web-dir internal/web/dist",
     "dev:desktop": "pnpm run build:web && go run ./cmd/tfdesktop -web-dir internal/web/dist",
     "test": "go test ./...",
     "acceptance": "pnpm run build:daemon && node scripts/acceptance.mjs",
+    "acceptance:relay": "pnpm run build:daemon && pnpm run build:relay && node scripts/relay-acceptance.mjs",
     "check": "go vet ./... && pnpm --dir web run typecheck"
   }
 }

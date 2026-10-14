@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"syscall"
 
+	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/daemon"
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
 )
@@ -26,6 +27,11 @@ func main() {
 		"how long a silent controller keeps control")
 	webDir := flag.String("web-dir", "",
 		"serve the browser client from this directory instead of the embedded copy")
+	relayURL := flag.String("relay", "",
+		"dial this relay member endpoint (e.g. wss://relay.example/relay/agent); empty keeps this machine LAN-only")
+	deviceID := flag.String("device-id", "", "this machine's relay identity, from `tfrelay enroll`")
+	deviceSecret := flag.String("device-secret", "", "this machine's relay secret, from `tfrelay enroll`")
+	machineName := flag.String("machine-name", "", "name shown in the relay's machine list (default: hostname)")
 	flag.Parse()
 
 	srv, err := daemon.New(daemon.Options{
@@ -50,6 +56,28 @@ func main() {
 	}
 	if *token == "" {
 		log.Printf("tfd: no token set; reachable from this machine only")
+	}
+
+	// Joining a fleet is additive: the daemon keeps serving its LAN port either
+	// way, so a machine that is reachable locally stays reachable locally even
+	// when the relay is down.
+	if *relayURL != "" {
+		ag, err := agent.New(agent.Config{
+			URL:         *relayURL,
+			DeviceID:    *deviceID,
+			Secret:      *deviceSecret,
+			MachineName: *machineName,
+			Hub:         srv.Hub(),
+		})
+		if err != nil {
+			log.Fatalf("tfd: %v", err)
+		}
+		log.Printf("tfd: joining fleet at %s as %q", *relayURL, *deviceID)
+		go func() {
+			if err := ag.Run(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("tfd: relay link stopped: %v", err)
+			}
+		}()
 	}
 
 	if err := srv.Serve(ctx); err != nil {
