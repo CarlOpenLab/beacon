@@ -372,7 +372,7 @@ func (a *Admin) startSession(w http.ResponseWriter, r *http.Request) error {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    tok,
-		Path:     a.base,
+		Path:     a.cookiePath(r),
 		HttpOnly: true,
 		Secure:   a.secure(r),
 		SameSite: http.SameSiteStrictMode,
@@ -385,12 +385,32 @@ func (a *Admin) clearCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    "",
-		Path:     a.base,
+		Path:     a.cookiePath(r),
 		HttpOnly: true,
 		Secure:   a.secure(r),
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})
+}
+
+// cookiePath is where the *browser* must send the session cookie, which is not
+// always where the relay sees the panel mounted.
+//
+// Behind a path-prefixing proxy the relay only ever sees the stripped path
+// ("/admin/api/state"), while the browser is on "/termfleet/admin/". Scoping the
+// cookie to "/admin" there means the browser never sends it back: setup appears
+// to succeed and then every request is anonymous. So take the prefix from the
+// proxy when it advertises one, and otherwise assume that whatever came before
+// the mount point in the request path is part of the public path.
+func (a *Admin) cookiePath(r *http.Request) string {
+	if prefix := strings.TrimSpace(r.Header.Get("X-Forwarded-Prefix")); prefix != "" {
+		return "/" + strings.Trim(prefix, "/") + a.base
+	}
+	marker := a.base + "/"
+	if i := strings.LastIndex(r.URL.Path, marker); i > 0 {
+		return r.URL.Path[:i] + a.base
+	}
+	return a.base
 }
 
 // secure marks the cookie Secure whenever the browser reached us over TLS,

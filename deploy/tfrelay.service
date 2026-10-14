@@ -3,6 +3,11 @@ Description=term-fleet relay
 Documentation=https://github.com/CarlOpenLab/term-fleet
 After=network-online.target
 Wants=network-online.target
+# A relay that loses its members should come back fast, but a crash loop should
+# not fill the journal. These belong in [Unit]; in [Service] systemd ignores
+# them with "Unknown lvalue".
+StartLimitIntervalSec=60
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -23,10 +28,6 @@ ExecStart=/usr/local/bin/tfrelay \
 
 Restart=always
 RestartSec=2
-# A relay that loses its members should come back fast, but a crash loop should
-# not fill the journal.
-StartLimitIntervalSec=60
-StartLimitBurst=10
 # A restart must not run off with a socket the proxy is still holding.
 KillSignal=SIGTERM
 TimeoutStopSec=10

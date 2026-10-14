@@ -151,6 +151,24 @@ also why the relay answers `…/admin` and `…/admin/` rather than redirecting:
 redirect to an absolute `/admin/` would escape the prefix and 404 against the
 other site.
 
+One thing a prefixing proxy must tell the relay is *what* it stripped, because
+the panel's session cookie is scoped to a path the browser uses, not the one the
+relay sees:
+
+```nginx
+location ^~ /termfleet/ {
+    proxy_pass http://127.0.0.1:7699/;
+    proxy_http_version 1.1;
+    proxy_set_header X-Forwarded-Prefix /termfleet;   # the browser's prefix
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    ...
+}
+```
+
+Without it, signing in appears to succeed and then every following request is
+anonymous: the cookie was scoped to `/admin`, which the browser never visits.
+
 **Private CA or self-signed certificate.** A member verifies the relay's TLS
 certificate against the system roots, so a self-signed certificate (or one from
 a private CA) fails with `x509: certificate signed by unknown authority`. Point

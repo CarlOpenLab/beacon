@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -82,6 +84,7 @@ type reply struct {
 	status int
 	body   map[string]any
 	raw    string
+	header http.Header
 }
 
 func (p *panel) call(t *testing.T, method, path string, payload any, hdr map[string]string) reply {
@@ -110,7 +113,7 @@ func (p *panel) call(t *testing.T, method, path string, payload any, hdr map[str
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
-	out := reply{status: res.StatusCode, raw: string(raw)}
+	out := reply{status: res.StatusCode, raw: string(raw), header: res.Header}
 	_ = json.Unmarshal(raw, &out.body)
 	return out
 }
@@ -413,6 +416,114 @@ func TestLoginIsRateLimited(t *testing.T) {
 	}
 	if !limited {
 		t.Fatal("20 failed logins were allowed; there is no rate limit")
+	}
+}
+
+// TestSessionCookieScopedToThePublicPath is the regression for the bug that only
+// a path-prefixing proxy exposes: the relay sees "/admin/api/setup" while the
+// browser is on "/termfleet/admin/api/setup". A cookie scoped to "/admin" is
+// never sent back, so setup appears to succeed and every later request is
+// anonymous.
+func TestSessionCookieScopedToThePublicPath(t *testing.T) {
+	p := newPanel(t)
+	got := p.call(t, "POST", "/admin/api/setup",
+		map[string]string{"username": "carl", "password": "correct horse"},
+		map[string]string{"X-Forwarded-Prefix": "/termfleet", "X-Forwarded-Proto": "https"})
+	if got.status != http.StatusOK {
+		t.Fatalf("setup = %d %s, want 200", got.status, got.raw)
+	}
+	cookie := got.header.Get("Set-Cookie")
+	if !strings.Contains(cookie, "Path=/termfleet/admin") {
+		t.Fatalf("Set-Cookie = %q, want the public path so the browser sends it back", cookie)
+	}
+	for _, want := range []string{"HttpOnly", "SameSite=Strict", "Secure"} {
+		if !strings.Contains(cookie, want) {
+			t.Fatalf("Set-Cookie = %q, want %s", cookie, want)
+		}
+	}
+}
+
+// TestCookiePathDerivation covers the cases behind cookiePath: mounted directly,
+// mounted behind a proxy that forwards the full path, and one that strips the
+// prefix and advertises it.
+func TestCookiePathDerivation(t *testing.T) {
+	a := &Admin{base: "/admin"}
+	cases := []struct {
+		path, prefix, want string
+	}{
+		{"/admin/api/setup", "", "/admin"},
+		{"/admin", "", "/admin"},
+		{"/termfleet/admin/api/setup", "", "/termfleet/admin"},
+		{"/admin/api/setup", "/termfleet", "/termfleet/admin"},
+		{"/admin/api/setup", "termfleet/", "/termfleet/admin"},
+		{"/admin/api/setup", "/a/admin/b", "/a/admin/b/admin"},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest("POST", c.path, nil)
+		if c.prefix != "" {
+			req.Header.Set("X-Forwarded-Prefix", c.prefix)
+		}
+		if got := a.cookiePath(req); got != c.want {
+			t.Errorf("cookiePath(%q, prefix %q) = %q, want %q", c.path, c.prefix, got, c.want)
+		}
+	}
+}
+
+// TestNoOriginHeaderIsAcceptedButDifferentOriginIsNot pins both halves of the
+// cross-site rule: a same-origin fetch may omit Origin, but a stated different
+// origin is refused.
+func TestNoOriginHeaderIsAcceptedButDifferentOriginIsNot(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+	ok := p.call(t, "POST", "/admin/api/devices", map[string]string{"name": "box"}, nil)
+	if ok.status != http.StatusOK {
+		t.Fatalf("enroll without an Origin header = %d, want 200", ok.status)
+	}
+	same := p.call(t, "POST", "/admin/api/devices", map[string]string{"name": "box2"},
+		map[string]string{"Origin": p.ts.URL})
+	if same.status != http.StatusOK {
+		t.Fatalf("same-origin enroll = %d, want 200", same.status)
+	}
+}
+
+// TestUIScriptReferencesOnlyExistingIDs: the panel is one inline script, and a
+// stray id lookup is a null dereference that only shows up when that code path
+// runs — invisible in a screenshot, invisible in a health check. The ids are
+// checked statically instead.
+func TestUIScriptReferencesOnlyExistingIDs(t *testing.T) {
+	raw, err := uiFS.ReadFile("ui.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(raw)
+
+	scriptStart := strings.Index(page, "<script>")
+	scriptEnd := strings.LastIndex(page, "</script>")
+	if scriptStart < 0 || scriptEnd < scriptStart {
+		t.Fatal("ui.html has no inline script")
+	}
+	script := page[scriptStart:scriptEnd]
+
+	declared := map[string]bool{}
+	for _, m := range regexp.MustCompile(`id="([^"]+)"`).FindAllStringSubmatch(page, -1) {
+		declared[m[1]] = true
+	}
+	used := map[string]bool{}
+	for _, m := range regexp.MustCompile(`\$\("([^"]+)"\)`).FindAllStringSubmatch(script, -1) {
+		used[m[1]] = true
+	}
+	if len(used) < 10 {
+		t.Fatalf("only found %d id lookups; the parser probably broke", len(used))
+	}
+	var missing []string
+	for id := range used {
+		if !declared[id] {
+			missing = append(missing, id)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Fatalf("the script looks up ids that are not in the page: %v", missing)
 	}
 }
 
