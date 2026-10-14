@@ -191,15 +191,21 @@ NAT / CGNAT。没配 `-relay` 时 `tfd` 的行为一个字都不变，局域网�
   公网侧 `tfrelay`（设备注册表 + 流路由 + 在线状态）+ 成员侧 `agent`
   （反向拨出 + 退避重连）+ `internal/tunnel` 信封 + `hub.Transport` 抽象。
   **会话协议零改动。**
-- **M3 客户端走隧道**（下一步）
-  web 前端加隧道模式：机器选择器、按机器分组的 tab、`open/data/close` 的
-  封装与重连；顺带把手机端的响应式布局做掉（清单页一比一 + 控制权交接 +
-  软键盘辅助键条）。PC 壳和手机加载同一份产物，这一步做完两端同时可用。
-- **M4 加机器**
-  Windows 主机（ConPTY）。多主机清单已由 M2 免费给出，这里只补平台。
-- **M5 加固**
-  WSS 部署（域名 + Let's Encrypt）、审计留痕、可选的端到端加密。
-  （token 鉴权已在 M0/M2 落地，不是这一阶段才做。）
+- **M3 客户端走隧道** ✅
+  `Connector` 抽象（与 `hub.Transport` 同一手法）→ `DirectConnector` /
+  `RelayConnection`；一个 WS 复用多机器，每台机器一条逻辑流；`/tf/config`
+  让服务端自报传输方式。手机端：抽屉侧栏 + 辅助键条。
+  **PC 壳、浏览器、手机加载同一份产物。**
+- **M4 加机器** ✅
+  `internal/session` 把 PTY 抽成 `ptyProcess` 接口（Unix 是 fd，Windows 是
+  「拥有子进程的 console 对象」）→ ConPTY。已在真实 Windows 上跑
+  `go test ./internal/session` 与整套 `relay-acceptance.mjs`。
+- **M5 加固** ✅
+  token 改走**首帧**（不再进 URL / 访问日志 / 浏览器历史）；按地址的失败
+  限速（取 `X-Forwarded-For` 的**最后一跳**，即代理自己追加的那个）；
+  `deploy/`：systemd 单元（含沙箱化）、Caddyfile、成员用户单元、部署与
+  安全说明。自签 TLS 与 `-tls-cert/-tls-key` 也支持。
+  未做：审计落盘、可选端到端加密（都写进 `deploy/README.md` 的边界说明）。
 
 ### M2 落地时定的四件事
 
