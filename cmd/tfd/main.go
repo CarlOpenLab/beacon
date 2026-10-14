@@ -1,120 +1,58 @@
-// Command tfd is the term-fleet daemon: it owns PTY sessions on one machine
-// and serves them over a single WebSocket to every client that attaches.
-//
-// It listens on loopback by default. The daemon runs arbitrary commands and
-// serves the filesystem, so binding it to a network without a token is
-// refused rather than warned about.
+// Command tfd is the headless half of term-fleet: it hosts PTY sessions on this
+// machine and hands them to any client that connects, over one WebSocket.
 package main
 
 import (
 	"context"
-	"errors"
 	"flag"
-	"fmt"
 	"log"
-	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
-	"strings"
 	"syscall"
-	"time"
 
+	"github.com/CarlOpenLab/term-fleet/internal/daemon"
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 )
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7678",
-		"address to listen on; loopback unless you mean it")
+		"address to listen on; loopback unless you mean it (off loopback requires -token)")
 	token := flag.String("token", "",
-		"shared secret every client must present; required when not on loopback")
+		"shared secret every client must present; required off loopback")
 	origins := flag.String("allow-origin", "",
-		"comma-separated extra WebSocket Origin patterns, for a dev server on another port")
+		"comma-separated extra WebSocket Origin patterns, for a frontend served from another port")
 	idle := flag.Duration("idle-controller", hub.DefaultIdleController,
 		"how long a silent controller keeps control")
+	webDir := flag.String("web-dir", "",
+		"serve the browser client from this directory instead of the embedded copy")
 	flag.Parse()
 
-	if err := validateBinding(*addr, *token); err != nil {
-		log.Fatalf("tfd: %v", err)
-	}
-
-	hostname, _ := os.Hostname()
-	h := hub.New(hub.Options{
-		Host: protocol.Host{
-			Hostname: hostname,
-			Platform: runtime.GOOS,
-			Arch:     runtime.GOARCH,
-		},
+	srv, err := daemon.New(daemon.Options{
+		Addr:           *addr,
 		Token:          *token,
-		OriginPatterns: splitList(*origins),
+		OriginPatterns: daemon.SplitList(*origins),
 		IdleTimeout:    *idle,
+		WebDir:         *webDir,
 	})
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "ok")
-	})
-	mux.Handle("/ws", h)
-
-	ln, err := net.Listen("tcp", *addr)
 	if err != nil {
-		log.Fatalf("tfd: listen %s: %v", *addr, err)
+		log.Fatalf("tfd: %v", err)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go h.Run(ctx)
 
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go func() {
-		<-ctx.Done()
-		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(sctx)
-	}()
-
-	log.Printf("tfd: listening on %s (%s/%s)", ln.Addr(), runtime.GOOS, runtime.GOARCH)
+	log.Printf("tfd: listening on %s (%s/%s)", srv.Addr(), runtime.GOOS, runtime.GOARCH)
+	if srv.ClientPresent() {
+		log.Printf("tfd: client %s at %s/", srv.ClientSource(), srv.BaseURL())
+	} else {
+		log.Printf("tfd: no built client; run `pnpm --dir web run build`, or pass -web-dir")
+	}
 	if *token == "" {
 		log.Printf("tfd: no token set; reachable from this machine only")
 	}
-	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("tfd: serve: %v", err)
-	}
-	h.Manager().Shutdown()
-}
 
-// validateBinding enforces the one rule that keeps this daemon from becoming
-// an open remote shell.
-func validateBinding(addr, token string) error {
-	if isLoopback(addr) {
-		return nil
+	if err := srv.Serve(ctx); err != nil {
+		log.Fatalf("tfd: %v", err)
 	}
-	if token == "" {
-		return fmt.Errorf("refusing to listen on %s without -token: this daemon runs arbitrary commands", addr)
-	}
-	return nil
-}
-
-func isLoopback(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return false
-	}
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
-
-func splitList(s string) []string {
-	var out []string
-	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
 }

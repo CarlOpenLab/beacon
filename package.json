@@ -1,0 +1,19 @@
+{
+  "name": "term-fleet",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Share a machine's PTY sessions over one WebSocket with desktop and mobile clients",
+  "scripts": {
+    "install:web": "pnpm --dir web install",
+    "build:web": "pnpm --dir web run build",
+    "watch:web": "pnpm --dir web run watch",
+    "typecheck:web": "pnpm --dir web run typecheck",
+    "build:daemon": "pnpm run build:web && go build -o bin/tfd ./cmd/tfd",
+    "build:desktop": "pnpm run build:web && go build -o bin/tfdesktop ./cmd/tfdesktop",
+    "build": "pnpm run build:web && go build -o bin/tfd ./cmd/tfd && go build -o bin/tfdesktop ./cmd/tfdesktop",
+    "dev:web": "pnpm run build:web && go run ./cmd/tfd -web-dir internal/web/dist",
+    "dev:desktop": "pnpm run build:web && go run ./cmd/tfdesktop -web-dir internal/web/dist",
+    "test": "go test ./...",
+    "check": "go vet ./... && pnpm --dir web run typecheck"
+  }
+}
