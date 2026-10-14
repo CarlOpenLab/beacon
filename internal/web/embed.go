@@ -42,6 +42,17 @@ func FS() (fs.FS, bool) {
 	return sub, true
 }
 
+// Config tells a client which transport this server speaks. One bundle is
+// served by two different roles — a daemon that owns PTYs and a relay that only
+// routes — so the client asks instead of guessing from its own URL.
+func Config(mode, ws string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		fmt.Fprintf(w, `{"mode":%q,"ws":%q}`, mode, ws)
+	}
+}
+
 // Handler serves the client. A non-empty devDir reads from disk instead of the
 // embedded copy, which is what the watch-based dev loop uses.
 func Handler(devDir string) http.Handler {

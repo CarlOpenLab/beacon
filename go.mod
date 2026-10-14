@@ -8,4 +8,8 @@ require (
 	github.com/egoist/mygo v0.4.8
 )
 
-require github.com/ebitengine/purego v0.11.1 // indirect
+require (
+	github.com/UserExistsError/conpty v0.1.4 // indirect
+	github.com/ebitengine/purego v0.11.1 // indirect
+	golang.org/x/sys v0.8.0 // indirect
+)

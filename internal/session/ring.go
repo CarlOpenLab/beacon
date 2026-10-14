@@ -9,11 +9,11 @@ import "sync"
 // instead of a replay. Once the buffer exceeds its limit the oldest bytes are
 // dropped from the front and ReadFrom reports that as truncated.
 type Ring struct {
-	mu     sync.Mutex
-	buf    []byte
-	start  int64 // absolute offset of buf[0]
-	total  int64 // absolute offset one past the newest byte
-	limit  int
+	mu    sync.Mutex
+	buf   []byte
+	start int64 // absolute offset of buf[0]
+	total int64 // absolute offset one past the newest byte
+	limit int
 }
 
 func NewRing(limit int) *Ring {

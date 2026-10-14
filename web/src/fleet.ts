@@ -12,6 +12,7 @@ import {
   type Role,
   type Summary,
 } from './protocol'
+import type { Connector, Link, LinkHandlers } from './link'
 
 export type ConnState = 'connecting' | 'online' | 'offline'
 
@@ -54,13 +55,16 @@ export function defaultDaemonURL(): string {
 }
 
 export class Fleet {
-  private ws?: WebSocket
-  private url: string
+  private link?: Link
+  private connector: Connector
   private backoff = MIN_BACKOFF
   private timer?: number
   private closedByUs = false
   /** Sessions this client wants attached, with the cursor it has consumed. */
   private intents = new Map<string, Intent>()
+
+  /** Set by the app layer when this Fleet belongs to a machine in a roster. */
+  machineId = ''
 
   state: ConnState = 'offline'
   host?: Host
@@ -69,13 +73,13 @@ export class Fleet {
 
   constructor(
     private handlers: FleetHandlers = {},
-    url: string = defaultDaemonURL(),
+    connector: Connector,
   ) {
-    this.url = url
+    this.connector = connector
   }
 
   get endpoint(): string {
-    return this.url
+    return this.connector.label
   }
 
   connect(): void {
@@ -83,10 +87,23 @@ export class Fleet {
     this.open()
   }
 
+  /**
+   * Connect only if there is no link yet.
+   *
+   * A relay hands out machines as its roster changes, so a naive `connect()`
+   * per roster push would open a fresh socket (or stream) every time. This is
+   * the idempotent form the app layer wants.
+   */
+  ensureConnected(): void {
+    if (this.link || this.closedByUs) return
+    this.open()
+  }
+
   close(): void {
     this.closedByUs = true
     if (this.timer !== undefined) clearTimeout(this.timer)
-    this.ws?.close()
+    this.link?.close()
+    this.link = undefined
     this.setState('offline', '已断开')
   }
 
@@ -97,47 +114,24 @@ export class Fleet {
 
   private open(): void {
     this.setState('connecting')
-    let ws: WebSocket
-    try {
-      ws = new WebSocket(this.url)
-    } catch (err) {
-      this.retry(`无法建立连接：${err instanceof Error ? err.message : String(err)}`)
-      return
-    }
-    ws.binaryType = 'arraybuffer'
-    this.ws = ws
-
-    ws.onopen = () => {
-      this.backoff = MIN_BACKOFF
-      this.setState('online')
-      this.send({ t: CT.hello, v: PROTOCOL_VERSION })
-      // Resume before the user notices: re-attach everything with the cursor we
-      // already consumed, so a reconnect replays only the gap.
-      for (const [sessionId, intent] of this.intents) {
-        this.send({ t: CT.attach, sessionId, cursor: intent.cursor })
-      }
-    }
-
-    ws.onmessage = (ev) => {
-      if (typeof ev.data !== 'string') return
-      let msg: Msg
-      try {
-        msg = JSON.parse(ev.data) as Msg
-      } catch {
-        return
-      }
-      this.dispatch(msg)
-    }
-
-    ws.onerror = () => {
-      /* onclose carries the retry */
-    }
-
-    ws.onclose = (ev) => {
-      if (this.closedByUs) return
-      const detail = ev.reason ? `连接关闭：${ev.reason}` : '连接断开'
-      this.retry(detail)
-    }
+    const link = this.connector.connect({
+      open: () => {
+        this.backoff = MIN_BACKOFF
+        this.setState('online')
+        this.send({ t: CT.hello, v: PROTOCOL_VERSION })
+        // Resume before the user notices: re-attach everything with the cursor we
+        // already consumed, so a reconnect replays only the gap.
+        for (const [sessionId, intent] of this.intents) {
+          this.send({ t: CT.attach, sessionId, cursor: intent.cursor })
+        }
+      },
+      message: (msg) => this.dispatch(msg),
+      close: (reason) => {
+        if (this.closedByUs) return
+        this.retry(reason)
+      },
+    } satisfies LinkHandlers)
+    this.link = link
   }
 
   private retry(detail: string): void {
@@ -214,13 +208,12 @@ export class Fleet {
   }
 
   private send(msg: Msg): boolean {
-    if (this.ws?.readyState !== WebSocket.OPEN) return false
-    this.ws.send(JSON.stringify(msg))
-    return true
+    return this.link?.send(msg) ?? false
   }
 
+  /** True once the link is live, for either transport. */
   get online(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN
+    return this.link?.ready ?? false
   }
 
   list(): void {

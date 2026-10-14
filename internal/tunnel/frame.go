@@ -21,6 +21,8 @@ const (
 	TAgentWelcome = "agent.welcome" // relay -> member
 
 	// Client -> relay.
+	TAuth     = "auth"     // client -> relay; required as the first frame
+	TAuthOK   = "auth.ok"  // relay -> client, once the token checks out
 	TMachines = "machines" // relay -> client; also pushed on presence change
 	TOpen     = "open"     // client -> relay -> member
 	TAccept   = "accept"   // relay -> client, sent when Open is routed
@@ -28,6 +30,16 @@ const (
 	TClose    = "close"    // both directions
 	TError    = "error"
 )
+
+// AuthTimeoutMS bounds how long a client socket may stay unauthenticated before
+// the relay closes it. A relay faces the open internet; it cannot let idle
+// sockets accumulate.
+//
+// The credential arrives in an Auth frame rather than in the URL on purpose: a
+// browser cannot set headers on a WebSocket, and a query string ends up in
+// access logs, proxy logs and browser history — the last places a fleet
+// password should be.
+const AuthTimeoutMS = 5000
 
 // Error codes. Stable identifiers; clients branch on them.
 const (
@@ -54,6 +66,10 @@ type Frame struct {
 	// The inner protocol.Msg, opaque to the relay. []byte so encoding/json
 	// base64s it — the same reason protocol.Msg.Data is []byte.
 	Payload []byte `json:"payload,omitempty"`
+
+	// Auth. Only ever populated in a client's first frame; the relay strips it
+	// and never forwards it toward a member.
+	Token string `json:"token,omitempty"`
 
 	// Registry (machines, agent.hello).
 	Machines    []Machine     `json:"machines,omitempty"`

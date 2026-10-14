@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"sync"
 	"time"
 
@@ -37,8 +36,7 @@ type Session struct {
 	exited  chan struct{} // closed once the process is reaped
 
 	mu       sync.Mutex
-	cmd      *exec.Cmd
-	ptmx     *os.File
+	pty      ptyProcess
 	cols     int
 	rows     int
 	title    string
@@ -57,12 +55,13 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 		rows = 24
 	}
 	path, args := shellCommand(shell)
-	cmd := exec.Command(path, args...)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
-	if cwd != "" {
-		cmd.Dir = cwd
+	spec := ptySpec{
+		path: path,
+		args: args,
+		env:  append(os.Environ(), "TERM=xterm-256color"),
+		dir:  cwd,
 	}
-	ptmx, err := startPTY(cmd, cols, rows)
+	pty, err := startPTY(spec, cols, rows)
 	if err != nil {
 		return nil, fmt.Errorf("start pty: %w", err)
 	}
@@ -75,12 +74,11 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 		ring:      NewRing(ringCapacity),
 		changes:   make(chan struct{}, 1),
 		exited:    make(chan struct{}),
-		cmd:       cmd,
-		ptmx:      ptmx,
+		pty:       pty,
 		cols:      cols,
 		rows:      rows,
 		cwd:       cwd,
-		pid:       cmd.Process.Pid,
+		pid:       pty.PID(),
 		alive:     true,
 	}
 	go s.pump()
@@ -150,12 +148,12 @@ func (s *Session) Summary() protocol.Summary {
 // Write feeds bytes to the process's stdin.
 func (s *Session) Write(p []byte) error {
 	s.mu.Lock()
-	ptmx, alive := s.ptmx, s.alive
+	pty, alive := s.pty, s.alive
 	s.mu.Unlock()
 	if !alive {
 		return ErrClosed
 	}
-	_, err := ptmx.Write(p)
+	_, err := pty.Write(p)
 	return err
 }
 
@@ -171,27 +169,27 @@ func (s *Session) Resize(cols, rows int) error {
 		return ErrClosed
 	}
 	s.cols, s.rows = cols, rows
-	ptmx := s.ptmx
+	pty := s.pty
 	s.mu.Unlock()
-	return resizePTY(ptmx, cols, rows)
+	return pty.Resize(cols, rows)
 }
 
 // Close kills the process and its children. The session is forgotten by the
 // manager once wait() reaps it.
 func (s *Session) Close() error {
 	s.mu.Lock()
-	ptmx, pid, alive := s.ptmx, s.pid, s.alive
+	pty, pid, alive := s.pty, s.pid, s.alive
 	s.mu.Unlock()
 	if alive {
 		_ = killProcess(pid)
 	}
-	return ptmx.Close()
+	return pty.Close()
 }
 
 func (s *Session) pump() {
 	buf := make([]byte, 32*1024)
 	for {
-		n, err := s.ptmx.Read(buf)
+		n, err := s.pty.Read(buf)
 		if n > 0 {
 			s.ring.Write(buf[:n])
 			s.notify()
@@ -210,20 +208,14 @@ func (s *Session) notify() {
 }
 
 func (s *Session) wait() {
-	err := s.cmd.Wait()
-	code := 0
+	code, err := s.pty.Wait()
 	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			code = ee.ExitCode()
-		} else {
-			code = -1
-		}
+		code = -1
 	}
 	s.mu.Lock()
 	s.exitCode = code
 	s.alive = false
 	s.mu.Unlock()
-	_ = s.ptmx.Close()
+	_ = s.pty.Close()
 	close(s.exited)
 }

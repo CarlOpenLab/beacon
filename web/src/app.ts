@@ -1,23 +1,50 @@
-// The whole PC client. Deliberately framework-free: this bundle is also what the
-// phone loads over the LAN in M2, so every kilobyte is paid twice.
+// The whole client. Deliberately framework-free: the same bundle is what the
+// desktop shell and the phone load, so every kilobyte is paid three times.
+//
+// M3 turns this from "a client for one daemon" into "a client for a fleet":
+// several machines are reachable at once, each with its own sessions, and the
+// tab strip mixes them. A tab remembers which machine it belongs to, because
+// one session id is only unique within its own host.
 
-import {
-  Fleet,
-  type ConnState,
-  type FleetHandlers,
-} from './fleet'
+import { Fleet, type ConnState, type FleetHandlers } from './fleet'
+import { DirectConnector, type Connector } from './link'
 import { ERR, ROLE, type Host, type Role, type Summary } from './protocol'
+import { RelayConnection, relayURLFromLocation, type RelayState } from './relay'
 import { createTerminal, type TerminalBundle } from './term'
+import { mountTouchKeys } from './touchkeys'
+import type { TunnelMachine } from './tunnel'
 
 /** A tab may exist before the server has told us its session id. */
 interface Tab {
   key: number
+  machineId: string
   sessionId: string
   title: string
   bundle: TerminalBundle
   pane: HTMLElement
   role: Role | null
   alive: boolean
+}
+
+/** One reachable machine and everything we know about it. */
+interface MachineView {
+  id: string
+  label: string
+  /** Roster presence in relay mode; link state in direct mode. */
+  online: boolean
+  fleet: Fleet
+  sessions: Summary[]
+  host?: Host
+  conn: ConnState
+}
+
+export interface AppOptions {
+  mode: 'direct' | 'relay'
+  /** WebSocket endpoint: the daemon's /ws, or the relay's /relay/client. */
+  ws: string
+  /** Relay only. */
+  token?: string
+  onToken?: (token: string) => void
 }
 
 const MOD_LABEL = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'
@@ -68,7 +95,12 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 export class App {
-  private fleet: Fleet
+  private opts: AppOptions
+  private relay?: RelayConnection
+
+  /** Relay mode: the roster. Direct mode: exactly one synthetic machine. */
+  private machines = new Map<string, MachineView>()
+  private activeMachine = ''
   private tabs: Tab[] = []
   private activeKey = -1
   private nextKey = 1
@@ -83,63 +115,184 @@ export class App {
   private statusSession!: HTMLElement
   private toastBox!: HTMLElement
   private banner!: HTMLElement
+  private connectBox?: HTMLElement
+  private sideToggle!: HTMLButtonElement
 
-  private sessions: Summary[] = []
-  private host?: Host
-  private connState: ConnState = 'offline'
   private observer?: ResizeObserver
   private fitTimer?: number
 
-  constructor(container: HTMLElement, endpoint?: string) {
+  constructor(container: HTMLElement, opts: AppOptions) {
     this.root = container
-    this.fleet = new Fleet(this.handlers(), endpoint)
+    this.opts = opts
     this.build()
     this.bindKeys()
+
+    if (opts.mode === 'relay') {
+      if (!opts.token) {
+        this.showConnect('需要访问令牌才能连接中继')
+        return
+      }
+      this.startRelay(opts.token)
+    } else {
+      this.startDirect()
+    }
   }
 
   start(): void {
-    this.fleet.connect()
+    for (const mv of this.machines.values()) mv.fleet.ensureConnected()
+    this.relay?.connect()
+    this.renderFleet()
+    this.renderStatus()
+  }
+
+  /** Reconnect after the user supplies or corrects a token. */
+  retryWithToken(token: string): void {
+    this.opts = { ...this.opts, token }
+    this.opts.onToken?.(token)
+    this.hideConnect()
+    this.relay?.close()
+    this.relay = undefined
+    for (const mv of this.machines.values()) mv.fleet.close()
+    this.machines.clear()
+    this.startRelay(token)
+    this.start()
+  }
+
+  // ------------------------------------------------------------- transports
+
+  private startDirect(): void {
+    const connector = new DirectConnector(this.opts.ws, this.opts.ws)
+    this.addMachine('local', connector)
+    this.activeMachine = 'local'
+  }
+
+  private startRelay(token: string): void {
+    this.relay = new RelayConnection({
+      url: this.opts.ws,
+      token,
+      onState: (state, detail) => this.onRelayState(state, detail),
+      onMachines: (roster) => this.onRoster(roster),
+    })
+  }
+
+  private onRelayState(state: RelayState, detail?: string): void {
+    if (state === 'offline') {
+      this.toast(detail ?? '中继已断开', 'warn')
+      // A rejected token is the one failure the user can act on, so ask again
+      // rather than retrying forever behind a spinner.
+      if (detail?.includes('令牌')) this.showConnect('访问令牌无效，请重新输入')
+    }
+    this.renderFleet()
+    this.renderStatus()
+  }
+
+  private onRoster(roster: TunnelMachine[]): void {
+    const seen = new Set<string>()
+    for (const m of roster) {
+      seen.add(m.id)
+      const existing = this.machines.get(m.id)
+      if (existing) {
+        existing.online = m.online
+        if (m.name) existing.label = m.name
+      } else {
+        // A machine we have never seen: give it a Fleet immediately so its
+        // sessions appear the moment it comes online. The roster's presence
+        // must be carried in, not assumed — a machine can be enrolled but
+        // offline, and saying "connected" about it would be a lie the sidebar
+        // repeats on every render.
+        this.addMachine(m.id, this.relay!.connectorFor(m.id), m.name, m.online)
+      }
+      // Machines discovered after startup would otherwise never be dialled:
+      // their session list stays empty forever and the sidebar is a dead end.
+      if (m.online) this.machines.get(m.id)?.fleet.ensureConnected()
+    }
+    for (const id of [...this.machines.keys()]) {
+      if (!seen.has(id)) this.machines.delete(id)
+    }
+    if (!this.machines.has(this.activeMachine)) {
+      this.activeMachine = [...this.machines.keys()][0] ?? ''
+    }
+    this.renderFleet()
+    this.renderStatus()
+  }
+
+  private addMachine(id: string, connector: Connector, label?: string, online?: boolean): MachineView {
+    const mv: MachineView = {
+      id,
+      label: label ?? connector.label,
+      online: online ?? this.opts.mode === 'direct',
+      fleet: new Fleet(this.makeHandlers(id), connector),
+      sessions: [],
+      conn: 'offline',
+    }
+    mv.fleet.machineId = id
+    this.machines.set(id, mv)
+    return mv
+  }
+
+  private machine(id: string): MachineView | undefined {
+    return this.machines.get(id)
+  }
+
+  private get multi(): boolean {
+    return this.opts.mode === 'relay'
   }
 
   // ---------------------------------------------------------------- handlers
 
-  private handlers(): FleetHandlers {
+  /** Per-machine handler set: every frame is routed by (machine, session). */
+  private makeHandlers(machineId: string): FleetHandlers {
     return {
       state: (s, detail) => {
-        this.connState = s
+        const mv = this.machine(machineId)
+        if (!mv) return
+        mv.conn = s
+        if (s === 'offline' && detail && !this.multi) this.toast(detail, 'warn')
+        // The roster is the authority on presence, so only a machine-level
+        // reason is taken as evidence here. A relay outage says nothing about
+        // whether a machine is up.
+        if (s === 'offline' && detail?.includes('机器离线')) this.markMachineOffline(machineId)
+        this.renderFleet()
         this.renderStatus()
-        if (s === 'offline' && detail) this.toast(detail, 'warn')
       },
       hello: (host, version) => {
-        this.host = host
+        const mv = this.machine(machineId)
+        if (!mv) return
+        mv.host = host
+        if (host?.hostname && (this.opts.mode === 'direct' || !mv.label || mv.label === machineId)) {
+          mv.label = host.hostname
+        }
         if (version && version !== 1) {
           this.toast(`服务端协议版本 ${version}，客户端期望 1`, 'warn')
         }
+        this.renderFleet()
         this.renderStatus()
       },
       sessions: (list) => {
-        this.sessions = list
+        const mv = this.machine(machineId)
+        if (!mv) return
+        mv.sessions = list
         this.renderFleet()
-        this.renderBanner()
         // Reflect host-side truth: an exit we missed, or someone else's control.
         for (const tab of this.tabs) {
-          if (!tab.sessionId) continue
+          if (tab.machineId !== machineId || !tab.sessionId) continue
           const summary = list.find((s) => s.sessionId === tab.sessionId)
           if (!summary) continue
           tab.alive = summary.alive
           if (summary.title) tab.title = summary.title
         }
         this.renderTabs()
+        this.renderBanner()
       },
       created: (sessionId) => {
-        const tab = this.pendingTab()
+        const tab = this.pendingTab(machineId)
         if (tab) this.bind(tab, sessionId)
       },
       attached: (sessionId, session, _cursor, truncated) => {
-        let tab = this.tabs.find((t) => t.sessionId === sessionId)
+        let tab = this.findTab(machineId, sessionId)
         if (!tab) {
           // Attached without a local create: someone asked for an existing session.
-          tab = this.openTab(sessionId)
+          tab = this.openTab(machineId, sessionId)
         }
         this.bind(tab, sessionId)
         if (!session) return
@@ -154,13 +307,13 @@ export class App {
         }
       },
       output: (sessionId, _cursor, data, resync) => {
-        const tab = this.tabs.find((t) => t.sessionId === sessionId)
+        const tab = this.findTab(machineId, sessionId)
         if (!tab) return
         if (resync) tab.bundle.term.reset()
         if (data.length) tab.bundle.term.write(data)
       },
       role: (sessionId, role, controller) => {
-        const tab = this.tabs.find((t) => t.sessionId === sessionId)
+        const tab = this.findTab(machineId, sessionId)
         if (!tab) return
         tab.role = role
         tab.bundle.term.options.disableStdin = role !== ROLE.controller
@@ -175,7 +328,7 @@ export class App {
         }
       },
       exited: (sessionId, code) => {
-        const tab = this.tabs.find((t) => t.sessionId === sessionId)
+        const tab = this.findTab(machineId, sessionId)
         if (!tab) return
         tab.alive = false
         tab.title = `${tab.title} — 已退出`
@@ -185,13 +338,13 @@ export class App {
         this.renderBanner()
       },
       closed: (sessionId) => {
-        const tab = this.tabs.find((t) => t.sessionId === sessionId)
+        const tab = this.findTab(machineId, sessionId)
         if (tab) this.removeTab(tab)
       },
       errored: (code, message, sessionId) => {
         if (code === ERR.notController) {
           this.toast('该会话由其他端控制，输入已被拒绝', 'warn')
-          const tab = this.tabs.find((t) => t.sessionId === sessionId)
+          const tab = sessionId ? this.findTab(machineId, sessionId) : undefined
           if (tab) {
             tab.role = ROLE.viewer
             tab.bundle.term.options.disableStdin = true
@@ -205,9 +358,24 @@ export class App {
     }
   }
 
-  /** A tab waiting for its `created` frame. */
-  private pendingTab(): Tab | undefined {
-    return this.tabs.find((t) => t.sessionId === '')
+  private markMachineOffline(machineId: string): void {
+    const mv = this.machine(machineId)
+    if (mv) mv.online = false
+    for (const tab of this.tabs) {
+      if (tab.machineId === machineId) tab.bundle.term.options.disableStdin = true
+    }
+    this.renderTabs()
+  }
+
+  // -------------------------------------------------------------- tab tables
+
+  private findTab(machineId: string, sessionId: string): Tab | undefined {
+    return this.tabs.find((t) => t.machineId === machineId && t.sessionId === sessionId)
+  }
+
+  /** A tab waiting for its `created` frame, for this machine only. */
+  private pendingTab(machineId: string): Tab | undefined {
+    return this.tabs.find((t) => t.machineId === machineId && t.sessionId === '')
   }
 
   private bind(tab: Tab, sessionId: string): void {
@@ -217,14 +385,22 @@ export class App {
     this.renderTabs()
   }
 
+  private fleetOf(tab?: Tab): Fleet | undefined {
+    if (tab) return this.machine(tab.machineId)?.fleet
+    return this.machine(this.activeMachine)?.fleet
+  }
+
   // -------------------------------------------------------------------- DOM
 
   private build(): void {
     this.root.classList.add('tf')
 
     const header = el('header', 'tf-header')
+    this.sideToggle = el('button', 'tf-side-toggle', '☰') as HTMLButtonElement
+    this.sideToggle.title = '会话列表'
+    this.sideToggle.onclick = () => this.root.classList.toggle('side-open')
     const brand = el('div', 'tf-brand')
-    brand.append(el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
+    brand.append(this.sideToggle, el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
     this.banner = el('div', 'tf-banner')
     const actions = el('div', 'tf-header-actions')
     const newBtn = el('button', 'tf-btn tf-btn-primary', `新建终端  ${MOD_LABEL}T`)
@@ -239,6 +415,12 @@ export class App {
     sideHead.append(el('span', undefined, '主机会话'), (this.fleetCount = el('span', 'tf-count', '0')))
     this.fleetList = el('div', 'tf-side-list')
     aside.append(sideHead, this.fleetList)
+    // Tapping outside the drawer closes it on a phone.
+    aside.addEventListener('click', (ev) => {
+      if ((ev.target as HTMLElement).closest('.tf-session, .tf-machine')) {
+        this.root.classList.remove('side-open')
+      }
+    })
 
     const main = el('main', 'tf-main')
     this.tabStrip = el('div', 'tf-tabs')
@@ -256,26 +438,71 @@ export class App {
     this.toastBox = el('div', 'tf-toasts')
     this.root.append(header, body, footer, this.toastBox)
 
+    mountTouchKeys(this.root, (data) => this.sendKey(data))
+
     this.observer = new ResizeObserver(() => this.scheduleFit())
     this.observer.observe(this.panes)
   }
 
   private renderFleet(): void {
-    this.fleetCount.textContent = String(this.sessions.length)
+    const total = [...this.machines.values()].reduce((n, mv) => n + mv.sessions.length, 0)
+    this.fleetCount.textContent = String(total)
     this.fleetList.replaceChildren()
-    if (!this.sessions.length) {
-      this.fleetList.append(el('div', 'tf-empty', '主机上还没有会话'))
+
+    if (!this.multi) {
+      const mv = this.machine('local')
+      if (!mv) return
+      this.renderSessionsInto(this.fleetList, mv, false)
       return
     }
-    for (const s of this.sessions) {
+
+    if (!this.machines.size) {
+      this.fleetList.append(el('div', 'tf-empty', '中继上还没有登记任何机器'))
+      return
+    }
+
+    const ordered = [...this.machines.values()].sort((a, b) => {
+      if (a.online !== b.online) return a.online ? -1 : 1
+      return a.label.localeCompare(b.label)
+    })
+
+    for (const mv of ordered) {
+      const head = el('div', 'tf-machine')
+      if (mv.id === this.activeMachine) head.classList.add('active')
+      if (!mv.online) head.classList.add('off')
+      head.append(el('span', `tf-dot ${mv.online ? 'on' : 'off'}`))
+      head.append(el('span', 'tf-machine-name', mv.label || mv.id))
+      head.append(el('span', 'tf-machine-state', mv.online ? '' : '离线'))
+      head.onclick = () => {
+        this.activeMachine = mv.id
+        this.renderFleet()
+        this.renderStatus()
+      }
+      this.fleetList.append(head)
+      this.renderSessionsInto(this.fleetList, mv, true)
+    }
+  }
+
+  private renderSessionsInto(host: HTMLElement, mv: MachineView, grouped: boolean): void {
+    if (!mv.sessions.length) {
+      if (!grouped) host.append(el('div', 'tf-empty', '主机上还没有会话'))
+      else if (mv.online) host.append(el('div', 'tf-empty tf-nested', '没有会话'))
+      return
+    }
+    for (const s of mv.sessions) {
       const row = el('div', 'tf-session')
+      if (grouped) row.classList.add('tf-nested')
       row.dataset.sessionId = s.sessionId
-      const open = this.tabs.some((t) => t.sessionId === s.sessionId)
+      row.dataset.machine = mv.id
+      const open = this.tabs.some((t) => t.machineId === mv.id && t.sessionId === s.sessionId)
       if (open) row.classList.add('open')
       if (!s.alive) row.classList.add('dead')
 
       const line1 = el('div', 'tf-session-title')
-      line1.append(el('span', 'tf-dot'), el('span', 'tf-session-name', s.title || basename(s.cwd) || s.sessionId))
+      line1.append(
+        el('span', 'tf-dot'),
+        el('span', 'tf-session-name', s.title || basename(s.cwd) || s.sessionId),
+      )
 
       const line2 = el('div', 'tf-session-meta')
       const bits = [s.sessionId, `${s.cols}×${s.rows}`, `pid ${s.pid}`]
@@ -288,14 +515,14 @@ export class App {
         kill.title = '结束该会话（终止主机上的进程）'
         kill.onclick = (ev) => {
           ev.stopPropagation()
-          this.killSession(s)
+          this.killSession(mv, s)
         }
         row.append(kill)
       }
 
       row.append(line1, line2)
-      row.onclick = () => this.attachOrFocus(s.sessionId)
-      this.fleetList.append(row)
+      row.onclick = () => this.attachOrFocus(mv.id, s.sessionId)
+      host.append(row)
     }
   }
 
@@ -306,20 +533,33 @@ export class App {
       if (tab.key === this.activeKey) btn.classList.add('active')
       if (!tab.alive && tab.sessionId) btn.classList.add('dead')
       if (tab.role === ROLE.controller) btn.classList.add('owned')
+      if (!this.machine(tab.machineId)?.online) btn.classList.add('offline')
+      btn.dataset.machine = tab.machineId
 
       const dot = el('span', 'tf-tab-dot')
       const label = el('span', 'tf-tab-label', tab.title || '新终端')
+      btn.append(dot)
+      if (this.multi) {
+        const mv = this.machine(tab.machineId)
+        btn.append(el('span', 'tf-tab-machine', mv?.label ?? tab.machineId))
+      }
+      btn.append(label)
       const close = el('span', 'tf-tab-close', '×')
       close.title = '关闭标签（仅停止观看，不结束进程）'
       close.onclick = (ev) => {
         ev.stopPropagation()
         this.closeTab(tab)
       }
-      btn.append(dot, label, close)
+      btn.append(close)
+
       // Two shells started in the same directory look identical in the strip,
       // so the tooltip carries what distinguishes them.
-      const summary = tab.sessionId ? this.sessions.find((s) => s.sessionId === tab.sessionId) : undefined
+      const mv = this.machine(tab.machineId)
+      const summary = tab.sessionId
+        ? mv?.sessions.find((s) => s.sessionId === tab.sessionId)
+        : undefined
       btn.title = [
+        this.multi ? mv?.label : '',
         tab.sessionId || '尚未创建',
         summary?.cwd,
         summary ? `${summary.cols}×${summary.rows}` : '',
@@ -337,25 +577,36 @@ export class App {
   }
 
   private renderStatus(): void {
-    const label =
-      this.connState === 'online' ? '已连接' : this.connState === 'connecting' ? '连接中…' : '已断开'
-    this.statusConn.textContent = label
-    this.statusConn.className = `tf-chip tf-chip-${this.connState}`
-    this.statusConn.title = this.fleet.endpoint
-
-    if (this.host) {
-      this.statusHost.textContent = `${this.host.hostname} · ${this.host.platform}/${this.host.arch} · ${this.sessions.length} 个会话`
+    let label: string
+    let state: ConnState | 'relay'
+    if (this.multi && this.relay && this.relay.state !== 'online') {
+      state = 'relay'
+      label = this.relay.state === 'auth' ? '鉴权中…' : '中继离线'
     } else {
-      this.statusHost.textContent = this.fleet.endpoint
+      const tab = this.current()
+      const mv = tab ? this.machine(tab.machineId) : this.machine(this.activeMachine)
+      const s = mv?.conn ?? 'offline'
+      state = s
+      label = s === 'online' ? '已连接' : s === 'connecting' ? '连接中…' : '已断开'
+      if (s === 'online' && mv && !mv.online) label = '机器离线'
     }
+    this.statusConn.textContent = label
+    this.statusConn.className = `tf-chip tf-chip-${state}`
+    this.statusConn.title = this.relay ? this.opts.ws : (this.machine(this.activeMachine)?.fleet.endpoint ?? '')
 
     const tab = this.current()
+    const mv = tab ? this.machine(tab.machineId) : this.machine(this.activeMachine)
+    if (mv?.host) {
+      this.statusHost.textContent = `${mv.label} · ${mv.host.platform}/${mv.host.arch} · ${mv.sessions.length} 个会话`
+    } else {
+      this.statusHost.textContent = mv ? mv.label : ''
+    }
+
     if (!tab) {
       this.statusSession.textContent = '未选中会话'
       return
     }
-    const role =
-      tab.role === ROLE.controller ? '控制中' : tab.role === ROLE.viewer ? '只读' : '—'
+    const role = tab.role === ROLE.controller ? '控制中' : tab.role === ROLE.viewer ? '只读' : '—'
     const size = `${tab.bundle.term.cols}×${tab.bundle.term.rows}`
     const id = tab.sessionId || '待创建'
     this.statusSession.textContent = `${id} · ${role} · ${size}`
@@ -369,22 +620,26 @@ export class App {
     let label = ''
     let action: (() => void) | undefined
 
-    if (tab?.sessionId && !tab.alive) {
+    const mv = tab ? this.machine(tab.machineId) : undefined
+    if (tab && mv && !mv.online) {
+      text = `${mv.label} 离线，重连后将自动恢复`
+    } else if (tab?.sessionId && !tab.alive) {
       text = '会话已退出，可读取输出后关闭标签'
       label = '关闭标签'
       action = () => this.closeTab(tab)
     } else if (tab?.sessionId && tab.alive && tab.role !== ROLE.controller) {
       // The sessions broadcast, not the role frame, is what tells us whether
       // control is merely unclaimed or actually held elsewhere.
-      const holder = this.sessions.find((s) => s.sessionId === tab.sessionId)?.controller ?? ''
+      const holder = mv?.sessions.find((s) => s.sessionId === tab.sessionId)?.controller ?? ''
       text = holder ? `只读：该会话正被 ${holder} 控制` : '只读：当前无人控制'
       label = '接管'
-      action = () => this.fleet.claim(tab.sessionId)
+      action = () => this.fleetOf(tab)?.claim(tab.sessionId)
     }
 
     this.banner.classList.toggle('on', Boolean(text))
-    if (!text || !action || !tab) return
+    if (!text || !tab) return
     this.banner.append(el('span', undefined, text))
+    if (!action) return
     const button = el('button', 'tf-btn tf-btn-small', label)
     button.onclick = action
     this.banner.append(button)
@@ -397,19 +652,88 @@ export class App {
     window.setTimeout(() => node.remove(), 4200)
   }
 
+  // --------------------------------------------------------- relay connect
+
+  private showConnect(reason: string): void {
+    if (this.connectBox) return
+    const box = el('div', 'tf-connect')
+    const card = el('div', 'tf-connect-card')
+    card.append(el('h1', undefined, '连接中继'))
+    card.append(el('p', 'tf-connect-note', reason))
+
+    const url = el('input', 'tf-input') as HTMLInputElement
+    url.type = 'text'
+    url.value = this.opts.ws
+    url.placeholder = 'wss://relay.example.com/relay/client'
+
+    const token = el('input', 'tf-input') as HTMLInputElement
+    token.type = 'password'
+    token.value = this.opts.token ?? ''
+    token.placeholder = '访问令牌'
+    token.autocomplete = 'current-password'
+
+    const submit = el('button', 'tf-btn tf-btn-primary', '连接')
+    const go = () => {
+      const t = token.value.trim()
+      if (!t) {
+        token.focus()
+        return
+      }
+      this.opts = { ...this.opts, ws: url.value.trim() || this.opts.ws }
+      this.retryWithToken(t)
+    }
+    submit.onclick = go
+    token.onkeydown = (ev) => {
+      if (ev.key === 'Enter') go()
+    }
+    url.onkeydown = (ev) => {
+      if (ev.key === 'Enter') token.focus()
+    }
+
+    const form = el('div', 'tf-connect-form')
+    form.append(el('label', 'tf-label', '中继地址'), url)
+    form.append(el('label', 'tf-label', '访问令牌'), token)
+    form.append(submit)
+    card.append(form)
+    card.append(
+      el(
+        'p',
+        'tf-connect-hint',
+        '令牌只保存在这台设备的浏览器里，通过首帧发送，不会出现在 URL 或访问日志中。',
+      ),
+    )
+    box.append(card)
+    this.root.append(box)
+    this.connectBox = box
+    window.setTimeout(() => (this.opts.token ? url : token).focus(), 30)
+  }
+
+  private hideConnect(): void {
+    this.connectBox?.remove()
+    this.connectBox = undefined
+  }
+
   // ---------------------------------------------------------------- actions
 
   private current(): Tab | undefined {
     return this.tabs.find((t) => t.key === this.activeKey)
   }
 
-  private openTab(sessionId = ''): Tab {
+  /** Injected by the touch key bar; bypasses xterm so escape sequences survive. */
+  private sendKey(data: string): void {
+    const tab = this.current()
+    if (!tab?.sessionId || tab.role === ROLE.viewer) return
+    this.machine(tab.machineId)?.fleet.input(tab.sessionId, data)
+  }
+
+  private openTab(machineId: string, sessionId = ''): Tab {
     const bundle = createTerminal()
     const pane = el('div', 'tf-pane')
     bundle.term.open(pane)
     this.wireTerminal(bundle)
     const tab: Tab = {
       key: this.nextKey++,
+      machineId,
       sessionId,
       title: '',
       bundle,
@@ -424,35 +748,41 @@ export class App {
   }
 
   private newTab(): void {
-    if (!this.fleet.online) {
-      this.toast('尚未连接到 daemon', 'warn')
+    const mv = this.machine(this.activeMachine) ?? [...this.machines.values()][0]
+    if (!mv) {
+      this.toast('尚未连接到任何主机', 'warn')
       return
     }
-    const tab = this.openTab('')
+    if (!mv.fleet.online) {
+      this.toast(`${mv.label} 尚未连接`, 'warn')
+      return
+    }
+    const tab = this.openTab(mv.id, '')
     const { cols, rows } = this.fitTab(tab)
     tab.title = '新终端'
     // Size is sent with the request so the shell is born at the right width
     // instead of being resized a frame later.
-    this.fleet.create({ cols, rows })
+    mv.fleet.create({ cols, rows })
     this.renderTabs()
   }
 
-  private attachOrFocus(sessionId: string): void {
-    const existing = this.tabs.find((t) => t.sessionId === sessionId)
+  private attachOrFocus(machineId: string, sessionId: string): void {
+    const existing = this.findTab(machineId, sessionId)
     if (existing) {
       this.select(existing.key)
       return
     }
-    if (!this.fleet.online) {
-      this.toast('尚未连接到 daemon', 'warn')
+    const mv = this.machine(machineId)
+    if (!mv?.fleet.online) {
+      this.toast(`${mv?.label ?? machineId} 尚未连接`, 'warn')
       return
     }
-    const tab = this.openTab(sessionId)
+    const tab = this.openTab(machineId, sessionId)
     this.fitTab(tab)
     // cursor 0 asks for everything the ring still holds: at most the last
     // 256 KB of output, with `truncated` set if older bytes were dropped. It
     // never replays unbounded history the way attaching from byte 0 would.
-    this.fleet.attach(sessionId, 0)
+    mv.fleet.attach(sessionId, 0)
   }
 
   private select(key: number): void {
@@ -461,20 +791,22 @@ export class App {
     for (const tab of this.tabs) {
       tab.pane.classList.toggle('active', tab.key === key)
     }
+    const tab = this.current()
+    if (tab) this.activeMachine = tab.machineId
     this.renderTabs()
+    this.renderFleet()
     this.renderBanner()
     this.renderStatus()
-    const tab = this.current()
     if (tab) {
       this.fitTab(tab)
-      tab.bundle.term.focus()
+      if (!matchMedia('(pointer: coarse)').matches) tab.bundle.term.focus()
     }
   }
 
   private closeTab(tab: Tab): void {
     // Closing a tab means "stop watching". Killing the process is a separate,
     // explicit action because it is irreversible for every other client.
-    if (tab.sessionId) this.fleet.detach(tab.sessionId)
+    if (tab.sessionId) this.machine(tab.machineId)?.fleet.detach(tab.sessionId)
     this.removeTab(tab)
   }
 
@@ -487,19 +819,24 @@ export class App {
     }
     for (const t of this.tabs) t.pane.classList.toggle('active', t.key === this.activeKey)
     this.renderTabs()
+    this.renderFleet()
     this.renderBanner()
     this.renderStatus()
     const next = this.current()
     if (next) this.fitTab(next)
   }
 
-  private killSession(session: Summary): void {
+  private killSession(mv: MachineView, session: Summary): void {
     const name = session.title || basename(session.cwd) || session.sessionId
     const owner = session.controller ? `当前由 ${session.controller} 控制` : '当前无人控制'
-    if (!window.confirm(`结束会话「${name}」？\n\n这会终止主机上的进程，对所有客户端不可见。\n${owner}`)) {
+    if (
+      !window.confirm(
+        `在 ${mv.label} 上结束会话「${name}」？\n\n这会终止主机上的进程，对所有客户端不可见。\n${owner}`,
+      )
+    ) {
       return
     }
-    this.fleet.closeSession(session.sessionId)
+    mv.fleet.closeSession(session.sessionId)
   }
 
   private fitTab(tab: Tab): { cols: number; rows: number } {
@@ -510,7 +847,7 @@ export class App {
     }
     const { cols, rows } = tab.bundle.term
     if (tab.sessionId && tab.role === ROLE.controller) {
-      this.fleet.resize(tab.sessionId, cols, rows)
+      this.machine(tab.machineId)?.fleet.resize(tab.sessionId, cols, rows)
     }
     return { cols, rows }
   }
@@ -534,7 +871,7 @@ export class App {
       const tab = this.tabs.find((t) => t.bundle === bundle)
       if (!tab || !tab.sessionId) return
       if (tab.role === ROLE.viewer) return
-      this.fleet.input(tab.sessionId, data)
+      this.machine(tab.machineId)?.fleet.input(tab.sessionId, data)
     })
     term.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== 'keydown') return true
@@ -595,3 +932,5 @@ export class App {
     )
   }
 }
+
+export { relayURLFromLocation }

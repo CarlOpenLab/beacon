@@ -1,0 +1,52 @@
+# term-fleet member, as a *user* service.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/tfmember.service ~/.config/systemd/user/
+#   systemctl --user edit tfmember.service   # fill in device id and secret
+#   systemctl --user enable --now tfmember
+#   sudo loginctl enable-linger "$USER"      # keep it running when logged out
+#
+# A user service, not a system one, on purpose: every shell this daemon starts
+# becomes a child of it, so it should run as you, with your files, your
+# environment and your `mise`/`nvm` shims — not as a system account with a
+# different HOME and no idea which node you are using.
+#
+# The credentials belong in this unit's drop-in (`systemctl --user edit`), which
+# lives in your home at 0600. Committing them to a repo is the one mistake this
+# file cannot protect you from.
+
+[Unit]
+Description=term-fleet member
+Documentation=https://github.com/CarlOpenLab/term-fleet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# The loopback listener is what lets a browser on this LAN bypass the relay.
+# It binds 127.0.0.1 and needs no token there: a socket that is only reachable
+# from this machine is not a boundary worth a shared secret. Requests arriving
+# through the relay never touch it — they are routed straight into the hub.
+ExecStart=/usr/local/bin/tfd \
+  -addr 127.0.0.1:7677 \
+  -relay wss://relay.example.com/relay/agent \
+  -device-id REPLACE_ME \
+  -device-secret REPLACE_ME
+
+Restart=always
+RestartSec=3
+
+# A shell inside a shell: the daemon is a terminal multiplexer, so it needs a
+# writable HOME, a TTY-less friendly environment, and little else.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+# Deliberately *not* set: ProtectHome. The whole point is to reach your files.
+
+[Install]
+WantedBy=default.target

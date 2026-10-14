@@ -96,6 +96,7 @@ func New(opts Options) (*Server, error) {
 		fmt.Fprintln(w, "ok")
 	})
 	mux.Handle("/ws", h)
+	mux.HandleFunc("/tf/config", web.Config("direct", "/ws"))
 	// The client shares the socket's origin, so the desktop shell and a phone
 	// load identical code with no CORS arrangement.
 	mux.Handle("/", client)

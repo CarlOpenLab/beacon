@@ -1,0 +1,46 @@
+# Caddy in front of tfrelay.
+#
+# Why a proxy and not the relay's own -tls-cert: Caddy renews certificates on
+# its own and is the piece that will be updated over the years, while the relay
+# stays a small Go binary with no TLS lifecycle to manage. The relay listens on
+# loopback only and trusts X-Forwarded-For, because Caddy is the single proxy in
+# front of it.
+#
+# Replace relay.example.com with your name, and point an A/AAAA record at the
+# server. Caddy fetches the certificate on the first request.
+#
+#   sudo cp Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+
+relay.example.com {
+	# The client bundle is a few hundred KB of JavaScript; compress it.
+	encode zstd gzip
+
+	reverse_proxy 127.0.0.1:7699 {
+		# WebSocket upgrades pass through unchanged: reverse_proxy performs the
+		# handshake itself, so no Upgrade/Connection plumbing is needed here.
+		#
+		# Do not strip or set X-Forwarded-For. Caddy appends the address it saw,
+		# and the relay trusts the last hop — the value an attacker cannot forge.
+		flush_interval -1
+	}
+
+	header {
+		# The client bundle is served over TLS, so it must not be downgradeable.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		# The client is a terminal; it needs no third-party origins at all.
+		Content-Security-Policy "default-src 'self'; connect-src 'self' wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+		-Server
+	}
+
+	log {
+		output file /var/log/caddy/tfrelay.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		# Request URIs are logged. The token never appears in one, which is the
+		# reason it is sent in a frame rather than a query parameter.
+	}
+}

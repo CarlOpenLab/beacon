@@ -102,18 +102,18 @@ func (c *client) writeLoop(ctx context.Context) {
 			return
 		case <-c.done:
 			return
-			case m := <-c.out:
-				b, err := json.Marshal(m)
-				if err != nil {
-					continue
-				}
-				wctx, cancel := context.WithTimeout(ctx, writeTimeout)
-				err = c.tp.Write(wctx, b)
-				cancel()
-				if err != nil {
-					c.close("write failed")
-					return
-				}
+		case m := <-c.out:
+			b, err := json.Marshal(m)
+			if err != nil {
+				continue
+			}
+			wctx, cancel := context.WithTimeout(ctx, writeTimeout)
+			err = c.tp.Write(wctx, b)
+			cancel()
+			if err != nil {
+				c.close("write failed")
+				return
+			}
 		}
 	}
 }
@@ -129,14 +129,14 @@ func (c *client) heartbeat(ctx context.Context) {
 			return
 		case <-c.done:
 			return
-			case <-t.C:
-				pctx, cancel := context.WithTimeout(ctx, pingTimeout)
-				err := c.tp.Ping(pctx)
-				cancel()
-				if err != nil {
-					c.close("ping timeout")
-					return
-				}
+		case <-t.C:
+			pctx, cancel := context.WithTimeout(ctx, pingTimeout)
+			err := c.tp.Ping(pctx)
+			cancel()
+			if err != nil {
+				c.close("ping timeout")
+				return
+			}
 		}
 	}
 }

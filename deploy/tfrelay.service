@@ -1,0 +1,67 @@
+[Unit]
+Description=term-fleet relay
+Documentation=https://github.com/CarlOpenLab/term-fleet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tfrelay
+Group=tfrelay
+
+# The client token lives in this file, mode 0600, owned by tfrelay. Putting it
+# on the ExecStart line instead would expose it to `systemctl show` and to
+# everything with read access to the unit.
+EnvironmentFile=/etc/tfrelay/env
+
+# Bound to loopback on purpose: TLS and the public port belong to the proxy in
+# front. Use -tls-cert/-tls-key here instead if you have no proxy.
+ExecStart=/usr/local/bin/tfrelay \
+  -addr 127.0.0.1:7699 \
+  -devices /var/lib/tfrelay/devices.json \
+  -trust-proxy
+
+Restart=always
+RestartSec=2
+# A relay that loses its members should come back fast, but a crash loop should
+# not fill the journal.
+StartLimitIntervalSec=60
+StartLimitBurst=10
+# A restart must not run off with a socket the proxy is still holding.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# This process holds the keys to every enrolled machine. None of the following
+# is required by the code; all of it is required by what the code is.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+# StateDirectory gives /var/lib/tfrelay, owned by tfrelay, and is the one path
+# ProtectSystem=strict leaves writable.
+StateDirectory=tfrelay
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/tfrelay
+
+[Install]
+WantedBy=multi-user.target

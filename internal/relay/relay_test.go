@@ -102,15 +102,50 @@ type client struct {
 
 func (h *harness) dial() *client {
 	h.t.Helper()
-	url := wsURL(h.relay.URL) + "/relay/client?token=" + clientToken
+	return h.dialWithHeader(clientToken)
+}
+
+// dialWithHeader authenticates the way a non-browser client does. Browsers
+// cannot set headers on a WebSocket, so they use dialViaFrame instead.
+func (h *harness) dialWithHeader(token string) *client {
+	h.t.Helper()
+	url := wsURL(h.relay.URL) + "/relay/client"
+	opts := &websocket.DialOptions{HTTPHeader: http.Header{}}
+	if token != "" {
+		opts.HTTPHeader.Set("Authorization", "Bearer "+token)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, url, nil)
+	conn, _, err := websocket.Dial(ctx, url, opts)
 	if err != nil {
 		h.t.Fatalf("dial relay as client: %v", err)
 	}
 	h.t.Cleanup(func() { _ = conn.Close(websocket.StatusNormalClosure, "test done") })
 
+	return h.readLoop(conn)
+}
+
+// dialViaFrame authenticates the way the browser client does: connect, then
+// send the token in the first frame, and wait for the relay to confirm.
+func (h *harness) dialViaFrame(token string) *client {
+	h.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, wsURL(h.relay.URL)+"/relay/client", nil)
+	if err != nil {
+		h.t.Fatalf("dial relay as client: %v", err)
+	}
+	h.t.Cleanup(func() { _ = conn.Close(websocket.StatusNormalClosure, "test done") })
+
+	raw, _ := json.Marshal(tunnel.Frame{T: tunnel.TAuth, Token: token})
+	if err := conn.Write(ctx, websocket.MessageText, raw); err != nil {
+		h.t.Fatalf("write auth frame: %v", err)
+	}
+	return h.readLoop(conn)
+}
+
+func (h *harness) readLoop(conn *websocket.Conn) *client {
+	h.t.Helper()
 	c := &client{t: h.t, conn: conn, in: make(chan tunnel.Frame, 512), outText: map[uint32]string{}}
 	go func() {
 		defer close(c.in)
@@ -175,6 +210,23 @@ func (c *client) write(f tunnel.Frame) {
 	if err := c.conn.Write(ctx, websocket.MessageText, b); err != nil {
 		c.t.Fatalf("write tunnel frame: %v", err)
 	}
+}
+
+// next returns the very next frame, asserting nothing about what it is. Use it
+// where frame *order* is the thing under test; waitFor skips non-matching
+// frames, which would hide a reordering.
+func (c *client) next() tunnel.Frame {
+	c.t.Helper()
+	select {
+	case f, ok := <-c.in:
+		if !ok {
+			c.t.Fatal("relay socket closed while waiting for the next frame")
+		}
+		return f
+	case <-time.After(15 * time.Second):
+		c.t.Fatal("timed out waiting for the next frame")
+	}
+	return tunnel.Frame{}
 }
 
 func (c *client) waitFor(what string, pred func(tunnel.Frame) bool) tunnel.Frame {
@@ -398,12 +450,80 @@ func TestAuth(t *testing.T) {
 		t.Fatalf("wrong member secret got %v, want 401", resp)
 	}
 
-	_, resp2, err := websocket.Dial(ctx, wsURL(h.relay.URL)+"/relay/client?token=nope", nil)
+	// A *present but wrong* credential in a header is refused before the
+	// upgrade, so a tool gets an honest 401 rather than an accepted socket.
+	_, resp2, err := websocket.Dial(ctx, wsURL(h.relay.URL)+"/relay/client", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Authorization": []string{"Bearer nope"}},
+	})
 	if err == nil {
 		t.Fatal("a client with the wrong token was allowed in")
 	}
 	if resp2 == nil || resp2.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("wrong client token got %v, want 401", resp2)
+	}
+
+	// The token must not be accepted from the query string: it would end up in
+	// access logs and in the browser's history.
+	conn, _, err := websocket.Dial(ctx, wsURL(h.relay.URL)+"/relay/client?token="+clientToken, nil)
+	if err == nil {
+		// The socket upgrades, because a query credential is simply not
+		// credentials. It must still be refused, via the auth deadline.
+		conn.SetReadLimit(1 << 16)
+		_, _, rerr := conn.Read(context.Background())
+		if rerr == nil {
+			t.Fatal("a query-string token was accepted; it must not count as a credential")
+		}
+		_ = conn.Close(websocket.StatusNormalClosure, "done")
+	}
+}
+
+// TestAuthFrame is the browser path: no header is possible, so the credential
+// arrives in the first frame and the relay confirms with auth.ok.
+func TestAuthFrame(t *testing.T) {
+	h := newHarness(t)
+	c := h.dialViaFrame(clientToken)
+
+	if f := c.next(); f.T != tunnel.TAuthOK {
+		t.Fatalf("first frame = %q, want %q", f.T, tunnel.TAuthOK)
+	}
+	// The roster follows immediately, so a client can render before it opens
+	// anything.
+	if f := c.next(); f.T != tunnel.TMachines {
+		t.Fatalf("second frame = %q, want %q", f.T, tunnel.TMachines)
+	}
+}
+
+// TestAuthFrameRejected covers the browser presenting a bad token: the socket
+// upgrades (it has to, to carry the frame) and is then closed as a policy
+// violation rather than left hanging.
+func TestAuthFrameRejected(t *testing.T) {
+	h := newHarness(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL(h.relay.URL)+"/relay/client", nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	// A frame that is not an auth frame must not be accepted either, so this
+	// also covers "client speaks before authenticating".
+	raw, _ := json.Marshal(tunnel.Frame{T: tunnel.TOpen, Machine: "M1", Stream: 1})
+	if err := conn.Write(ctx, websocket.MessageText, raw); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	for {
+		_, data, err := conn.Read(ctx)
+		if err != nil {
+			// Closed without ever routing the frame — what we want.
+			return
+		}
+		var f tunnel.Frame
+		if json.Unmarshal(data, &f) == nil && f.T == tunnel.TAuthOK {
+			t.Fatal("relay authenticated a client that never presented a token")
+		}
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,16 +48,27 @@ type Config struct {
 	// screens.
 	Devices map[string]string
 	// ClientToken is the shared secret a client presents. Browsers cannot set
-	// headers on a WebSocket, so it is accepted from ?token= as well.
+	// headers on a WebSocket, so it also arrives in the first frame.
 	ClientToken    string
 	OriginPatterns []string
-	Log            *log.Logger
+	// TrustProxy makes the relay read X-Forwarded-For for the limiter's source
+	// address. Only enable it behind a proxy you control: otherwise a caller can
+	// forge the header and pretend to be a new address on every attempt.
+	TrustProxy bool
+	// AuthMaxFailures is how many rejected attempts one address may make inside
+	// AuthWindow before it is locked out for AuthCooldown. Zero disables the
+	// limiter, which is only reasonable on a loopback-only relay.
+	AuthMaxFailures int
+	AuthWindow      time.Duration
+	AuthCooldown    time.Duration
+	Log             *log.Logger
 }
 
 // Relay routes streams between members and clients.
 type Relay struct {
 	cfg Config
 	log *log.Logger
+	lim *authLimiter
 
 	mu         sync.Mutex
 	members    map[string]*member
@@ -80,15 +92,40 @@ func New(cfg Config) (*Relay, error) {
 	if cfg.Log == nil {
 		cfg.Log = log.Default()
 	}
+	// Defaults matter here: a relay reachable from the internet with no limiter
+	// at all is the one configuration that must not be reachable by accident.
+	if cfg.AuthMaxFailures == 0 && cfg.ClientToken != "" {
+		cfg.AuthMaxFailures = 10
+	}
+	if cfg.AuthWindow == 0 {
+		cfg.AuthWindow = time.Minute
+	}
+	if cfg.AuthCooldown == 0 {
+		cfg.AuthCooldown = 5 * time.Minute
+	}
 	return &Relay{
 		cfg:     cfg,
 		log:     cfg.Log,
+		lim:     newAuthLimiter(cfg.AuthMaxFailures, cfg.AuthWindow, cfg.AuthCooldown, cfg.TrustProxy),
 		members: map[string]*member{},
 		roster:  map[*clientConn]struct{}{},
 	}, nil
 }
 
 // ---------------------------------------------------------------- registry
+
+// Online reports how many members are connected right now. It exists for health
+// checks: a relay with zero online members is up but useless, and that is worth
+// being able to see from outside.
+func (r *Relay) Online() int {
+	n := 0
+	for _, m := range r.snapshot() {
+		if m.Online {
+			n++
+		}
+	}
+	return n
+}
 
 func (r *Relay) snapshot() []tunnel.Machine {
 	r.mu.Lock()
@@ -152,12 +189,38 @@ func (r *Relay) agentAuthOK(rq *http.Request) (string, bool) {
 	return id, true
 }
 
-func (r *Relay) clientAuthOK(rq *http.Request) bool {
-	got := rq.URL.Query().Get("token")
-	if got == "" {
-		got = strings.TrimPrefix(rq.Header.Get("Authorization"), "Bearer ")
-	}
+// tokenOK reports whether a presented client credential matches.
+func (r *Relay) tokenOK(got string) bool {
 	return subtle.ConstantTimeCompare([]byte(got), []byte(r.cfg.ClientToken)) == 1
+}
+
+// headerToken reads a client credential from an Authorization header. Usable by
+// ordinary HTTP clients and by anything that can set WebSocket headers; a
+// browser cannot, which is why the socket path also accepts a first frame.
+func (r *Relay) headerToken(rq *http.Request) string {
+	return strings.TrimPrefix(rq.Header.Get("Authorization"), "Bearer ")
+}
+
+// authenticateClient enforces the credential on a freshly accepted socket.
+//
+// A valid Authorization header short-circuits it. Otherwise the very first
+// frame must be an auth frame; anything else — including silence past the
+// deadline — closes the socket. The token never travels in the URL, so it
+// cannot leak through access logs or browser history.
+func (r *Relay) authenticateClient(ctx context.Context, conn *websocket.Conn) (bool, string) {
+	authCtx, cancel := context.WithTimeout(ctx, tunnel.AuthTimeoutMS*time.Millisecond)
+	defer cancel()
+	f, err := readFrame(authCtx, conn)
+	if err != nil {
+		return false, "no credential"
+	}
+	if f.T != tunnel.TAuth {
+		return false, "expected auth frame, got " + f.T
+	}
+	if !r.tokenOK(f.Token) {
+		return false, "bad token"
+	}
+	return true, ""
 }
 
 // ---------------------------------------------------------------- endpoints
@@ -165,11 +228,22 @@ func (r *Relay) clientAuthOK(rq *http.Request) bool {
 // ServeAgent handles a member dialing out: authenticate, await its hello,
 // register it, then route until the link drops.
 func (r *Relay) ServeAgent(w http.ResponseWriter, rq *http.Request) {
+	// A member secret guards a whole machine, so it gets the same treatment as
+	// the client token: guessing is rate-limited from both directions.
+	ip := clientIP(rq, r.cfg.TrustProxy)
+	if allowed, wait := r.lim.allow(ip); !allowed {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		http.Error(w, "too many failed attempts", http.StatusTooManyRequests)
+		return
+	}
 	id, ok := r.agentAuthOK(rq)
 	if !ok {
+		r.lim.fail(ip)
+		r.log.Printf("relay: rejected member from %s", ip)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	r.lim.ok(ip)
 	conn, err := websocket.Accept(w, rq, &websocket.AcceptOptions{OriginPatterns: r.cfg.OriginPatterns})
 	if err != nil {
 		return
@@ -255,7 +329,22 @@ func (r *Relay) ServeAgent(w http.ResponseWriter, rq *http.Request) {
 // ServeClient handles a browser or app: authenticate, send the machine list,
 // then route streams.
 func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
-	if !r.clientAuthOK(rq) {
+	ip := clientIP(rq, r.cfg.TrustProxy)
+	if allowed, wait := r.lim.allow(ip); !allowed {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		http.Error(w, "too many failed attempts", http.StatusTooManyRequests)
+		return
+	}
+
+	// Non-browser clients (tools, tests, native apps) may present the token as
+	// a header. A header that is *present but wrong* is refused before the
+	// upgrade, so a caller gets an honest 401 instead of an accepted socket that
+	// closes a moment later. Browsers cannot set headers, so they authenticate
+	// in the first frame instead.
+	header := r.headerToken(rq)
+	if header != "" && !r.tokenOK(header) {
+		r.lim.fail(ip)
+		r.log.Printf("relay: rejected client from %s: bad header token", ip)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -266,6 +355,20 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 	defer conn.CloseNow()
 
 	ctx := rq.Context()
+	viaFrame := false
+	if header == "" {
+		ok, why := r.authenticateClient(ctx, conn)
+		if !ok {
+			r.lim.fail(ip)
+			r.log.Printf("relay: rejected client from %s: %s", ip, why)
+			_ = writeFrame(ctx, conn, errFrame(tunnel.ErrUnauthorized, "authentication required", 0))
+			_ = conn.Close(websocket.StatusPolicyViolation, "unauthorized")
+			return
+		}
+		viaFrame = true
+	}
+	r.lim.ok(ip)
+
 	c := &clientConn{
 		r:       r,
 		conn:    conn,
@@ -289,6 +392,12 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 		r.log.Printf("relay: client %d disconnected", n)
 	}()
 
+	// Tell a frame-authenticated client it is in before the roster, so it can
+	// distinguish "still authenticating" from "authenticated, awaiting data".
+	// A header-authenticated caller was already told at the HTTP layer.
+	if viaFrame {
+		c.send(tunnel.Frame{T: tunnel.TAuthOK})
+	}
 	c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshot()})
 
 	go r.writeLoop(ctx, conn, c.out, c.done, func() { c.close("write failed") })
@@ -391,7 +500,11 @@ func (r *Relay) Shutdown(reason string) {
 // Machines serves the member list as JSON. It is the same snapshot clients
 // receive over the tunnel, exposed for smoke tests and operator poking.
 func (r *Relay) Machines(w http.ResponseWriter, rq *http.Request) {
-	if !r.clientAuthOK(rq) {
+	if !r.tokenOK(r.headerToken(rq)) {
+		ip := clientIP(rq, r.cfg.TrustProxy)
+		r.lim.fail(ip)
+		r.log.Printf("relay: rejected roster request from %s", ip)
+		w.Header().Set("WWW-Authenticate", "Bearer")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

@@ -1,0 +1,306 @@
+/* ------------------------------------------------- fleet (M3) additions */
+
+.tf-side-toggle {
+  display: none;
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.tf-machine {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 12px 5px;
+  cursor: pointer;
+  color: var(--fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tf-machine:hover {
+  color: var(--fg);
+}
+
+.tf-machine.active {
+  color: var(--accent);
+}
+
+.tf-machine.off .tf-machine-name {
+  opacity: 0.6;
+}
+
+.tf-machine-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tf-machine-state {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--err);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.tf-dot.on {
+  background: var(--ok);
+}
+
+.tf-dot.off {
+  background: var(--err);
+  opacity: 0.7;
+}
+
+.tf-session.tf-nested {
+  padding-left: 20px;
+}
+
+.tf-empty.tf-nested {
+  padding: 4px 12px 8px 20px;
+  font-size: 11px;
+}
+
+.tf-tab-machine {
+  font-size: 10px;
+  color: var(--fg-dim);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 5px;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.tf-tab.active .tf-tab-machine {
+  color: var(--fg);
+}
+
+.tf-chip-relay {
+  color: var(--warn);
+  border-color: #3a3123;
+}
+
+/* ---------------------------------------------------- relay connect screen */
+
+.tf-connect {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 8, 13, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 40;
+}
+
+.tf-connect-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 22px;
+}
+
+.tf-connect-card h1 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.tf-connect-note {
+  margin: 0 0 16px;
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tf-connect-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tf-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--fg-dim);
+}
+
+.tf-input {
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 9px 10px;
+  outline: none;
+}
+
+.tf-input:focus {
+  border-color: var(--accent);
+}
+
+.tf-connect-hint {
+  margin: 14px 0 0;
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.55;
+  opacity: 0.8;
+}
+
+/* --------------------------------------------------------- touch key bar */
+
+.tf-keys {
+  display: none;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tf-keys::-webkit-scrollbar {
+  display: none;
+}
+
+.tf-key {
+  flex: 0 0 auto;
+  min-width: 38px;
+  padding: 8px 9px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tf-key:active {
+  background: var(--line);
+}
+
+.tf-key.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0b0e14;
+}
+
+/* ---------------------------------------------------------------- phone */
+
+@media (pointer: coarse) {
+  .tf-keys {
+    display: flex;
+    /* clear the home indicator */
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  .tf-session,
+  .tf-machine {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .tf-tab {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  .tf-kill {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  #app {
+    height: 100dvh;
+  }
+
+  .tf-side-toggle {
+    display: block;
+  }
+
+  .tf-side {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(84vw, 320px);
+    z-index: 30;
+    transform: translateX(-102%);
+    transition: transform 0.18s ease;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .tf.side-open .tf-side {
+    transform: none;
+  }
+
+  .tf.side-open::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 20;
+  }
+
+  .tf-header {
+    gap: 6px;
+    padding: 7px 9px;
+  }
+
+  .tf-brand {
+    font-size: 12px;
+  }
+
+  .tf-tab-machine {
+    max-width: 60px;
+  }
+
+  .tf-banner {
+    font-size: 11px;
+  }
+
+  .tf-status {
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-size: 11px;
+  }
+
+  .tf-toasts {
+    left: 10px;
+    right: 10px;
+  }
+}
+
+/* Small screens: keep the banner from pushing the terminal off-screen. */
+@media (max-width: 420px) {
+  .tf-banner.on {
+    max-width: 46vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tf-btn-small {
+    padding: 3px 7px;
+  }
+}

@@ -88,12 +88,17 @@ class Client {
   }
 
   static async dial(token) {
-    const ws = new WebSocket(`ws://${RELAY}/relay/client?token=${encodeURIComponent(token)}`)
+    // Authenticate the way the browser does: the token goes in the first frame,
+    // never in the URL, so it cannot reach an access log.
+    const ws = new WebSocket(`ws://${RELAY}/relay/client`)
     await new Promise((resolve, reject) => {
       ws.addEventListener('open', resolve, { once: true })
       ws.addEventListener('error', () => reject(new Error('socket error')), { once: true })
     })
-    return new Client(ws)
+    const client = new Client(ws)
+    client.send({ t: 'auth', token })
+    await client.waitFor('auth.ok', (f) => f.t === 'auth.ok')
+    return client
   }
 
   send(frame) {
@@ -155,7 +160,7 @@ async function main() {
   ])
   await waitFor(
     async () => {
-      const r = await fetch(`http://${RELAY}/relay/machines?token=${TOKEN}`)
+      const r = await fetch(`http://${RELAY}/relay/machines`, { headers: { Authorization: `Bearer ${TOKEN}` } })
       return r.ok
     },
     'relay to answer',
@@ -170,7 +175,7 @@ async function main() {
   ])
 
   const machines = await waitFor(async () => {
-    const r = await fetch(`http://${RELAY}/relay/machines?token=${TOKEN}`)
+    const r = await fetch(`http://${RELAY}/relay/machines`, { headers: { Authorization: `Bearer ${TOKEN}` } })
     const body = await r.json()
     return body.machines?.find((m) => m.online) ? body.machines : null
   }, 'the member to come online')
@@ -248,18 +253,47 @@ async function main() {
   check('an unknown machine is refused', off.code === 'machine_offline', off.code)
 
   // 6. The token is actually checked.
-  let rejected = false
+
+  // A wrong header is refused at the HTTP layer, before the upgrade.
+  const badHeader = await fetch(`http://${RELAY}/relay/machines`, {
+    headers: { Authorization: 'Bearer wrong' },
+  })
+  check('a wrong token in a header is refused', badHeader.status === 401, badHeader.status)
+
+  // A wrong token in the first frame is answered and then closed.
+  let frameRejected = false
   try {
-    const bad = new WebSocket(`ws://${RELAY}/relay/client?token=wrong`)
+    const bad = new WebSocket(`ws://${RELAY}/relay/client`)
     await new Promise((resolve, reject) => {
       bad.addEventListener('open', () => resolve(), { once: true })
       bad.addEventListener('error', () => reject(new Error('rejected')), { once: true })
-      setTimeout(() => reject(new Error('no answer')), 5000)
+      setTimeout(() => reject(new Error('no answer')), 8000)
     })
+    bad.send(JSON.stringify({ t: 'auth', token: 'wrong' }))
+    await new Promise((resolve, reject) => {
+      bad.addEventListener('close', () => resolve(), { once: true })
+      setTimeout(() => reject(new Error('kept open')), 8000)
+    })
+    frameRejected = true
   } catch {
-    rejected = true
+    frameRejected = false
   }
-  check('a wrong client token is rejected', rejected)
+  check('a wrong token in the first frame is refused', frameRejected)
+
+  // A token in the query string is not a credential at all; the socket is
+  // upgraded (it has to be, to carry frames) and then closed by the deadline.
+  let queryRejected = false
+  try {
+    const q = new WebSocket(`ws://${RELAY}/relay/client?token=${encodeURIComponent(TOKEN)}`)
+    await new Promise((resolve, reject) => {
+      q.addEventListener('close', () => resolve(), { once: true })
+      setTimeout(() => reject(new Error('still open')), 9000)
+    })
+    queryRejected = true
+  } catch {
+    queryRejected = false
+  }
+  check('a token in the query string is not accepted', queryRejected)
 }
 
 main()
