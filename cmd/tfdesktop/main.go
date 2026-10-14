@@ -53,7 +53,7 @@ func main() {
 	if err := f.SetServer(!saved.ServerOff); err != nil {
 		log.Printf("tfdesktop: local service: %v", err)
 	}
-	if err := f.SetRelay(saved.RelayURL, saved.DeviceID, saved.DeviceSecret, saved.RelayOn); err != nil {
+	if err := f.SetRelay(saved.RelayURL, saved.DeviceID, saved.DeviceSecret, saved.RelayCA, saved.RelayOn); err != nil {
 		log.Printf("tfdesktop: relay: %v", err)
 	}
 

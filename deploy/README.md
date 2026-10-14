@@ -101,6 +101,50 @@ tfrelay -addr :7699 -devices /var/lib/tfrelay/devices.json \
 Either way, open only 443 (and 80, for the ACME challenge). The relay refuses to
 start on a non-loopback address without TLS and without `-insecure`.
 
+**No domain: share 80/443 with an existing site.** If the box already serves
+something else on 80/443 (Caddy, nginx) and you have no hostname to point at
+the relay, give the relay its own prefixes inside that existing vhost instead
+of a new port. The client bundle, its runtime config and the WebSocket tunnels
+each need a prefix, because they assume they live at the root of a host:
+
+```nginx
+# /termfleet/  -> the bundled client      (prefix stripped)
+location ^~ /termfleet/ { proxy_pass http://127.0.0.1:7699/; }
+
+# /tf/ and /relay/ are called as absolute paths by the client, so they must
+# reach the relay untouched.
+location ^~ /tf/    { proxy_pass http://127.0.0.1:7699; }
+location ^~ /relay/ {
+    proxy_pass http://127.0.0.1:7699;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+```
+
+People then open `https://host/termfleet/`, while members still dial
+`wss://host/relay/agent`. Keep `-trust-proxy` on the relay, and forward
+`X-Forwarded-For`. Only the three prefixes above are touched; the existing site
+keeps "/".
+
+**Private CA or self-signed certificate.** A member verifies the relay's TLS
+certificate against the system roots, so a self-signed certificate (or one from
+a private CA) fails with `x509: certificate signed by unknown authority`. Point
+the member at the certificate instead of installing it system-wide:
+
+```sh
+./bin/tfd -addr 127.0.0.1:7678 \
+          -relay wss://relay.example/relay/agent \
+          -relay-ca /etc/ssl/relay.crt \
+          -device-id mac-mini-1a2b3c -device-secret "$SECRET"
+```
+
+`-relay-ca` takes a PEM file (the CA certificate, or the self-signed leaf) and
+makes it the only root the dial accepts, so a wrong certificate fails closed
+rather than falling back to the system store. The desktop shell has the same
+field as "CA 证书" on its 远程 settings tab. Browsers do not need it — they
+show a one-time warning for a self-signed certificate.
+
 ## 4. Enroll each machine
 
 On the relay:

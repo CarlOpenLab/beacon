@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"flag"
 	"log"
 	"os"
@@ -32,6 +33,8 @@ func main() {
 	deviceID := flag.String("device-id", "", "this machine's relay identity, from `tfrelay enroll`")
 	deviceSecret := flag.String("device-secret", "", "this machine's relay secret, from `tfrelay enroll`")
 	machineName := flag.String("machine-name", "", "name shown in the relay's machine list (default: hostname)")
+	relayCA := flag.String("relay-ca", "",
+		"PEM file with the certificate (or CA) that signed the relay's TLS certificate; use it when the relay is not behind a public CA")
 	flag.Parse()
 
 	srv, err := daemon.New(daemon.Options{
@@ -62,11 +65,19 @@ func main() {
 	// way, so a machine that is reachable locally stays reachable locally even
 	// when the relay is down.
 	if *relayURL != "" {
+		var roots *x509.CertPool
+		if *relayCA != "" {
+			roots, err = agent.LoadCACert(*relayCA)
+			if err != nil {
+				log.Fatalf("tfd: -relay-ca: %v", err)
+			}
+		}
 		ag, err := agent.New(agent.Config{
 			URL:         *relayURL,
 			DeviceID:    *deviceID,
 			Secret:      *deviceSecret,
 			MachineName: *machineName,
+			RootCAs:     roots,
 			Hub:         srv.Hub(),
 		})
 		if err != nil {

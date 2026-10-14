@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"log"
 	"os"
 	"runtime"
@@ -121,8 +122,10 @@ func (f *fleet) RelayOn() bool {
 
 // SetRelay replaces the relay link. An empty URL, or enabled false, drops the
 // current one; a bad credential is reported rather than retried in a loop, so
-// the settings window can say what is wrong.
-func (f *fleet) SetRelay(relayURL, deviceID, secret string, enabled bool) error {
+// the settings window can say what is wrong. caFile, when set, is the PEM the
+// relay's TLS certificate must chain to — a private CA or a self-signed
+// certificate, which a member cannot verify against the system roots.
+func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.stopAgent != nil {
@@ -132,10 +135,19 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret string, enabled bool) error 
 	if !enabled || relayURL == "" {
 		return nil
 	}
+	var roots *x509.CertPool
+	if caFile != "" {
+		var err error
+		roots, err = agent.LoadCACert(caFile)
+		if err != nil {
+			return err
+		}
+	}
 	a, err := agent.New(agent.Config{
 		URL:      relayURL,
 		DeviceID: deviceID,
 		Secret:   secret,
+		RootCAs:  roots,
 		Hub:      f.hub,
 		Log:      f.log,
 	})

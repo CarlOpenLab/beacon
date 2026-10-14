@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -84,7 +86,7 @@ func TestSetRelayRejectsBadURLAndClears(t *testing.T) {
 
 	// A URL the relay client cannot parse is reported, not retried, so the
 	// settings window can say what is wrong.
-	if err := f.SetRelay("not-a-url", "dev", "secret", true); err == nil {
+	if err := f.SetRelay("not-a-url", "dev", "secret", "", true); err == nil {
 		t.Fatal("SetRelay accepted a URL that is not a websocket endpoint")
 	}
 	if f.RelayOn() {
@@ -92,13 +94,36 @@ func TestSetRelayRejectsBadURLAndClears(t *testing.T) {
 	}
 
 	// Disabling, or an empty URL, clears without error.
-	if err := f.SetRelay("wss://relay.example/relay/agent", "dev", "secret", false); err != nil {
+	if err := f.SetRelay("wss://relay.example/relay/agent", "dev", "secret", "", false); err != nil {
 		t.Fatalf("SetRelay(enabled=false): %v", err)
 	}
-	if err := f.SetRelay("", "dev", "secret", true); err != nil {
+	if err := f.SetRelay("", "dev", "secret", "", true); err != nil {
 		t.Fatalf("SetRelay(empty URL): %v", err)
 	}
 	if f.RelayOn() {
 		t.Fatal("RelayOn after clearing")
+	}
+}
+
+func TestSetRelayRejectsUnusableCAFile(t *testing.T) {
+	f := newTestFleet(t)
+
+	// A CA file the shell cannot read is reported before any dial, so the
+	// settings window can point at the wrong path instead of failing later
+	// with an opaque TLS error.
+	if err := f.SetRelay("wss://relay.example/relay/agent", "dev", "secret", "/nonexistent/ca.pem", true); err == nil {
+		t.Fatal("SetRelay accepted a CA file that does not exist")
+	}
+	if f.RelayOn() {
+		t.Fatal("a rejected relay left the link marked as on")
+	}
+
+	// A file with no PEM certificate in it is rejected too.
+	empty := filepath.Join(t.TempDir(), "empty.pem")
+	if err := os.WriteFile(empty, []byte("not a certificate\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetRelay("wss://relay.example/relay/agent", "dev", "secret", empty, true); err == nil {
+		t.Fatal("SetRelay accepted a file with no PEM certificate")
 	}
 }

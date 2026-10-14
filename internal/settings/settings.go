@@ -33,6 +33,11 @@ type Settings struct {
 	// DeviceID and DeviceSecret are this machine's relay credential.
 	DeviceID     string `json:"deviceId,omitempty"`
 	DeviceSecret string `json:"deviceSecret,omitempty"`
+	// RelayCA is a PEM file holding the certificate that signed the relay's
+	// TLS certificate. It is how a desktop shell trusts a relay behind a
+	// private CA or a self-signed certificate, without installing it
+	// system-wide. Empty means "use the system roots".
+	RelayCA string `json:"relayCA,omitempty"`
 	// RelayOn asks the shell to keep a link to RelayURL while it runs.
 	RelayOn bool `json:"relayOn,omitempty"`
 

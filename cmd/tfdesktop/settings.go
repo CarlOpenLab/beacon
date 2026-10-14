@@ -80,6 +80,7 @@ type settingsWindow struct {
 	relay   string
 	device  string
 	secret  string
+	ca      string
 	relayOn bool
 	server  bool
 
@@ -98,6 +99,7 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 		relay:   cur.RelayURL,
 		device:  cur.DeviceID,
 		secret:  cur.DeviceSecret,
+		ca:      cur.RelayCA,
 		relayOn: cur.RelayOn,
 		server:  !cur.ServerOff,
 	}
@@ -157,10 +159,13 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 	ui.Field(c, "设备密钥", func() {
 		ui.TextInput(c, &s.secret).Password().Fill()
 	})
+	ui.Field(c, "CA 证书", func() {
+		ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
+	})
 	ui.Field(c, "接入", func() {
 		ui.Switch(c, &s.relayOn).OnChange(func() { s.commit() })
 	})
-	ui.Text(c, "地址形如 wss://relay.example/relay/agent。改完地址、设备或密钥后点「应用」；接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。")
+	ui.Text(c, "地址形如 wss://relay.example/relay/agent。中继用的是自签或私有 CA 证书时，把 PEM 证书文件路径填进「CA 证书」；改完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。")
 }
 
 func (s *settingsWindow) serverPane(c *ui.Context) {
@@ -183,6 +188,7 @@ func (s *settingsWindow) commit() {
 		v.RelayURL = strings.TrimSpace(s.relay)
 		v.DeviceID = strings.TrimSpace(s.device)
 		v.DeviceSecret = strings.TrimSpace(s.secret)
+		v.RelayCA = strings.TrimSpace(s.ca)
 		v.RelayOn = s.relayOn
 		v.ServerOff = !s.server
 	})
@@ -191,7 +197,7 @@ func (s *settingsWindow) commit() {
 		return
 	}
 	s.desk.reletter(termFont(stored))
-	if err := s.fleet.SetRelay(stored.RelayURL, stored.DeviceID, stored.DeviceSecret, stored.RelayOn); err != nil {
+	if err := s.fleet.SetRelay(stored.RelayURL, stored.DeviceID, stored.DeviceSecret, stored.RelayCA, stored.RelayOn); err != nil {
 		s.status = "远程渠道没接上：" + err.Error()
 		return
 	}
@@ -221,6 +227,7 @@ func (s *settingsWindow) restoreDefaults() {
 	s.relay = ""
 	s.device = ""
 	s.secret = ""
+	s.ca = ""
 	s.relayOn = false
 	s.server = true
 	s.commit()

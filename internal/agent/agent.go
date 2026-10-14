@@ -11,6 +11,8 @@ package agent
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,6 +54,11 @@ type Config struct {
 	Secret   string
 	// MachineName is what a person sees in the machine list.
 	MachineName string
+	// RootCAs, when set, replaces the system roots for the relay's TLS
+	// certificate. Relays are often fronted by a private CA (or a self-signed
+	// certificate); pinning it here keeps a member connected without asking
+	// every machine to install it system-wide.
+	RootCAs *x509.CertPool
 	// Hub is the local session authority. The agent reads and writes session
 	// state only through it.
 	Hub *hub.Hub
@@ -80,6 +87,24 @@ func (c Config) withDefaults() Config {
 		}
 	}
 	return c
+}
+
+// LoadCACert reads a PEM certificate file and returns it as a root pool. It is
+// how a member trusts a relay whose certificate was not issued by a public CA
+// (a private CA, or a self-signed certificate). The file may hold a CA
+// certificate or the self-signed leaf itself; either way it becomes the only
+// root the dial will accept, so a wrong certificate fails closed instead of
+// quietly falling back to the system store.
+func LoadCACert(path string) (*x509.CertPool, error) {
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("agent: %s: no PEM certificate found", path)
+	}
+	return pool, nil
 }
 
 // Agent keeps a member connected to a relay.
@@ -144,7 +169,13 @@ func (a *Agent) serveOnce(ctx context.Context) error {
 	hdr.Set("Authorization", "Bearer "+a.cfg.DeviceID+":"+a.cfg.Secret)
 
 	dctx, cancel := context.WithTimeout(ctx, helloTimeout)
-	conn, _, err := websocket.Dial(dctx, a.cfg.URL, &websocket.DialOptions{HTTPHeader: hdr})
+	dialOpts := &websocket.DialOptions{HTTPHeader: hdr}
+	if a.cfg.RootCAs != nil {
+		dialOpts.HTTPClient = &http.Client{
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: a.cfg.RootCAs}},
+		}
+	}
+	conn, _, err := websocket.Dial(dctx, a.cfg.URL, dialOpts)
 	cancel()
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)

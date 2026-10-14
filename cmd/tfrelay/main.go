@@ -94,7 +94,7 @@ func runList(args []string) {
 func runServe(args []string) {
 	addr := flag.String("addr", "127.0.0.1:7698", "listen address; loopback unless you mean it")
 	devices := flag.String("devices", "devices.json", "path to the member registry")
-	clientToken := flag.String("client-token", "", "shared secret clients must present (required)")
+	clientToken := flag.String("client-token", os.Getenv("TFRELAY_CLIENT_TOKEN"), "shared secret clients must present (required; defaults to $TFRELAY_CLIENT_TOKEN)")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate; enables HTTPS/WSS")
 	tlsKey := flag.String("tls-key", "", "TLS private key")
 	insecure := flag.Bool("insecure", false, "allow plain HTTP off loopback (development only)")
