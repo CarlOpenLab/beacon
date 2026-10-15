@@ -1,0 +1,269 @@
+name: release
+
+# Pushing a vX.Y.Z tag builds everything and publishes it. The assets are
+# uploaded by plain `gh release upload` rather than `mygo build -upload`, so the
+# workflow needs no updater signing key: the only secret it uses is the one
+# GitHub hands it.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and publish, e.g. v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag against the project version
+        id: meta
+        run: |
+          set -euo pipefail
+          tag="${{ inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          for f in package.json mygo.json; do
+            v=$(node -p "require('./$f').version")
+            if [ "$v" != "$version" ]; then
+              echo "::error::$tag does not match the version in $f ($v)"
+              exit 1
+            fi
+          done
+          echo "releasing $tag"
+
+      # Published, not draft: the build jobs then attach to an existing release,
+      # so one platform failing cannot take the rest of the download down with it.
+      - name: Publish the release with its notes
+        run: |
+          set -euo pipefail
+          tag="${{ steps.meta.outputs.tag }}"
+          version="${{ steps.meta.outputs.version }}"
+          awk -v v="$version" '
+            $0 ~ "^## " v "[[:space:]]*$" { found = 1; next }
+            found && $0 ~ "^## " { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || printf 'term-fleet %s\n' "$tag" > notes.md
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "$tag" --notes-file notes.md --latest
+          else
+            gh release create "$tag" --title "$tag" --notes-file notes.md --latest --verify-tag
+          fi
+
+  cli:
+    name: cli ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build the agent and the relay
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p stage
+          ext=""
+          if [ "$GOOS" = windows ]; then ext=".exe"; fi
+          go build -trimpath -ldflags "-s -w" -o "stage/tfd$ext" ./cmd/tfd
+          go build -trimpath -ldflags "-s -w" -o "stage/tfrelay$ext" ./cmd/tfrelay
+          cp README.md stage/
+
+      - name: Package and upload
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="term-fleet-cli_${VERSION}_${GOOS}_${GOARCH}"
+          if [ "$GOOS" = windows ]; then
+            (cd stage && zip -q -r "../${name}.zip" .)
+            asset="${name}.zip"
+          else
+            tar -czf "${name}.tar.gz" -C stage .
+            asset="${name}.tar.gz"
+          fi
+          gh release upload "${{ needs.prepare.outputs.tag }}" "$asset" --clobber
+
+  desktop-macos:
+    name: desktop macOS
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+
+      # universal only: the DMG is named "<name> <version>.dmg" without the arch,
+      # so building arm64 and amd64 side by side would produce colliding assets.
+      - name: Build the app bundle and disk image
+        run: go tool mygo build -platform darwin/universal
+
+      - name: Upload
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          dmg=$(ls dist/darwin-universal/*.dmg | head -1)
+          asset="term-fleet_${VERSION}_macos_universal.dmg"
+          cp "$dmg" "$asset"
+          gh release upload "${{ needs.prepare.outputs.tag }}" "$asset" --clobber
+
+  desktop-linux:
+    name: desktop Linux
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+
+      - name: Build the Debian package and tarball
+        run: go tool mygo build -platform linux/amd64,linux/arm64
+
+      - name: Upload
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            d="dist/linux-$arch"
+            [ -d "$d" ] || { echo "::warning::no $d, skipping"; continue; }
+            assets=()
+            deb=$(ls "$d"/*.deb 2>/dev/null | head -1 || true)
+            tar=$(ls "$d"/*.tar.gz 2>/dev/null | head -1 || true)
+            if [ -n "$deb" ]; then
+              cp "$deb" "term-fleet_${VERSION}_linux_${arch}.deb"
+              assets+=("term-fleet_${VERSION}_linux_${arch}.deb")
+            fi
+            if [ -n "$tar" ]; then
+              cp "$tar" "term-fleet_${VERSION}_linux_${arch}.tar.gz"
+              assets+=("term-fleet_${VERSION}_linux_${arch}.tar.gz")
+            fi
+            [ ${#assets[@]} -gt 0 ] || { echo "::warning::nothing to upload for linux-$arch"; continue; }
+            gh release upload "${{ needs.prepare.outputs.tag }}" "${assets[@]}" --clobber
+          done
+
+  desktop-windows:
+    name: desktop Windows
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm --dir web install --frozen-lockfile
+
+      # mygo build only downloads NSIS by itself on Windows; on this runner it has
+      # to be installed or the Setup .exe is silently skipped.
+      - name: Install NSIS
+        run: sudo apt-get update && sudo apt-get install -y nsis
+
+      - name: Build the installer and the portable executable
+        run: go tool mygo build -platform windows/amd64
+
+      - name: Upload
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          d=dist/windows-amd64
+          assets=()
+          setup=$(ls "$d"/*Setup*.exe 2>/dev/null | head -1 || true)
+          if [ -n "$setup" ]; then
+            cp "$setup" "term-fleet_${VERSION}_windows_amd64_setup.exe"
+            assets+=("term-fleet_${VERSION}_windows_amd64_setup.exe")
+          else
+            echo "::warning::no Setup .exe was produced"
+          fi
+          zip="term-fleet_${VERSION}_windows_amd64_portable.zip"
+          (cd "$d" && zip -q -r "$GITHUB_WORKSPACE/$zip" .)
+          assets+=("$zip")
+          gh release upload "${{ needs.prepare.outputs.tag }}" "${assets[@]}" --clobber
+
+  checksums:
+    name: checksums
+    needs: [prepare, cli, desktop-macos, desktop-linux, desktop-windows]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the published assets and hash them
+        run: |
+          set -euo pipefail
+          tag="${{ needs.prepare.outputs.tag }}"
+          mkdir -p assets
+          gh release download "$tag" --dir assets --pattern '*' --clobber
+          rm -f assets/checksums.txt
+          if [ -z "$(ls -A assets)" ]; then
+            echo "::warning::the release has no assets to hash"
+            exit 0
+          fi
+          (cd assets && sha256sum * > "$GITHUB_WORKSPACE/checksums.txt")
+          cat checksums.txt
+          gh release upload "$tag" checksums.txt --clobber
