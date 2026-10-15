@@ -168,7 +168,7 @@
 /* --------------------------------------------------------- touch key bar */
 
 .tf-keys {
-  display: none;
+  display: flex;
   gap: 6px;
   padding: 6px 8px;
   background: var(--bg-raised);
@@ -179,6 +179,11 @@
 
 .tf-keys::-webkit-scrollbar {
   display: none;
+}
+
+.tf-keyhost.off {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .tf-key {
@@ -204,11 +209,72 @@
   color: #0b0e14;
 }
 
+/* Where there is a real keyboard the bar is a fallback, not the main road:
+   same keys, half the footprint. */
+@media (pointer: fine) {
+  .tf-keys {
+    gap: 4px;
+    padding: 4px 8px;
+  }
+
+  .tf-key {
+    min-width: 30px;
+    padding: 4px 7px;
+    font-size: 11px;
+  }
+}
+
+/* ------------------------------------------------------- command composer */
+
+.tf-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-raised);
+  border-top: 1px solid var(--line);
+  flex: none;
+}
+
+.tf-composer-input {
+  flex: 1;
+  resize: none;
+  min-height: 34px;
+  max-height: 132px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-y: auto;
+}
+
+.tf-composer-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.tf-composer-input:disabled {
+  opacity: 0.55;
+}
+
+.tf-composer-send {
+  flex: none;
+  height: 34px;
+}
+
+.tf-composer-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ---------------------------------------------------------------- phone */
 
 @media (pointer: coarse) {
   .tf-keys {
-    display: flex;
     /* clear the home indicator */
     padding-bottom: max(6px, env(safe-area-inset-bottom));
   }

@@ -38,6 +38,12 @@ const BASE: ITerminalOptions = {
   scrollback: 10000,
   allowProposedApi: true,
   macOptionIsMeta: true,
+  // The terminal is a display surface: input arrives through the composer bar
+  // in the app layer, never through xterm's hidden textarea. Typing straight
+  // into the network is what made input stutter on a slow link — every
+  // keystroke paid a round trip, and every keystroke typed into a reconnect
+  // gap used to vanish. Selection and copy still work with stdin off.
+  disableStdin: true,
   theme: THEME,
 }
 
@@ -48,9 +54,10 @@ export interface TerminalBundle {
 }
 
 /**
- * A terminal plus its fit addon. Read-only-ness is not set here: the owner flips
- * `term.options.disableStdin` when the client is a viewer, so a viewer can still
- * select and copy without keystrokes reaching the host.
+ * A terminal plus its fit addon. Read-only-ness is structural: `disableStdin`
+ * is on for every instance, so a viewer and a controller get the same
+ * keystroke-free surface and only the app layer's composer decides what may
+ * be sent.
  */
 export function createTerminal(): TerminalBundle {
   const term = new Terminal({ ...BASE })

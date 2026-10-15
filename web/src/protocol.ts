@@ -114,9 +114,12 @@ export function decodeData(data: string | undefined): Uint8Array {
   return out
 }
 
+/** One encoder for the process: every keystroke used to allocate another. */
+const encoder = new TextEncoder()
+
 /** Encode terminal input bytes for the `data` field. */
 export function encodeData(text: string): string {
-  const bytes = new TextEncoder().encode(text)
+  const bytes = encoder.encode(text)
   let bin = ''
   const CHUNK = 0x8000
   for (let i = 0; i < bytes.length; i += CHUNK) {

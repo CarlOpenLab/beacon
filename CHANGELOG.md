@@ -4,6 +4,26 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## Unreleased
+
+**Clients (web, desktop, phone)**
+
+- Typing moved out of the terminal into a composer bar under it: text is
+  composed locally and sent as one frame on Enter, so a slow link is paid
+  once per command instead of once per character. The terminal itself is now
+  a display surface (stdin off) — selection and copy keep working.
+- Control keys a text box cannot express (Esc, Tab, sticky Ctrl/Alt, arrows,
+  C-c, C-d) are injected by the accessory key bar, which is now shown on
+  every device rather than phones only.
+- The composer carries per-tab drafts and ArrowUp recall of sent commands,
+  and it locks with the reason on screen when the session is read-only, dead,
+  or the link is down — a command is never queued across a disconnect to run
+  later unattended.
+- Keystrokes that lose the link on the way out are buffered and replayed on
+  reconnect instead of vanishing, input bursts coalesce into one frame, and
+  the relay path's base64 encoding is linear rather than one concatenation
+  per byte, so large pastes stop janking.
+
 ## 0.1.0
 
 First release: terminals from many machines, one browser tab each.

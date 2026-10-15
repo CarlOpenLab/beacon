@@ -45,14 +45,6 @@ async function waitFor(label, fn, timeout = 15000, step = 120) {
 
 // ------------------------------------------------------------------ CDP page
 
-const CODE = { ' ': 'Space', '-': 'Minus', '_': 'Minus', '/': 'Slash', '.': 'Period' }
-function codeFor(ch) {
-  if (CODE[ch]) return CODE[ch]
-  if (/[a-zA-Z]/.test(ch)) return `Key${ch.toUpperCase()}`
-  if (/[0-9]/.test(ch)) return `Digit${ch}`
-  return ''
-}
-
 class Page {
   constructor(ws) {
     this.ws = ws
@@ -113,32 +105,6 @@ class Page {
     return r.result.value
   }
 
-  async type(text) {
-    for (const ch of text) {
-      if (ch === '\n') {
-        for (const type of ['keyDown', 'keyUp']) {
-          await this.cdp('Input.dispatchKeyEvent', {
-            type,
-            key: 'Enter',
-            code: 'Enter',
-            windowsVirtualKeyCode: 13,
-            nativeVirtualKeyCode: 13,
-            ...(type === 'keyDown' ? { text: '\r', unmodifiedText: '\r' } : {}),
-          })
-        }
-        continue
-      }
-      await this.cdp('Input.dispatchKeyEvent', {
-        type: 'keyDown',
-        key: ch,
-        code: codeFor(ch),
-        text: ch,
-        unmodifiedText: ch,
-      })
-      await this.cdp('Input.dispatchKeyEvent', { type: 'keyUp', key: ch, code: codeFor(ch) })
-    }
-  }
-
   /** macOS Meta is modifier bit 4; the app accepts metaKey or ctrlKey. */
   async press(key, code, modifiers = 0, vk = 0) {
     await this.cdp('Input.dispatchKeyEvent', {
@@ -153,7 +119,26 @@ class Page {
   }
 
   async focusTerminal() {
-    await this.evaluate(`document.querySelector('.tf-pane.active .xterm-helper-textarea')?.focus()`)
+    // The terminal takes no input any more: the composer is where typing goes.
+    await this.evaluate(`document.querySelector('.tf-composer-input')?.focus()`)
+  }
+
+  /** Send a command the way the app now takes input: composer, then Enter. */
+  async send(text) {
+    await this.focusTerminal()
+    await this.evaluate(
+      `document.querySelector('.tf-composer-input').value = ${JSON.stringify(text)}; true`,
+    )
+    for (const type of ['keyDown', 'keyUp']) {
+      await this.cdp('Input.dispatchKeyEvent', {
+        type,
+        key: 'Enter',
+        code: 'Enter',
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+        ...(type === 'keyDown' ? { text: '\r', unmodifiedText: '\r' } : {}),
+      })
+    }
   }
 
   rows() {
@@ -265,7 +250,7 @@ try {
   check('侧栏列出主机会话（一比一）', true)
 
   await page1.focusTerminal()
-  await page1.type('echo M1_OK\n')
+  await page1.send('echo M1_OK')
   const typed = await waitFor('command output', async () => {
     const t = await page1.rows()
     return t.indexOf('M1_OK') !== -1 && t.indexOf('M1_OK') !== t.lastIndexOf('M1_OK') ? t : null
@@ -306,7 +291,7 @@ try {
   check('重连后保留断线前的画面（未整屏重放）', kept.includes('M1_OK'), JSON.stringify(kept.slice(-40)))
 
   await page1.focusTerminal()
-  await page1.type('echo AFTER_RECONNECT\n')
+  await page1.send('echo AFTER_RECONNECT')
   const after = await waitFor('post-reconnect input', async () => {
     const t = await page1.rows()
     return t.includes('AFTER_RECONNECT') && t.indexOf('AFTER_RECONNECT') !== t.lastIndexOf('AFTER_RECONNECT') ? t : null
@@ -332,10 +317,13 @@ try {
   check('只读端看到接管入口', /接管/.test(await page2.banner()), await page2.banner())
 
   await page2.focusTerminal()
-  await page2.type('echo VIEWER_LEAK\n')
+  await page2.send('echo VIEWER_LEAK')
   await sleep(700)
   const leaked = (await page2.rows()).includes('VIEWER_LEAK')
-  check('只读端键入不会送进 shell', !leaked)
+  const composerLocked = await page2.evaluate(
+    `document.querySelector('.tf-composer-input')?.disabled === true`,
+  )
+  check('只读端键入不会送进 shell', !leaked && composerLocked, `composer disabled: ${composerLocked}`)
 
   await page2.evaluate(`document.querySelector('.tf-banner button').click()`)
   await waitFor('page2 becomes controller', async () => /控制中/.test(await page2.status()), 20000)

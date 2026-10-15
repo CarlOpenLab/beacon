@@ -1,9 +1,8 @@
-// Accessory keys for touch devices.
-//
-// A soft keyboard has no Ctrl, no Esc and no arrow keys, which makes a shell
-// unusable on a phone. These buttons inject the sequences a physical keyboard
-// would have produced. Ctrl and Alt are sticky: tap Ctrl, then `c`, and the
-// terminal receives \x03.
+// Accessory keys for touch devices — and, since the terminal itself is a
+// display surface, for every device: a text box cannot produce Esc, Tab,
+// Ctrl or the arrows, so these buttons inject the sequences a physical
+// keyboard would have produced. Ctrl and Alt are sticky: tap Ctrl, then `c`,
+// and the terminal receives \x03.
 
 const KEYS: Array<{ label: string; seq?: string; sticky?: 'ctrl' | 'alt' }> = [
   { label: 'Esc', seq: '\x1b' },
@@ -28,9 +27,6 @@ function control(letter: string): string {
 }
 
 export function mountTouchKeys(root: HTMLElement, send: (data: string) => void): void {
-  // Only worth the pixels where there is no hardware keyboard.
-  if (!matchMedia('(pointer: coarse)').matches) return
-
   const bar = document.createElement('div')
   bar.className = 'tf-keys'
   let sticky: 'ctrl' | 'alt' | null = null
@@ -41,7 +37,8 @@ export function mountTouchKeys(root: HTMLElement, send: (data: string) => void):
     btn.className = 'tf-key'
     btn.type = 'button'
     btn.textContent = spec.label
-    // Keep focus on the terminal: a blurred xterm stops receiving keystrokes.
+    // Keep focus in the composer: a button click would otherwise blur the
+    // text box the user is typing commands into.
     btn.addEventListener('pointerdown', (ev) => ev.preventDefault())
     btn.addEventListener('click', () => {
       if (spec.sticky) {

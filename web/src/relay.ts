@@ -95,8 +95,13 @@ export class RelayConnection {
       // A Fleet retry: same slot, fresh handlers. The stream lives on if it is
       // already accepted, so a retry does not disturb a healthy session.
       existing.handlers = handlers
-      if (existing.accepted) handlers.open()
-      else this.flush()
+      if (existing.accepted) {
+        // A microtask, not a direct call: the Fleet assigns its link only
+        // after `connect()` returns, so frames sent from a synchronous
+        // `open()` would have nowhere to go — the hello, the re-attach and any
+        // input flushed into the gap would all be dropped on the floor.
+        queueMicrotask(() => handlers.open())
+      } else this.flush()
       return existing
     }
     const entry: StreamEntry = { machineId, handlers, stream: 0, accepted: false }

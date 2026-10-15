@@ -60,7 +60,13 @@ export const TFERR = {
 export function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text)
   let bin = ''
-  for (const b of bytes) bin += String.fromCharCode(b)
+  // Chunked, not byte-at-a-time: string concatenation is quadratic in the
+  // number of appends, and a pasted block rides through here on its way to the
+  // relay — one `+=` per byte turns a 64 KB paste into seconds of jank.
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
   return btoa(bin)
 }
 

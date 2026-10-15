@@ -51,14 +51,6 @@ async function waitFor(label, fn, timeout = 20000, step = 120) {
 
 // ------------------------------------------------------------------ CDP page
 
-const CODE = { ' ': 'Space', '-': 'Minus', '_': 'Minus', '/': 'Slash', '.': 'Period', '~': 'Backquote' }
-function codeFor(ch) {
-  if (CODE[ch]) return CODE[ch]
-  if (/[a-zA-Z]/.test(ch)) return `Key${ch.toUpperCase()}`
-  if (/[0-9]/.test(ch)) return `Digit${ch}`
-  return ''
-}
-
 class Page {
   constructor(ws) {
     this.ws = ws
@@ -146,21 +138,22 @@ class Page {
     return r.result.value
   }
 
-  async type(text) {
-    for (const ch of text) {
-      const code = codeFor(ch)
-      for (const type of ['keyDown', 'keyUp']) {
-        await this.cdp('Input.dispatchKeyEvent', {
-          type,
-          text: ch === '\n' ? undefined : ch,
-          unmodifiedText: ch === '\n' ? undefined : ch,
-          key: ch === '\n' ? 'Enter' : ch,
-          code: ch === '\n' ? 'Enter' : code,
-          windowsVirtualKeyCode: ch === '\n' ? 13 : ch.toUpperCase().charCodeAt(0),
-          nativeVirtualKeyCode: ch === '\n' ? 13 : ch.toUpperCase().charCodeAt(0),
-        })
-      }
-      await sleep(25)
+  /** Send a command through the composer: the terminal takes no direct input. */
+  async send(text) {
+    await this.evaluate(`document.querySelector('.tf-composer-input').focus(); true`)
+    await this.evaluate(
+      `document.querySelector('.tf-composer-input').value = ${JSON.stringify(text)}; true`,
+    )
+    for (const type of ['keyDown', 'keyUp']) {
+      await this.cdp('Input.dispatchKeyEvent', {
+        type,
+        key: 'Enter',
+        code: 'Enter',
+        text: type === 'keyDown' ? '\r' : undefined,
+        unmodifiedText: type === 'keyDown' ? '\r' : undefined,
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+      })
     }
   }
 
@@ -309,8 +302,7 @@ try {
   await waitFor('the shell prompt', async () => (await desktop.rows()).includes('$'))
   check('the shell prompt renders through the relay', true)
 
-  await desktop.evaluate(`document.querySelector('.tf-pane.active .xterm-helper-textarea').focus(); true`)
-  await desktop.type(`echo ${MARKER}\n`)
+  await desktop.send(`echo ${MARKER}`)
   await waitFor('the marker to come back', async () => (await desktop.rows()).includes(MARKER))
   check('input and output survive the round trip', true)
 
@@ -415,8 +407,7 @@ try {
   await waitFor('the touch key to reach the shell', async () => (await phone.rows()).includes('~'))
   check('a touch key sends a real keystroke once the phone holds control', true)
 
-  await phone.evaluate(`document.querySelector('.tf-pane.active .xterm-helper-textarea').focus(); true`)
-  await phone.type(`echo ${FROM_PHONE}\n`)
+  await phone.send(`echo ${FROM_PHONE}`)
   await waitFor('the phone output', async () => (await phone.rows()).includes(FROM_PHONE))
   check('the phone can drive the host session', true)
 

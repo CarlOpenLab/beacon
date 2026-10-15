@@ -24,6 +24,12 @@ interface Tab {
   pane: HTMLElement
   role: Role | null
   alive: boolean
+  /** Composer contents kept while another tab is in front. */
+  draft: string
+  /** Commands this tab has sent, newest last, for ArrowUp recall. */
+  history: string[]
+  /** Recall position: `history.length` means "back to the live draft". */
+  histIdx: number
 }
 
 /** One reachable machine and everything we know about it. */
@@ -110,6 +116,9 @@ export class App {
   private fleetCount!: HTMLElement
   private tabStrip!: HTMLElement
   private panes!: HTMLElement
+  private composer!: HTMLTextAreaElement
+  private sendBtn!: HTMLButtonElement
+  private keyHost!: HTMLElement
   private statusConn!: HTMLElement
   private statusHost!: HTMLElement
   private statusSession!: HTMLElement
@@ -254,6 +263,9 @@ export class App {
         if (s === 'offline' && detail?.includes('机器离线')) this.markMachineOffline(machineId)
         this.renderFleet()
         this.renderStatus()
+        // A link coming back re-sends the role frame; a link going down stops
+        // the composer either way, until the app hears otherwise.
+        this.syncComposer()
       },
       hello: (host, version) => {
         const mv = this.machine(machineId)
@@ -267,6 +279,7 @@ export class App {
         }
         this.renderFleet()
         this.renderStatus()
+        this.syncComposer()
       },
       sessions: (list) => {
         const mv = this.machine(machineId)
@@ -283,6 +296,7 @@ export class App {
         }
         this.renderTabs()
         this.renderBanner()
+        this.syncComposer()
       },
       created: (sessionId) => {
         const tab = this.pendingTab(machineId)
@@ -299,6 +313,7 @@ export class App {
         tab.alive = session.alive
         tab.title = session.title || basename(session.cwd) || sessionId
         this.renderTabs()
+        this.syncComposer()
         if (truncated) {
           // The ring buffer no longer holds everything we missed; the screen we
           // would repaint from is a guess, so start from a clean slate instead.
@@ -316,14 +331,13 @@ export class App {
         const tab = this.findTab(machineId, sessionId)
         if (!tab) return
         tab.role = role
-        tab.bundle.term.options.disableStdin = role !== ROLE.controller
         tab.pane.classList.toggle('readonly', role !== ROLE.controller)
         this.renderTabs()
         this.renderBanner()
         this.renderStatus()
-        if (role === ROLE.controller) {
-          tab.bundle.term.focus()
-        } else if (controller) {
+        this.syncComposer()
+        if (role === ROLE.controller) this.composer.focus()
+        else if (controller) {
           this.toast(`已被接管（${controller}），你现在是只读`, 'info')
         }
       },
@@ -333,9 +347,9 @@ export class App {
         tab.alive = false
         tab.title = `${tab.title} — 已退出`
         tab.bundle.term.write(`\r\n\x1b[2m[进程已退出，退出码 ${code}]\x1b[0m\r\n`)
-        tab.bundle.term.options.disableStdin = true
         this.renderTabs()
         this.renderBanner()
+        this.syncComposer()
       },
       closed: (sessionId) => {
         const tab = this.findTab(machineId, sessionId)
@@ -347,9 +361,9 @@ export class App {
           const tab = sessionId ? this.findTab(machineId, sessionId) : undefined
           if (tab) {
             tab.role = ROLE.viewer
-            tab.bundle.term.options.disableStdin = true
             this.renderBanner()
             this.renderTabs()
+            this.syncComposer()
           }
           return
         }
@@ -361,10 +375,9 @@ export class App {
   private markMachineOffline(machineId: string): void {
     const mv = this.machine(machineId)
     if (mv) mv.online = false
-    for (const tab of this.tabs) {
-      if (tab.machineId === machineId) tab.bundle.term.options.disableStdin = true
-    }
     this.renderTabs()
+    this.renderBanner()
+    this.syncComposer()
   }
 
   // -------------------------------------------------------------- tab tables
@@ -425,7 +438,8 @@ export class App {
     const main = el('main', 'tf-main')
     this.tabStrip = el('div', 'tf-tabs')
     this.panes = el('div', 'tf-panes')
-    main.append(this.tabStrip, this.panes)
+    this.keyHost = el('div', 'tf-keyhost')
+    main.append(this.tabStrip, this.panes, this.buildComposer(), this.keyHost)
 
     body.append(aside, main)
 
@@ -438,7 +452,9 @@ export class App {
     this.toastBox = el('div', 'tf-toasts')
     this.root.append(header, body, footer, this.toastBox)
 
-    mountTouchKeys(this.root, (data) => this.sendKey(data))
+    // The composer, not the terminal, is where typing happens; the key bar is
+    // the only source of Esc/Tab/Ctrl/arrows for every device now.
+    mountTouchKeys(this.keyHost, (data) => this.sendKey(data))
 
     this.observer = new ResizeObserver(() => this.scheduleFit())
     this.observer.observe(this.panes)
@@ -722,8 +738,109 @@ export class App {
   /** Injected by the touch key bar; bypasses xterm so escape sequences survive. */
   private sendKey(data: string): void {
     const tab = this.current()
-    if (!tab?.sessionId || tab.role === ROLE.viewer) return
+    if (!tab?.sessionId || tab.role !== ROLE.controller || !tab.alive) return
     this.machine(tab.machineId)?.fleet.input(tab.sessionId, data)
+  }
+
+  // ---------------------------------------------------------------- composer
+
+  /**
+   * The composer is the only keyboard path into a shell. Text is composed
+   * locally and sent as one frame on Enter, so the network is paid once per
+   * command instead of once per character. Control keys the text box cannot
+   * express (Esc, Tab, Ctrl, arrows) come from the key bar below it.
+   */
+  private buildComposer(): HTMLElement {
+    const bar = el('div', 'tf-composer')
+    const input = el('textarea', 'tf-composer-input') as HTMLTextAreaElement
+    input.rows = 1
+    input.placeholder = '输入命令，回车发送（Shift+回车换行）'
+    input.autocomplete = 'off'
+    input.spellcheck = false
+    // A soft keyboard that "helpfully" capitalizes or autocorrects corrupts
+    // shell input; xterm sets the same attributes on its own textarea.
+    input.setAttribute('autocapitalize', 'off')
+    input.setAttribute('autocorrect', 'off')
+    const send = el('button', 'tf-btn tf-btn-primary tf-composer-send', '发送') as HTMLButtonElement
+    send.type = 'button'
+
+    input.addEventListener('input', () => {
+      const tab = this.current()
+      if (tab) tab.draft = input.value
+      this.growComposer()
+    })
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' && !ev.shiftKey) {
+        ev.preventDefault()
+        this.submitComposer()
+        return
+      }
+      if (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return
+      // Arrows move the caret in multi-line text; they recall history only
+      // while the draft is a single line.
+      if (input.value.includes('\n')) return
+      ev.preventDefault()
+      this.recallHistory(ev.key === 'ArrowUp' ? -1 : 1)
+    })
+    send.onclick = () => this.submitComposer()
+
+    bar.append(input, send)
+    this.composer = input
+    this.sendBtn = send
+    return bar
+  }
+
+  private submitComposer(): void {
+    const tab = this.current()
+    const text = this.composer.value
+    if (!tab?.sessionId || tab.role !== ROLE.controller || !tab.alive) return
+    if (!text) return
+    tab.draft = ''
+    this.composer.value = ''
+    this.growComposer()
+    tab.history.push(text)
+    if (tab.history.length > 100) tab.history.shift()
+    tab.histIdx = tab.history.length
+    this.machine(tab.machineId)?.fleet.input(tab.sessionId, `${text}\r`)
+  }
+
+  /** ArrowUp/ArrowDown through this tab's sent commands; past the newest is the live draft. */
+  private recallHistory(dir: number): void {
+    const tab = this.current()
+    if (!tab?.history.length) return
+    tab.histIdx = Math.min(Math.max(tab.histIdx + dir, 0), tab.history.length)
+    this.composer.value = tab.histIdx === tab.history.length ? tab.draft : tab.history[tab.histIdx]
+    this.growComposer()
+  }
+
+  private growComposer(): void {
+    this.composer.style.height = 'auto'
+    this.composer.style.height = `${Math.min(this.composer.scrollHeight, 132)}px`
+  }
+
+  /** Mirror the active tab's state onto the composer: what may be typed, and why not. */
+  private syncComposer(): void {
+    const tab = this.current()
+    const mv = tab ? this.machine(tab.machineId) : undefined
+    // A command is an explicit "run this now": it is never queued across a
+    // disconnect to fire later unattended. `Fleet`'s buffer still covers the
+    // in-flight race — a send that loses the link on the way out — but a
+    // composer the user can type into while offline would silently defer.
+    const linkUp = mv?.conn === 'online' && mv.online !== false
+    const usable =
+      !!tab?.sessionId && tab.role === ROLE.controller && tab.alive && linkUp
+    this.composer.disabled = !usable
+    this.sendBtn.disabled = !usable
+    this.keyHost.classList.toggle('off', !usable)
+    this.composer.placeholder = usable
+      ? '输入命令，回车发送（Shift+回车换行）'
+      : !tab?.sessionId
+        ? '尚未创建会话'
+        : !tab.alive
+          ? '会话已退出'
+          : tab.role !== ROLE.controller
+            ? '只读：等待接管'
+            : '连接已断开，重连后即可发送'
   }
 
   private openTab(machineId: string, sessionId = ''): Tab {
@@ -740,6 +857,9 @@ export class App {
       pane,
       role: null,
       alive: true,
+      draft: '',
+      history: [],
+      histIdx: 0,
     }
     this.panes.append(pane)
     this.tabs.push(tab)
@@ -799,8 +919,12 @@ export class App {
     this.renderStatus()
     if (tab) {
       this.fitTab(tab)
-      if (!matchMedia('(pointer: coarse)').matches) tab.bundle.term.focus()
+      this.composer.value = tab.draft
+      // A soft keyboard popping open on every tab switch is hostile; on a
+      // touch device the composer takes focus when it is tapped instead.
+      if (!matchMedia('(pointer: coarse)').matches) this.composer.focus()
     }
+    this.syncComposer()
   }
 
   private closeTab(tab: Tab): void {
@@ -822,6 +946,7 @@ export class App {
     this.renderFleet()
     this.renderBanner()
     this.renderStatus()
+    this.syncComposer()
     const next = this.current()
     if (next) this.fitTab(next)
   }
@@ -865,14 +990,9 @@ export class App {
 
   private wireTerminal(bundle: TerminalBundle): void {
     const { term } = bundle
-    // Keystrokes are only forwarded while this client holds control. Viewers
-    // also have stdin disabled, so this guard is the second lock, not the first.
-    term.onData((data) => {
-      const tab = this.tabs.find((t) => t.bundle === bundle)
-      if (!tab || !tab.sessionId) return
-      if (tab.role === ROLE.viewer) return
-      this.machine(tab.machineId)?.fleet.input(tab.sessionId, data)
-    })
+    // No onData: the terminal's stdin is off. Everything the shell receives
+    // arrives through the composer bar or the key bar, which is what keeps
+    // typing off the network's critical path.
     term.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== 'keydown') return true
       const key = ev.key.toLowerCase()

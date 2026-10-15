@@ -37,6 +37,32 @@ const MIN_BACKOFF = 300
 const MAX_BACKOFF = 5000
 
 /**
+ * Input is buffered per session and coalesced before it hits the wire. One
+ * buffer solves two problems:
+ *
+ *   - A link that is not open used to swallow every keystroke typed into the
+ *     gap: `Link.send` returns false and the bytes were gone with it. That is
+ *     what "I typed half a command during a reconnect and it vanished" looks
+ *     like from the outside. Bytes now wait here and `open()` flushes them
+ *     once the session is re-attached — after the attach frames, on the same
+ *     socket, so the hub sees a watcher before its input.
+ *   - Holding a key or committing IME text fires several `onData` events
+ *     within milliseconds. One frame each is affordable on a LAN and wasteful
+ *     on the relay path, where the payload is JSON inside base64 inside JSON.
+ *     The flush runs on the next task, so a lone keystroke pays no perceptible
+ *     delay while a burst travels as one frame.
+ */
+const INPUT_COALESCE_BYTES = 4096
+
+/**
+ * How much typed input may wait while the link is down, per session. The
+ * prefix is kept and the tail dropped past the cap: a shell needs the front of
+ * a line to stay coherent, and no human reaches 64 KB of typing inside one
+ * reconnect — only a paste does.
+ */
+const INPUT_PENDING_MAX = 64 * 1024
+
+/**
  * Derive the daemon URL.
  *
  * Served from the daemon (PC shell, phone browser) the page is same-origin, so
@@ -62,6 +88,9 @@ export class Fleet {
   private closedByUs = false
   /** Sessions this client wants attached, with the cursor it has consumed. */
   private intents = new Map<string, Intent>()
+  /** Input typed but not yet on the wire, per session. */
+  private pending = new Map<string, string>()
+  private flushTimer?: number
 
   /** Set by the app layer when this Fleet belongs to a machine in a roster. */
   machineId = ''
@@ -101,7 +130,12 @@ export class Fleet {
 
   close(): void {
     this.closedByUs = true
-    if (this.timer !== undefined) clearTimeout(this.timer)
+    clearTimeout(this.timer)
+    clearTimeout(this.flushTimer)
+    this.flushTimer = undefined
+    // A deliberate close is not a blip: nothing typed now is worth replaying
+    // into a link the user asked to drop.
+    this.pending.clear()
     this.link?.close()
     this.link = undefined
     this.setState('offline', '已断开')
@@ -124,6 +158,9 @@ export class Fleet {
         for (const [sessionId, intent] of this.intents) {
           this.send({ t: CT.attach, sessionId, cursor: intent.cursor })
         }
+        // Attach first, input second: same socket, same order, so the hub
+        // never sees keystrokes for a session it has not attached yet.
+        this.flushInput()
       },
       message: (msg) => this.dispatch(msg),
       close: (reason) => {
@@ -140,7 +177,7 @@ export class Fleet {
     this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF)
     // Jitter so a fleet of clients does not reconnect in lockstep.
     const wait = delay / 2 + Math.random() * (delay / 2)
-    if (this.timer !== undefined) clearTimeout(this.timer)
+    clearTimeout(this.timer)
     this.timer = window.setTimeout(() => this.open(), wait)
   }
 
@@ -195,6 +232,7 @@ export class Fleet {
         const sessionId = msg.sessionId
         if (!sessionId) break
         this.intents.delete(sessionId)
+        this.pending.delete(sessionId)
         this.handlers.closed?.(sessionId)
         break
       }
@@ -231,12 +269,54 @@ export class Fleet {
 
   detach(sessionId: string): void {
     this.intents.delete(sessionId)
+    this.pending.delete(sessionId)
     this.send({ t: CT.detach, sessionId })
   }
 
+  /**
+   * Type into a session. Bytes are never dropped on the floor: while the link
+   * is down they accumulate here (capped at INPUT_PENDING_MAX, prefix kept)
+   * and go out when `open()` fires after a reconnect.
+   */
   input(sessionId: string, text: string): void {
     if (!text) return
-    this.send({ t: CT.input, sessionId, data: encodeData(text) })
+    const buf = (this.pending.get(sessionId) ?? '') + text
+    this.pending.set(
+      sessionId,
+      buf.length > INPUT_PENDING_MAX ? buf.slice(0, INPUT_PENDING_MAX) : buf,
+    )
+    if (buf.length >= INPUT_COALESCE_BYTES) {
+      this.flushInput(sessionId)
+      return
+    }
+    this.scheduleFlush()
+  }
+
+  /**
+   * Arm the coalescing flush, and only while the link is up: a flush that
+   * cannot send would spin, and bytes typed into a dead link are already
+   * waiting for `open()`.
+   */
+  private scheduleFlush(): void {
+    if (this.flushTimer !== undefined || !this.online) return
+    this.flushTimer = window.setTimeout(() => {
+      this.flushTimer = undefined
+      this.flushInput()
+    }, 0)
+  }
+
+  /**
+   * Send pending input, one frame per session. A frame that does not go out
+   * stays pending: the next `open()` retries it, in order.
+   */
+  private flushInput(sessionId?: string): void {
+    const ids = sessionId === undefined ? [...this.pending.keys()] : [sessionId]
+    for (const id of ids) {
+      const buf = this.pending.get(id)
+      if (!buf) continue
+      if (!this.send({ t: CT.input, sessionId: id, data: encodeData(buf) })) continue
+      this.pending.delete(id)
+    }
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
