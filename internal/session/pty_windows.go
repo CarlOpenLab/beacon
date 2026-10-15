@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/UserExistsError/conpty"
@@ -74,10 +75,7 @@ func shellCommand(shell string) (string, []string) {
 	if shell != "" {
 		return shell, nil
 	}
-	if com := os.Getenv("COMSPEC"); com != "" {
-		return com, nil
-	}
-	return `C:\Windows\System32\cmd.exe`, nil
+	return pickWindowsShell(exec.LookPath, os.Getenv("COMSPEC")), nil
 }
 
 // commandLine builds a single command line string, because CreateProcessW takes
