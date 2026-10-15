@@ -103,6 +103,7 @@ func runServe(args []string) {
 	devices := flag.String("devices", "devices.json", "path to the member registry")
 	clientToken := flag.String("client-token", os.Getenv("TFRELAY_CLIENT_TOKEN"), "shared secret clients must present (required; defaults to $TFRELAY_CLIENT_TOKEN)")
 	tokenFile := flag.String("token-file", "", "where a rotated client token is persisted (default: token.txt beside -devices)")
+	tokenTTL := flag.Duration("client-token-ttl", relay.DefaultClientTokenTTL, "how long a client token minted from the panel stays valid; 0 means it never expires")
 	adminOn := flag.Bool("admin", true, "serve the web admin panel")
 	adminPath := flag.String("admin-path", "/admin", "URL path the admin panel is mounted at")
 	adminStore := flag.String("admin-store", "", "admin account file (default: admin.json beside -devices)")
@@ -183,6 +184,7 @@ func runServe(args []string) {
 			PublicURL:  *publicURL,
 			CACertPath: *caCert,
 			BasePath:   *adminPath,
+			TokenTTL:   *tokenTTL,
 			Log:        log.Default(),
 		})
 		if err != nil {

@@ -9,14 +9,68 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CarlOpenLab/term-fleet/internal/relay"
 )
+
+// TestParseTokenTTL pins the lifetime syntax the panel and any script talk in.
+func TestParseTokenTTL(t *testing.T) {
+	def := 24 * time.Hour
+	cases := []struct {
+		in      string
+		want    time.Duration
+		wantErr bool
+	}{
+		{"", def, false},
+		{"24h", 24 * time.Hour, false},
+		{"30m", 30 * time.Minute, false},
+		{"  12H  ", 12 * time.Hour, false},
+		{"7d", 7 * 24 * time.Hour, false},
+		{"1d", 24 * time.Hour, false},
+		{"never", 0, false},
+		{"NONE", 0, false},
+		{"0", 0, false},
+		{"5m", 5 * time.Minute, false},
+		{"4m", 0, true},
+		{"0s", 0, true},
+		{"-3h", 0, true},
+		{"soon", 0, true},
+		{"d", 0, true},
+		{"400d", 0, true},
+		{"8761h", 0, true},
+	}
+	for _, c := range cases {
+		got, err := parseTokenTTL(c.in, def)
+		if c.wantErr {
+			if err == nil {
+				t.Errorf("parseTokenTTL(%q) = %s, want an error", c.in, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parseTokenTTL(%q): %v", c.in, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("parseTokenTTL(%q) = %s, want %s", c.in, got, c.want)
+		}
+	}
+}
+
+// TestParseTokenTTLGuardsABadDefault: a misconfigured relay should say so rather
+// than mint tokens that die before anyone can paste them.
+func TestParseTokenTTLGuardsABadDefault(t *testing.T) {
+	if _, err := parseTokenTTL("", 30*time.Second); err == nil {
+		t.Fatal("a sub-minimum default was accepted")
+	}
+}
 
 // panel is a running admin UI in front of a real relay: the same wiring
 // cmd/tfrelay uses, so the tests exercise the paths an operator actually hits.
@@ -58,6 +112,7 @@ func newPanelWithCA(t *testing.T, ca []byte) *panel {
 		Relay:      r,
 		CACertPath: caPath,
 		PublicURL:  "wss://relay.example/relay/agent",
+		TokenTTL:   24 * time.Hour,
 		Log:        log.New(io.Discard, "", 0),
 	})
 	if err != nil {
@@ -321,8 +376,131 @@ func TestTokenRotateThroughPanel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the rotated token was not persisted: %v", err)
 	}
-	if strings.TrimSpace(string(b)) != next {
-		t.Fatalf("token.txt = %q, want the rotated token", strings.TrimSpace(string(b)))
+	var stored struct {
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expiresAt"`
+	}
+	if err := json.Unmarshal(b, &stored); err != nil {
+		t.Fatalf("token.txt is not the persisted record: %v (%s)", err, b)
+	}
+	if stored.Token != next {
+		t.Fatalf("token.txt holds %q, want the rotated token", stored.Token)
+	}
+	if stored.ExpiresAt == "" {
+		t.Fatal("the rotated token was persisted without its expiry")
+	}
+}
+
+// TestTokenRotateHonoursChosenTTL: the operator picks a lifetime and the token
+// carries exactly that.
+func TestTokenRotateHonoursChosenTTL(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+
+	rot := p.call(t, "POST", "/admin/api/token/rotate", map[string]string{"ttl": "2h"}, nil)
+	if rot.status != http.StatusOK {
+		t.Fatalf("rotate = %d %s, want 200", rot.status, rot.raw)
+	}
+	secs, ok := rot.body["expiresInSeconds"].(float64)
+	if !ok {
+		t.Fatalf("no expiresInSeconds in %v", rot.body)
+	}
+	if secs < 7000 || secs > 7200 {
+		t.Fatalf("expiresInSeconds = %v, want about 7200", secs)
+	}
+	if rot.body["expired"] == true {
+		t.Fatal("a freshly minted token reports itself expired")
+	}
+	if exp := p.relay.ClientToken().ExpiresAt(); exp.IsZero() {
+		t.Fatal("the store kept no expiry")
+	}
+}
+
+// TestTokenRotateDefaultsToConfiguredTTL: a request that names no lifetime gets
+// the relay's default, which is where "24h unless you say otherwise" lives.
+func TestTokenRotateDefaultsToConfiguredTTL(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+
+	for _, payload := range []any{nil, map[string]any{}, map[string]string{"ttl": ""}} {
+		rot := p.call(t, "POST", "/admin/api/token/rotate", payload, nil)
+		if rot.status != http.StatusOK {
+			t.Fatalf("rotate(%v) = %d %s, want 200", payload, rot.status, rot.raw)
+		}
+		secs, _ := rot.body["expiresInSeconds"].(float64)
+		if secs < 86000 || secs > 86400 {
+			t.Fatalf("rotate(%v) gave %v seconds, want about 86400", payload, secs)
+		}
+	}
+}
+
+// TestTokenRotateCanBeAskedForNoExpiry: "never" has to stay reachable, because
+// an unattended machine whose token lapses is a support call at 3am.
+func TestTokenRotateCanBeAskedForNoExpiry(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+
+	rot := p.call(t, "POST", "/admin/api/token/rotate", map[string]string{"ttl": "never"}, nil)
+	if rot.status != http.StatusOK {
+		t.Fatalf("rotate = %d %s, want 200", rot.status, rot.raw)
+	}
+	if _, ok := rot.body["expiresAt"]; ok {
+		t.Fatalf("a never-expiring token reported an expiry: %v", rot.body)
+	}
+	if !p.relay.ClientToken().ExpiresAt().IsZero() {
+		t.Fatal("the store kept an expiry")
+	}
+}
+
+// TestTokenRotateRejectsUnusableLifetimes: a token that dies in seconds, or in
+// the past, is a mistake worth naming rather than silently honouring.
+func TestTokenRotateRejectsUnusableLifetimes(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+	before := p.relay.ClientToken().Get()
+
+	for _, ttl := range []string{"5s", "-1h", "abc", "400d", "2 fortnights"} {
+		got := p.call(t, "POST", "/admin/api/token/rotate", map[string]string{"ttl": ttl}, nil)
+		if got.status != http.StatusBadRequest {
+			t.Fatalf("rotate(%q) = %d %s, want 400", ttl, got.status, got.raw)
+		}
+	}
+	if p.relay.ClientToken().Get() != before {
+		t.Fatal("a rejected request still changed the token")
+	}
+}
+
+// TestTokenRotateAcceptsDays: "7d" is what an operator types; it has to mean
+// seven days and not an error.
+func TestTokenRotateAcceptsDays(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+
+	rot := p.call(t, "POST", "/admin/api/token/rotate", map[string]string{"ttl": "7d"}, nil)
+	if rot.status != http.StatusOK {
+		t.Fatalf("rotate = %d %s, want 200", rot.status, rot.raw)
+	}
+	secs, _ := rot.body["expiresInSeconds"].(float64)
+	if secs < 604000 || secs > 604800 {
+		t.Fatalf("7d gave %v seconds, want about 604800", secs)
+	}
+}
+
+// TestTokenStateCarriesTheDefault: the panel needs the default to label its own
+// choice, and needs to know a token is already spent.
+func TestTokenStateCarriesTheDefault(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+
+	got := p.call(t, "GET", "/admin/api/token", nil, nil)
+	if got.status != http.StatusOK {
+		t.Fatalf("token = %d %s, want 200", got.status, got.raw)
+	}
+	if secs, _ := got.body["defaultTTLSeconds"].(float64); secs != 86400 {
+		t.Fatalf("defaultTTLSeconds = %v, want 86400", got.body["defaultTTLSeconds"])
+	}
+	if got.body["expired"] != false {
+		t.Fatalf("expired = %v, want false", got.body["expired"])
 	}
 }
 
@@ -524,6 +702,34 @@ func TestUIScriptReferencesOnlyExistingIDs(t *testing.T) {
 	sort.Strings(missing)
 	if len(missing) > 0 {
 		t.Fatalf("the script looks up ids that are not in the page: %v", missing)
+	}
+}
+
+// TestUIScriptParses guards the failure mode that no HTTP check can see: one bad
+// character leaves the page blank while every endpoint still answers 200.
+func TestUIScriptParses(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed; skipping the script syntax check")
+	}
+	raw, err := uiFS.ReadFile("ui.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(raw)
+	start := strings.Index(page, "<script>")
+	end := strings.LastIndex(page, "</script>")
+	if start < 0 || end < start {
+		t.Fatal("ui.html has no inline script")
+	}
+	script := page[start+len("<script>") : end]
+
+	file := filepath.Join(t.TempDir(), "panel.js")
+	if err := os.WriteFile(file, []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(node, "--check", file).CombinedOutput(); err != nil {
+		t.Fatalf("the panel script does not parse: %v\n%s", err, out)
 	}
 }
 

@@ -236,8 +236,13 @@ func (r *Relay) agentAuthOK(rq *http.Request) (string, bool) {
 	return id, true
 }
 
-// tokenOK reports whether a presented client credential matches.
+// tokenOK reports whether a presented client credential matches and is still
+// within its lifetime. Every path that admits a viewer funnels through here, so
+// an expired token stops working everywhere at once.
 func (r *Relay) tokenOK(got string) bool {
+	if r.token.Expired() {
+		return false
+	}
 	return subtle.ConstantTimeCompare([]byte(got), []byte(r.token.Get())) == 1
 }
 

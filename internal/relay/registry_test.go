@@ -136,7 +136,7 @@ func TestTokenRotationTakesEffectNow(t *testing.T) {
 		t.Fatalf("the configured token was refused: %v", err)
 	}
 
-	next, err := store.Rotate()
+	next, err := store.Rotate(24 * time.Hour)
 	if err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestTokenStoreRoundTripsThroughDisk(t *testing.T) {
 	if s.Get() != "initial" {
 		t.Fatalf("token = %q, want the initial value", s.Get())
 	}
-	if err := s.Set("rotated"); err != nil {
+	if err := s.Set("rotated", 24*time.Hour); err != nil {
 		t.Fatalf("set: %v", err)
 	}
 

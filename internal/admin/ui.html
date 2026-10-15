@@ -42,7 +42,7 @@
   .card h2 { font-size: 14px; margin: 0 0 4px; }
   .card p.hint { color: var(--dim); font-size: 13px; margin: 0 0 16px; }
   label { display: block; font-size: 13px; color: var(--dim); margin: 12px 0 6px; }
-  input {
+  input, select {
     width: 100%;
     background: var(--bg);
     border: 1px solid var(--line);
@@ -51,7 +51,7 @@
     padding: 9px 11px;
     font: inherit;
   }
-  input:focus { outline: none; border-color: var(--accent-dim); }
+  input:focus, select:focus { outline: none; border-color: var(--accent-dim); }
   input.mono { font-family: var(--mono); font-size: 13px; }
   button {
     background: var(--accent);
@@ -182,9 +182,24 @@
         </div>
         <button class="ghost" id="t-show">Reveal</button>
         <button class="ghost" id="t-copy">Copy</button>
-        <button class="danger" id="t-rotate">Rotate</button>
       </div>
-      <div class="note" id="t-note" hidden>Rotating signs everyone out. Open viewers must paste the new token.</div>
+      <div class="hint" id="t-expiry"></div>
+      <div class="row">
+        <div class="grow">
+          <label for="t-ttl">Lifetime of the next token</label>
+          <select id="t-ttl">
+            <option value="">24 hours</option>
+            <option value="1h">1 hour</option>
+            <option value="6h">6 hours</option>
+            <option value="24h">24 hours</option>
+            <option value="7d">7 days</option>
+            <option value="30d">30 days</option>
+            <option value="never">Never expires</option>
+          </select>
+        </div>
+        <button class="danger" id="t-rotate">Generate new token</button>
+      </div>
+      <div class="note" id="t-note" hidden>Generating a new token signs everyone out. Open viewers must paste the new one.</div>
       <div class="err" id="t-err"></div>
     </div>
 
@@ -308,6 +323,29 @@
     return api("devices").then(function (body) { renderDevices(body.devices || []); });
   }
 
+  // token lifetime, in the words an operator would use
+  function humanDur(secs) {
+    if (secs <= 0) return "0m";
+    var m = Math.floor(secs / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
+    if (d > 0) return d + "d " + (h % 24) + "h";
+    if (h > 0) return h + "h " + (m % 60) + "m";
+    return Math.max(1, m) + "m";
+  }
+
+  function tokenLifetime(b) {
+    if (b.expired) return "This token has expired. Generate a new one to restore access.";
+    if (!b.expiresAt) return "This token never expires.";
+    return "Expires in " + humanDur(b.expiresInSeconds || 0) +
+      ", at " + new Date(b.expiresAt).toLocaleString() + ".";
+  }
+
+  function showToken(b) {
+    $("t-val").value = b.token || "";
+    text($("t-expiry"), tokenLifetime(b));
+    $("t-ttl").options[0].textContent =
+      (b.defaultTTLSeconds > 0 ? humanDur(b.defaultTTLSeconds) : "Never expires") + " (default)";
+  }
+
   function loadDashboard(st) {
     state.relayUrl = st.relayUrl || "";
     state.ca = !!st.ca;
@@ -317,7 +355,7 @@
     $("c-ca").disabled = !state.ca;
     updateCmd();
     refresh().catch(function (e) { text($("d-err"), e.message); });
-    api("token").then(function (b) { $("t-val").value = b.token || ""; })
+    api("token").then(showToken)
       .catch(function (e) { text($("t-err"), e.message); });
   }
 
@@ -402,12 +440,13 @@
   $("t-copy").onclick = function () { copy($("t-val").value, this); };
   $("t-rotate").onclick = function () {
     $("t-note").hidden = false;
-    if (!confirm("Rotate the client token? Everyone viewing right now will be cut off.")) return;
-    api("token/rotate", { method: "POST", body: "{}" }).then(function (b) {
-      $("t-val").value = b.token || "";
-      $("t-val").type = "text";
-      $("t-show").textContent = "Hide";
-    }).catch(function (e) { alert(e.message); });
+    if (!confirm("Generate a new client token? Everyone viewing right now will be cut off.")) return;
+    api("token/rotate", { method: "POST", body: JSON.stringify({ ttl: $("t-ttl").value }) })
+      .then(function (b) {
+        showToken(b);
+        $("t-val").type = "text";
+        $("t-show").textContent = "Hide";
+      }).catch(function (e) { text($("t-err"), e.message); });
   };
 
   // connect

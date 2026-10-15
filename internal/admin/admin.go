@@ -3,11 +3,13 @@ package admin
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,7 +36,12 @@ type Options struct {
 	BasePath string
 	// SessionTTL is how long a login lasts, default 12h.
 	SessionTTL time.Duration
-	Log        *log.Logger
+	// TokenTTL is how long a client token minted here stays valid when the
+	// operator does not choose. Zero means such tokens never expire. The relay
+	// binary always sets this (default 24h), so zero here is a deliberate
+	// choice, not an oversight.
+	TokenTTL time.Duration
+	Log      *log.Logger
 }
 
 // Admin serves the management panel.
@@ -315,25 +322,109 @@ func (a *Admin) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": removed})
 }
 
+// tokenView is the panel's picture of the client credential: the value itself
+// plus how long it has left, so the operator can see a token about to lapse
+// before every viewer is locked out.
+func (a *Admin) tokenView() map[string]any {
+	st := a.opts.Relay.ClientToken()
+	v := map[string]any{
+		"token":             st.Get(),
+		"expired":           st.Expired(),
+		"defaultTTLSeconds": int(a.opts.TokenTTL.Seconds()),
+	}
+	if exp := st.ExpiresAt(); !exp.IsZero() {
+		v["expiresAt"] = exp.UTC().Format(time.RFC3339)
+		v["expiresInSeconds"] = int(st.TTL().Seconds())
+	}
+	return v
+}
+
 func (a *Admin) handleToken(w http.ResponseWriter, r *http.Request) {
 	if !a.guard(w, r) {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": a.opts.Relay.ClientToken().Get()})
+	writeJSON(w, http.StatusOK, a.tokenView())
 }
 
+// handleRotate mints a fresh client token. It replaces the old one outright, so
+// every browser and phone using it has to enter the new value.
 func (a *Admin) handleRotate(w http.ResponseWriter, r *http.Request) {
 	if !a.guard(w, r) {
 		return
 	}
-	token, err := a.opts.Relay.ClientToken().Rotate()
+	var body struct {
+		TTL string `json:"ttl"`
+	}
+	// The body is optional: an older panel, or a bare POST, gets the default.
+	if r.ContentLength != 0 && !readJSON(w, r, &body) {
+		return
+	}
+	ttl, err := parseTokenTTL(body.TTL, a.opts.TokenTTL)
 	if err != nil {
+		a.fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if _, err := a.opts.Relay.ClientToken().Rotate(ttl); err != nil {
 		a.opts.Log.Printf("admin: rotate token: %v", err)
 		a.fail(w, http.StatusInternalServerError, "could not rotate the token")
 		return
 	}
-	a.opts.Log.Printf("admin: client token rotated")
-	writeJSON(w, http.StatusOK, map[string]any{"token": token})
+	if ttl > 0 {
+		a.opts.Log.Printf("admin: client token rotated (expires in %s)", ttl)
+	} else {
+		a.opts.Log.Printf("admin: client token rotated (no expiry)")
+	}
+	writeJSON(w, http.StatusOK, a.tokenView())
+}
+
+// Token lifetime bounds. A token that expires in seconds is a support call, and
+// one that outlives a year is indistinguishable from forever.
+const (
+	minTokenTTL = 5 * time.Minute
+	maxTokenTTL = 365 * 24 * time.Hour
+)
+
+// parseTokenTTL resolves the panel's lifetime choice. An empty value takes the
+// configured default; "never"/"none"/"0" ask for a token that does not expire.
+// Anything else is a Go duration ("24h", "30m"), with a "d" suffix accepted as
+// days because "720h" is what people get wrong.
+func parseTokenTTL(s string, def time.Duration) (time.Duration, error) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	switch s {
+	case "":
+		ttl := def
+		if ttl > 0 && ttl < minTokenTTL {
+			return 0, fmt.Errorf("the default token lifetime (%s) is below the %s minimum", ttl, minTokenTTL)
+		}
+		return ttl, nil
+	case "never", "none", "0", "inf", "infinity":
+		return 0, nil
+	}
+	if n, ok := strings.CutSuffix(s, "d"); ok {
+		days, err := strconv.Atoi(strings.TrimSpace(n))
+		if err != nil {
+			return 0, fmt.Errorf("could not read %q as a number of days", s)
+		}
+		return checkTokenTTL(time.Duration(days) * 24 * time.Hour)
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("lifetime %q is not a duration such as 12h, 7d or never", s)
+	}
+	return checkTokenTTL(d)
+}
+
+func checkTokenTTL(d time.Duration) (time.Duration, error) {
+	if d <= 0 {
+		return 0, fmt.Errorf("lifetime must be positive, or never")
+	}
+	if d < minTokenTTL {
+		return 0, fmt.Errorf("lifetime must be at least %s", minTokenTTL)
+	}
+	if d > maxTokenTTL {
+		return 0, fmt.Errorf("lifetime must be at most %s", maxTokenTTL)
+	}
+	return d, nil
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────

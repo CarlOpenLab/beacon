@@ -85,11 +85,19 @@ Open the relay's management page once and create the admin account:
 https://relay.example.com/admin        # or https://host/termfleet/admin/ behind a prefix
 ```
 
-It is where machines are enrolled, the client token is read and rotated, and the
+It is where machines are enrolled, the client token is minted and read, and the
 CA certificate is downloaded. The account is stored hashed at
 `/var/lib/tfrelay/admin.json` (0600, override with `-admin-store`); losing the
 password means deleting that file and re-running setup. Turn the page off
 entirely with `-admin=false` if you would rather keep setup in the shell.
+
+The client token is a single shared secret, so it is also the one credential
+worth giving an expiry: pick a lifetime on the page — 1 hour to 30 days, or
+"never" — and the default is 24 hours. When it lapses, viewers are refused until
+someone pastes a fresh token; the page keeps showing how long the current one
+has left. Set the default with `-client-token-ttl` (`0` means tokens never
+expire), and note that a token passed with `-client-token` never expires at all,
+since it was configured by hand.
 
 Give it a non-default path with `-admin-path`, and a real relay URL to hand out
 with `-public-url wss://relay.example.com/relay/agent` — the relay cannot guess a
