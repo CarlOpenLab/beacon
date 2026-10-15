@@ -1,11 +1,17 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 )
 
@@ -73,6 +79,11 @@ type settingsWindow struct {
 	store *settings.Store
 	fleet *fleet
 
+	// win is the window this pane is drawn in. Async work (fetching a
+	// certificate, opening the file chooser) finishes off the UI thread and
+	// reports back through it.
+	win *mygo.Window
+
 	pane int
 
 	family  string
@@ -83,6 +94,11 @@ type settingsWindow struct {
 	ca      string
 	relayOn bool
 	server  bool
+
+	// caNote is the one line under the CA field: which certificate is pinned,
+	// or why the last attempt failed. It is state, not a transient message,
+	// because ui has no other place to show "this is the file you picked".
+	caNote string
 
 	status string
 }
@@ -106,7 +122,31 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 	if s.size <= 0 {
 		s.size = settings.DefaultFontSize
 	}
+	s.caNote = caNoteFor(s.ca)
 	return s
+}
+
+// caNoteFor is the one line under the CA field. It reads the file so a wrong,
+// missing or expired certificate is visible while the window is open, instead
+// of surfacing later as a machine that mysteriously stays offline.
+func caNoteFor(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "自签证书的中继必须填这一栏；用公共 CA 签发的中继可以留空。"
+	}
+	pemBytes, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Sprintf("读不到这个文件：%v", err)
+	}
+	info, err := agent.DescribeCert(pemBytes)
+	if err != nil {
+		return fmt.Sprintf("这不是有效的证书文件：%v", err)
+	}
+	note := fmt.Sprintf("已固定 %s（%s…），%s 到期。", info.Subject, info.Fingerprint[:16], info.NotAfter.Format("2006-01-02"))
+	if time.Now().After(info.NotAfter) {
+		note += " 这张证书已经过期。"
+	}
+	return note
 }
 
 func (s *settingsWindow) view(c *ui.Context) {
@@ -160,12 +200,131 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 		ui.TextInput(c, &s.secret).Password().Fill()
 	})
 	ui.Field(c, "CA 证书", func() {
-		ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
+		ui.Column(c).Gap(6).Children(func() {
+			ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
+			ui.Row(c).Gap(8).Children(func() {
+				if ui.Button(c, "从服务器获取").Clicked() {
+					s.fetchCA()
+				}
+				if ui.Button(c, "选择文件…").Clicked() {
+					s.pickCA()
+				}
+				if s.ca != "" && ui.Button(c, "清除").Clicked() {
+					s.ca = ""
+					s.commit()
+				}
+			})
+			ui.Text(c, s.caNote)
+		})
 	})
 	ui.Field(c, "接入", func() {
 		ui.Switch(c, &s.relayOn).OnChange(func() { s.commit() })
 	})
-	ui.Text(c, "地址形如 wss://relay.example/relay/agent。中继用的是自签或私有 CA 证书时，把 PEM 证书文件路径填进「CA 证书」；改完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。")
+	if s.relayOn {
+		ui.Text(c, s.relayStatusLine())
+	}
+	ui.Text(c, "地址形如 wss://relay.example/relay/agent。中继用自签或私有 CA 证书时，点「从服务器获取」直接把它取回来并固定，或点「选择文件…」指定已经下载好的 PEM。填完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。")
+}
+
+// relayStatusLine says what the link is actually doing. Without it, a wrong
+// certificate or a rejected credential looks exactly like everything being
+// fine, which is how "I filled it in and it is still offline" happens.
+func (s *settingsWindow) relayStatusLine() string {
+	if s.fleet == nil {
+		return ""
+	}
+	st := s.fleet.RelayState()
+	switch {
+	case st.Connected:
+		return "● " + st.Detail
+	case st.Detail != "":
+		return "○ " + st.Detail
+	default:
+		return "○ 正在接入…"
+	}
+}
+
+// fetchCA dials the relay and pins the certificate it presents. It is the same
+// trust decision a browser asks a person to make when it warns about a
+// self-signed certificate, with two differences: the certificate is shown
+// afterwards so it is clear what was trusted, and there is no file to find and
+// no path to type.
+func (s *settingsWindow) fetchCA() {
+	relay := strings.TrimSpace(s.relay)
+	if relay == "" {
+		s.setNote("先填上面的「公网地址」，再从服务器获取证书。")
+		return
+	}
+	s.setNote("正在从 " + relay + " 获取证书…")
+	go func() {
+		path, err := fetchAndPinCA(relay, s.store.Dir(), 15*time.Second)
+		if err != nil {
+			s.setNote("获取失败：" + err.Error())
+			return
+		}
+		s.pinCA(path)
+	}()
+}
+
+// fetchAndPinCA fetches the relay's certificate and saves it in dir, returning
+// the file it wrote. The network and disk work live here so that the button's
+// behaviour can be tested without a window to post results to.
+func fetchAndPinCA(relay, dir string, timeout time.Duration) (string, error) {
+	pemBytes, err := agent.FetchCACert(relay, timeout)
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "relay-ca.pem")
+	if err := os.WriteFile(path, pemBytes, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// pinCA adopts path as the CA and saves the settings, so picking a certificate
+// takes one click rather than "choose it, then remember to apply".
+func (s *settingsWindow) pinCA(path string) {
+	s.set(func() {
+		s.ca = path
+		s.commit()
+	})
+}
+
+// pickCA lets someone point at a PEM file they already have. The chooser is
+// native and blocks until dismissed, so it runs off the UI thread.
+func (s *settingsWindow) pickCA() {
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: s.win,
+			Title:  "选择 CA 证书（PEM）",
+			Filters: []mygo.FileFilter{
+				{Name: "证书文件", Extensions: []string{"pem", "crt", "cer"}},
+			},
+		})
+		if err != nil || len(paths) == 0 || paths[0] == "" {
+			return
+		}
+		s.pinCA(paths[0])
+	}()
+}
+
+// set runs fn on the UI thread and redraws, so async work can put its result
+// on screen.
+func (s *settingsWindow) set(fn func()) {
+	if s.win == nil {
+		fn()
+		return
+	}
+	s.win.Update(fn)
+}
+
+// setNote replaces the line under the CA field, without touching the saved
+// settings.
+func (s *settingsWindow) setNote(note string) {
+	s.set(func() { s.caNote = note })
 }
 
 func (s *settingsWindow) serverPane(c *ui.Context) {
@@ -196,6 +355,7 @@ func (s *settingsWindow) commit() {
 		s.status = "设置没保存：" + err.Error()
 		return
 	}
+	s.caNote = caNoteFor(s.ca)
 	s.desk.reletter(termFont(stored))
 	if err := s.fleet.SetRelay(stored.RelayURL, stored.DeviceID, stored.DeviceSecret, stored.RelayCA, stored.RelayOn); err != nil {
 		s.status = "远程渠道没接上：" + err.Error()
@@ -228,6 +388,7 @@ func (s *settingsWindow) restoreDefaults() {
 	s.device = ""
 	s.secret = ""
 	s.ca = ""
+	s.caNote = caNoteFor("")
 	s.relayOn = false
 	s.server = true
 	s.commit()

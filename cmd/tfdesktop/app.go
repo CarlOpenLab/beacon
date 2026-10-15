@@ -342,6 +342,18 @@ func (w *window) reletter(f terminal.Font) {
 	})
 }
 
+// invalidateSettings redraws the settings window if it is open. The relay link
+// reports its state from the agent's goroutine, and an immediate-mode pane only
+// repaints when something tells it to.
+func (w *window) invalidateSettings() {
+	w.settingsMu.Lock()
+	win := w.settingsWin
+	w.settingsMu.Unlock()
+	if win != nil {
+		win.Invalidate()
+	}
+}
+
 // openSettings shows the preferences window, or brings the open one forward.
 // It runs off the UI thread, as New Tab does, so a click never re-enters the
 // render pass that drew the button.
@@ -363,6 +375,7 @@ func (w *window) openSettings() {
 		StateKey:        "settings",
 		Content:         ui.View(sw.view),
 	})
+	sw.win = win
 	w.settingsWin = win
 	win.OnClosed(func() {
 		w.settingsMu.Lock()

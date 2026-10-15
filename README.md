@@ -127,6 +127,20 @@ the Settings window writes them to `settings.json` under the OS config
 directory (`TERM_FLEET_CONFIG_HOME` overrides it) and applies them as you change
 them, so this desktop shell can join a relay without a command line.
 
+A relay that terminates TLS with a private certificate needs a member to pin
+that certificate, so the Remote pane has a *CA certificate* row. The value is a
+file path; the **Get from server** button fills it for you by fetching the
+certificate the relay presents and writing it next to `settings.json`, and
+**Browse…** opens a file picker if you already have the `relay.crt` from the
+admin page's download link. Without it a connection fails with
+`x509: certificate is not standards compliant` — browsers offer to click
+through such a certificate, Go does not, and the desktop is Go.
+
+The same pane shows what the link is actually doing — *connecting…*, *connected
+as …*, or *cannot reach it: …* — because a missing CA and a wrong device secret
+otherwise look identical: nothing happens, and the pane used to say only that
+the form had been saved.
+
 Endpoints: `GET /` (client), `GET /healthz`, `GET /ws` (WebSocket).
 
 ## Reach it from anywhere

@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,9 +65,26 @@ type Config struct {
 	Hub *hub.Hub
 
 	Log *log.Logger
+	// OnState, when set, is called whenever the link to the relay changes
+	// state. It exists so a window can say why a machine is not reachable
+	// instead of leaving a switch on and nothing else to go on. It is called
+	// from the agent's own goroutine and must not block.
+	OnState func(State)
 	// Backoff tuning. Tests set these small; production uses the defaults.
 	MinBackoff time.Duration
 	MaxBackoff time.Duration
+}
+
+// State is how the link to the relay is doing, in the terms a person needs in
+// order to tell "not set up" from "set up and failing".
+type State struct {
+	// Connecting is true while an attempt is in flight.
+	Connecting bool
+	// Connected is true once the relay has welcomed this member.
+	Connected bool
+	// Detail is a one-line summary: the address being tried, or why the last
+	// attempt ended.
+	Detail string
 }
 
 func (c Config) withDefaults() Config {
@@ -140,6 +158,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	backoff := a.cfg.MinBackoff
 	for {
 		start := time.Now()
+		a.report(State{Connecting: true, Detail: "正在连接 " + a.cfg.URL})
 		err := a.serveOnce(ctx)
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -148,6 +167,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			backoff = a.cfg.MinBackoff
 		}
 		a.log.Printf("agent: relay link ended after %s: %v", time.Since(start).Round(time.Millisecond), err)
+		a.report(State{Detail: shortReason(err)})
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -159,6 +179,32 @@ func (a *Agent) Run(ctx context.Context) error {
 				backoff = a.cfg.MaxBackoff
 			}
 		}
+	}
+}
+
+// report hands a state change to whoever is watching, if anyone is.
+func (a *Agent) report(s State) {
+	if a.cfg.OnState != nil {
+		a.cfg.OnState(s)
+	}
+}
+
+// shortReason turns a dial or handshake error into something that fits in a
+// settings window. The certificate failure in particular is worth naming: it is
+// what a missing or wrong CA looks like from the outside, and "machine stays
+// offline" is not a useful thing to hand someone.
+func shortReason(err error) string {
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "certificate"):
+		return "连不上：证书校验失败，检查「CA 证书」是否填对 —— " + msg
+	case strings.Contains(msg, "refused the link"):
+		return "连不上：中继拒绝了这组设备 ID / 密钥 —— " + msg
+	case strings.Contains(msg, "connection refused"), strings.Contains(msg, "no such host"),
+		strings.Contains(msg, "timeout"), strings.Contains(msg, "i/o timeout"):
+		return "连不上：网络不可达 —— " + msg
+	default:
+		return "连不上：" + msg
 	}
 }
 
@@ -218,6 +264,7 @@ func (a *Agent) serveOnce(ctx context.Context) error {
 		return fmt.Errorf("unexpected frame %q while awaiting welcome", welcome.T)
 	}
 	a.log.Printf("agent: connected to relay as %q", a.cfg.DeviceID)
+	a.report(State{Connected: true, Detail: "已接入中继，设备 ID " + a.cfg.DeviceID})
 
 	defer func() {
 		s.closeAll()

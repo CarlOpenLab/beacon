@@ -1,11 +1,21 @@
 package main
 
 import (
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/pem"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 )
 
@@ -148,5 +158,170 @@ func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 		if got := tc.draft(); got != tc.typed {
 			t.Errorf("%s: typed %q but the draft holds %q", tc.label, tc.typed, got)
 		}
+	}
+}
+
+// testCertPEM returns a certificate in the shape the desktop has to cope with:
+// a real one, issued for a host rather than by a public CA.
+func testCertPEM(t *testing.T) ([]byte, *x509.Certificate) {
+	t.Helper()
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	t.Cleanup(srv.Close)
+	cert := srv.Certificate()
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}), cert
+}
+
+func TestSettingsRemotePaneOffersCertHelpers(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+	if err := tt.Click("远程"); err != nil {
+		t.Fatalf("Click(远程): %v", err)
+	}
+	tt.Frame()
+
+	// Downloading a certificate from the admin page and then finding its path is
+	// the friction these buttons exist to remove, so both must be visible
+	// without filling anything in first.
+	for _, want := range []string{"从服务器获取", "选择文件…"} {
+		if _, ok := tt.Find(want); !ok {
+			t.Errorf("%q button is missing from the remote pane", want)
+		}
+	}
+	if _, ok := tt.Find("清除"); ok {
+		t.Error("清除 should only appear once a certificate is set")
+	}
+}
+
+func TestSettingsCANoteDescribesThePinnedCertificate(t *testing.T) {
+	sw, store := newTestSettingsWindow(t)
+	pemBytes, _ := testCertPEM(t)
+	path := filepath.Join(t.TempDir(), "relay-ca.pem")
+	if err := os.WriteFile(path, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Describe the file the same way the window does, so the assertion is about
+	// the note being present rather than about a second, independent guess at
+	// what the subject reads like.
+	subject, err := agent.DescribeCert(pemBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subject.Subject == "" {
+		t.Fatal("test certificate has no subject to look for")
+	}
+
+	sw.ca = path
+	sw.commit()
+
+	if !strings.Contains(sw.caNote, subject.Subject) {
+		t.Errorf("note = %q, want it to name %q", sw.caNote, subject.Subject)
+	}
+	// The path must survive into the file the app actually reads on startup: a
+	// note that describes the draft while the store holds something else would
+	// be worse than no note.
+	if got := store.Get().RelayCA; got != path {
+		t.Errorf("stored RelayCA = %q, want %q", got, path)
+	}
+
+	// ...and the note has to be on screen, not merely in a field: a summary
+	// nobody can read is the same as no feedback at all.
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+	if err := tt.Click("远程"); err != nil {
+		t.Fatalf("Click(远程): %v", err)
+	}
+	tt.Frame()
+	// Find needs the whole element text, so assert on the note verbatim: the
+	// property under test is that what the window holds reaches the screen. The
+	// Contains check above already pins down what the note says.
+	if _, ok := tt.Find(sw.caNote); !ok {
+		t.Errorf("the certificate note is not rendered in the remote pane; texts = %v", tt.Texts())
+	}
+	if _, ok := tt.Find("清除"); !ok {
+		t.Error("清除 should appear once a certificate is set")
+	}
+}
+
+func TestSettingsCANoteExplainsAnUnusableFile(t *testing.T) {
+	cases := []struct {
+		name string
+		path func(t *testing.T) string
+		want string
+	}{
+		{
+			name: "missing",
+			path: func(t *testing.T) string { return filepath.Join(t.TempDir(), "nope.pem") },
+			want: "读不到",
+		},
+		{
+			name: "not a certificate",
+			path: func(t *testing.T) string {
+				p := filepath.Join(t.TempDir(), "junk.pem")
+				if err := os.WriteFile(p, []byte("hello"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				return p
+			},
+			want: "不是有效的证书",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sw, _ := newTestSettingsWindow(t)
+			sw.ca = tc.path(t)
+			sw.commit()
+			if !strings.Contains(sw.caNote, tc.want) {
+				t.Errorf("note = %q, want it to mention %q", sw.caNote, tc.want)
+			}
+		})
+	}
+}
+
+func TestSettingsFetchCAWithoutAddressGuidesInsteadOfFailingQuietly(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	sw.relay = ""
+	sw.fetchCA()
+	if !strings.Contains(sw.caNote, "公网地址") {
+		t.Errorf("note = %q, want it to point at the address field", sw.caNote)
+	}
+}
+
+func TestFetchAndPinCASavesTheCertificateTheRelayPresents(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer srv.Close()
+	addr := strings.TrimPrefix(srv.URL, "https://")
+
+	dir := filepath.Join(t.TempDir(), "config")
+	path, err := fetchAndPinCA("wss://"+addr+"/relay/agent", dir, 10*time.Second)
+	if err != nil {
+		t.Fatalf("fetchAndPinCA: %v", err)
+	}
+	if path != filepath.Join(dir, "relay-ca.pem") {
+		t.Errorf("path = %q, want it under the config dir", path)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("the certificate was not written: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("mode = %v, want 0600", perm)
+	}
+
+	// What was pinned must be the certificate the relay actually showed,
+	// otherwise the button hands the app a file that cannot authenticate
+	// anything.
+	pinned, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := agent.DescribeCert(pinned)
+	if err != nil {
+		t.Fatalf("the saved file is not a certificate: %v", err)
+	}
+	sum := sha256.Sum256(srv.Certificate().Raw)
+	if want := hex.EncodeToString(sum[:]); got.Fingerprint != want {
+		t.Errorf("pinned fingerprint = %s, want %s", got.Fingerprint, want)
 	}
 }

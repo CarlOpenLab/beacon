@@ -39,6 +39,13 @@ type fleet struct {
 	stopSrv   func()
 	stopAgent func()
 	relayOn   bool
+
+	// relayState is the last thing the agent said about the link, kept so the
+	// settings window can answer "why is this machine offline?" instead of
+	// leaving a switch turned on with nothing else to go on. onState, when set,
+	// asks the UI to repaint after it changes.
+	relayState agent.State
+	onState    func()
 }
 
 // newFleet builds the hub and starts the goroutine that keeps it reaping idle
@@ -132,6 +139,7 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 		f.stopAgent()
 		f.stopAgent, f.relayOn = nil, false
 	}
+	f.relayState = agent.State{}
 	if !enabled || relayURL == "" {
 		return nil
 	}
@@ -150,6 +158,7 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 		RootCAs:  roots,
 		Hub:      f.hub,
 		Log:      f.log,
+		OnState:  f.noteRelayState,
 	})
 	if err != nil {
 		return err
@@ -164,6 +173,27 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 		}
 	}()
 	return nil
+}
+
+// RelayState reports what the agent last said about the link. It is what turns
+// "the machine is still offline" into something actionable.
+func (f *fleet) RelayState() agent.State {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.relayState
+}
+
+// noteRelayState records a state change and asks for a repaint. The notify is
+// called without the lock held: it ends up in UI code that reads RelayState
+// back.
+func (f *fleet) noteRelayState(s agent.State) {
+	f.mu.Lock()
+	f.relayState = s
+	notify := f.onState
+	f.mu.Unlock()
+	if notify != nil {
+		notify()
+	}
 }
 
 // Close stops both links. It leaves the hub's sessions alone: the process is on

@@ -5,6 +5,9 @@ package relay_test
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +19,7 @@ import (
 
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/daemon"
+	"github.com/CarlOpenLab/term-fleet/internal/hub"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/relay"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
@@ -571,5 +575,97 @@ func TestAgentRedialsAfterLinkLoss(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the session did not survive the relay outage: %+v", list.Sessions)
+	}
+}
+
+// waitForState collects agent states until pick accepts one, so a test can wait
+// for the moment the link comes up rather than sleeping and hoping.
+func waitForState(t *testing.T, states <-chan agent.State, pick func(agent.State) bool) agent.State {
+	t.Helper()
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case s := <-states:
+			if pick(s) {
+				return s
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for the agent to report that state")
+		}
+	}
+}
+
+// The desktop's remote pane renders whatever the agent reports here. Without
+// this, a working link would look exactly like a misconfigured one: the pane
+// would sit on "connecting" forever.
+func TestAgentReportsTheLinkComingUp(t *testing.T) {
+	rl, err := relay.New(relay.Config{
+		Devices:     map[string]string{deviceID: deviceSec},
+		ClientToken: clientToken,
+	})
+	if err != nil {
+		t.Fatalf("relay: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/relay/agent", rl.ServeAgent)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	states := make(chan agent.State, 64)
+	ag, err := agent.New(agent.Config{
+		URL:        wsURL(ts.URL) + "/relay/agent",
+		DeviceID:   deviceID,
+		Secret:     deviceSec,
+		Hub:        hub.New(hub.Options{}),
+		Log:        log.New(io.Discard, "", 0),
+		MinBackoff: 5 * time.Millisecond,
+		MaxBackoff: 20 * time.Millisecond,
+		OnState:    func(s agent.State) { states <- s },
+	})
+	if err != nil {
+		t.Fatalf("agent: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = ag.Run(ctx) }()
+
+	got := waitForState(t, states, func(s agent.State) bool { return s.Connected })
+	if !strings.Contains(got.Detail, deviceID) {
+		t.Errorf("connected detail = %q, want it to name the device", got.Detail)
+	}
+}
+
+// A machine that cannot reach the relay has to say why. This is the case the
+// settings window used to render as nothing at all.
+func TestAgentReportsWhyTheLinkFailed(t *testing.T) {
+	// Bind and release a port so the address is certainly refused.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	states := make(chan agent.State, 64)
+	ag, err := agent.New(agent.Config{
+		URL:        "ws://" + addr + "/relay/agent",
+		DeviceID:   deviceID,
+		Secret:     deviceSec,
+		Hub:        hub.New(hub.Options{}),
+		Log:        log.New(io.Discard, "", 0),
+		MinBackoff: 5 * time.Millisecond,
+		MaxBackoff: 20 * time.Millisecond,
+		OnState:    func(s agent.State) { states <- s },
+	})
+	if err != nil {
+		t.Fatalf("agent: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = ag.Run(ctx) }()
+
+	got := waitForState(t, states, func(s agent.State) bool { return !s.Connecting && !s.Connected && s.Detail != "" })
+	if !strings.Contains(got.Detail, "连不上") {
+		t.Errorf("failure detail = %q, want it to explain the failure", got.Detail)
 	}
 }

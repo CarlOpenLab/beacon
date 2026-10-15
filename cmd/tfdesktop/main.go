@@ -76,6 +76,9 @@ func main() {
 	}()
 
 	app := newWindow(f, store, *shell, *cwd)
+	// The link reports its own health from the agent's goroutine, so the pane
+	// that shows it has to be told to repaint.
+	f.onState = app.invalidateSettings
 
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(mygo.WindowOptions{
