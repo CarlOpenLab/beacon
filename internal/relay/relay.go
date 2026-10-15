@@ -427,7 +427,6 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 	r.rosterMu.Lock()
 	r.seq++
 	n := r.seq
-	r.roster[c] = struct{}{}
 	r.rosterMu.Unlock()
 	r.log.Printf("relay: client %d connected", n)
 
@@ -442,9 +441,19 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 	// Tell a frame-authenticated client it is in before the roster, so it can
 	// distinguish "still authenticating" from "authenticated, awaiting data".
 	// A header-authenticated caller was already told at the HTTP layer.
+	//
+	// This has to precede joining the roster, because joining is what lets a
+	// concurrent broadcastMachines reach this connection: a member joining at
+	// the wrong moment would otherwise push a roster frame ahead of auth.ok and
+	// leave the client unable to tell the two states apart.
 	if viaFrame {
 		c.send(tunnel.Frame{T: tunnel.TAuthOK})
 	}
+
+	r.rosterMu.Lock()
+	r.roster[c] = struct{}{}
+	r.rosterMu.Unlock()
+
 	c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshot()})
 
 	go r.writeLoop(ctx, conn, c.out, c.done, func() { c.close("write failed") })
