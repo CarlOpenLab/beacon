@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -12,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
+	"github.com/CarlOpenLab/term-fleet/internal/fonts"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 )
 
@@ -20,20 +22,28 @@ import (
 // rather than a family name, so it cannot collide with a font someone installs.
 const systemFamily = "系统等宽"
 
-// fontChoices are the families the settings window offers. The list is curated
-// rather than read off the machine: a family the system lacks falls back to its
-// monospaced font on its own, so leaving one out costs nothing.
-var fontChoices = []string{
-	systemFamily,
+// knownFamilies are suggested on top of whatever is installed on this machine.
+// They are a floor for machines whose fonts cannot be read (a bare container,
+// say) rather than the whole list: the field takes any family name, because a
+// curated list cannot know which builds someone installed. Nerd Font releases
+// are named after the family they patch -- "Maple Mono NF" alongside "Maple
+// Mono" -- and a prompt drawn with icons needs those glyphs, so the variants
+// have to be reachable instead of silently falling back.
+var knownFamilies = []string{
 	"JetBrains Mono",
 	"Maple Mono",
+	"Maple Mono NF",
 	"SF Mono",
 	"Menlo",
 	"Monaco",
 	"Cascadia Mono",
+	"Cascadia Code",
 	"Consolas",
 	"Courier New",
 	"Noto Sans Mono",
+	"JetBrainsMono Nerd Font",
+	"FiraCode Nerd Font",
+	"Hack Nerd Font",
 }
 
 const (
@@ -100,7 +110,20 @@ type settingsWindow struct {
 	// because ui has no other place to show "this is the file you picked".
 	caNote string
 
+	// status is the last thing that happened to the draft: saved, or why not.
 	status string
+	// statusErr marks status as a failure, which the window shows in a
+	// different colour from a save.
+	statusErr bool
+	// savedAt is when status was written. It gives "已保存" a time, so the line
+	// reads as an answer to the click that caused it rather than as decoration.
+	savedAt time.Time
+
+	// installedMu guards installed, which a background scan fills with the
+	// font families on this machine. Until it lands the field suggests
+	// knownFamilies only.
+	installedMu sync.Mutex
+	installed   []string
 }
 
 // newSettingsWindow opens on what is on disk right now.
@@ -123,7 +146,80 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 		s.size = settings.DefaultFontSize
 	}
 	s.caNote = caNoteFor(s.ca)
+	s.loadInstalledFamilies()
 	return s
+}
+
+// loadInstalledFamilies reads the machine's font directories off the UI thread:
+// the scan walks every installed font, which is too slow to do while painting.
+// The result only feeds suggestions, so arriving late is harmless.
+func (s *settingsWindow) loadInstalledFamilies() {
+	go func() {
+		found := fonts.Families()
+		s.installedMu.Lock()
+		s.installed = found
+		s.installedMu.Unlock()
+		s.set(func() {})
+	}()
+}
+
+// installedFamilies is the scanned list, or nil before the scan finishes.
+func (s *settingsWindow) installedFamilies() []string {
+	s.installedMu.Lock()
+	defer s.installedMu.Unlock()
+	return s.installed
+}
+
+// familyChoices is what the font field suggests: the system default, the
+// families actually installed, then the well-known ones that are not installed
+// already. Suggestions only — the field accepts any name.
+func (s *settingsWindow) familyChoices() []string {
+	choices := []string{systemFamily}
+	seen := map[string]bool{systemFamily: true}
+	for _, list := range [][]string{s.installedFamilies(), knownFamilies} {
+		for _, name := range list {
+			if name = strings.TrimSpace(name); name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			choices = append(choices, name)
+		}
+	}
+	return choices
+}
+
+// loaded is the stored settings with the same fallbacks the fields apply.
+// Comparing the draft against this answers "did the user change anything?"
+// rather than "does the file spell the defaults the same way as the window?".
+func (s *settingsWindow) loaded() settings.Settings {
+	cur := s.store.Get()
+	if cur.FontSize <= 0 {
+		// The terminal reads 0 as its own default; the field shows a number, so
+		// a window nobody has touched would otherwise look unsaved.
+		cur.FontSize = settings.DefaultFontSize
+	}
+	return cur
+}
+
+// draft is the settings the fields currently describe.
+func (s *settingsWindow) draft() settings.Settings {
+	cur := s.loaded()
+	cur.FontFamily = familyFromLabel(s.family)
+	cur.FontSize = s.size
+	cur.RelayURL = strings.TrimSpace(s.relay)
+	cur.DeviceID = strings.TrimSpace(s.device)
+	cur.DeviceSecret = strings.TrimSpace(s.secret)
+	cur.RelayCA = strings.TrimSpace(s.ca)
+	cur.RelayOn = s.relayOn
+	cur.ServerOff = !s.server
+	return cur
+}
+
+// dirty reports whether the fields hold changes that 应用 has not written yet,
+// so the window can say so instead of leaving the user to guess whether the
+// click did anything.
+func (s *settingsWindow) dirty() bool {
+	return s.draft() != s.loaded()
 }
 
 // caNoteFor is the one line under the CA field. It reads the file so a wrong,
@@ -154,7 +250,16 @@ func (s *settingsWindow) view(c *ui.Context) {
 		ui.Toolbar(c, func() {
 			ui.Text(c, "设置")
 			ui.Spacer(c)
-			if ui.Button(c, "应用").Clicked() {
+			if s.dirty() {
+				ui.Text(c, "● 有未保存的改动").TextColor(c.Theme().Warning)
+			}
+			var apply ui.Element
+			if s.dirty() {
+				apply = ui.PrimaryButton(c, "应用")
+			} else {
+				apply = ui.Button(c, "应用")
+			}
+			if apply.Clicked() {
 				s.commit()
 			}
 			if ui.Button(c, "恢复默认").Clicked() {
@@ -174,14 +279,22 @@ func (s *settingsWindow) view(c *ui.Context) {
 		})
 		if s.status != "" {
 			ui.Divider(c)
-			ui.Text(c, s.status)
+			line := ui.Text(c, s.status)
+			if s.statusErr {
+				line.TextColor(c.Theme().Danger)
+			} else {
+				line.TextColor(c.Theme().Success)
+			}
 		}
 	})
 }
 
 func (s *settingsWindow) terminalPane(c *ui.Context) {
 	ui.Field(c, "字体", func() {
-		ui.Combobox(c, &s.family, fontChoices).OnChange(func() { s.commit() })
+		// Suggestions only, and no commit on change: this field takes free text,
+		// so committing per keystroke would rewrite the settings and rebuild
+		// the relay link on every character. Text fields save on 应用.
+		ui.Autocomplete(c, &s.family, s.familyChoices())
 	})
 	ui.Field(c, "字号", func() {
 		ui.NumberInput(c, &s.size, 8, 32, 1).OnChange(func() { s.commit() })
@@ -341,35 +454,40 @@ func (s *settingsWindow) serverPane(c *ui.Context) {
 // commit writes the draft to disk and applies it to the running shell: the font
 // to the open terminals, the relay link, and the local service.
 func (s *settingsWindow) commit() {
+	// Read the draft before taking the store's lock: draft() reads the store,
+	// and asking for it inside Update would deadlock.
+	draft := s.draft()
 	stored, err := s.store.Update(func(v *settings.Settings) {
-		v.FontFamily = familyFromLabel(s.family)
-		v.FontSize = s.size
-		v.RelayURL = strings.TrimSpace(s.relay)
-		v.DeviceID = strings.TrimSpace(s.device)
-		v.DeviceSecret = strings.TrimSpace(s.secret)
-		v.RelayCA = strings.TrimSpace(s.ca)
-		v.RelayOn = s.relayOn
-		v.ServerOff = !s.server
+		*v = draft
 	})
 	if err != nil {
-		s.status = "设置没保存：" + err.Error()
+		s.fail("设置没保存：" + err.Error())
 		return
 	}
 	s.caNote = caNoteFor(s.ca)
 	s.desk.reletter(termFont(stored))
 	if err := s.fleet.SetRelay(stored.RelayURL, stored.DeviceID, stored.DeviceSecret, stored.RelayCA, stored.RelayOn); err != nil {
-		s.status = "远程渠道没接上：" + err.Error()
+		s.fail("远程渠道没接上：" + err.Error())
 		return
 	}
 	if err := s.fleet.SetServer(!stored.ServerOff); err != nil {
-		s.status = "本机服务没起来：" + err.Error()
+		s.fail("本机服务没起来：" + err.Error())
 		return
 	}
+	s.savedAt = time.Now()
+	s.statusErr = false
 	s.status = s.summary(stored)
 }
 
+// fail records that the draft was not applied, so the window can show it in the
+// colour that reads as "this did not work" instead of looking like a save.
+func (s *settingsWindow) fail(message string) {
+	s.statusErr = true
+	s.status = message
+}
+
 func (s *settingsWindow) summary(stored settings.Settings) string {
-	parts := []string{"已保存"}
+	parts := []string{"已保存 ✓ " + s.savedAt.Format("15:04:05")}
 	if url := s.fleet.BaseURL(); url != "" {
 		parts = append(parts, "本机服务 "+url)
 	} else {

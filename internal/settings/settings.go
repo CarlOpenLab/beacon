@@ -14,8 +14,9 @@ import (
 )
 
 // DefaultFontSize is the terminal size the settings window offers on a first
-// run, in DIPs.
-const DefaultFontSize = 14
+// run, in DIPs. It matches the terminal plugin's own default (13), so the
+// number the window shows is the one the terminal is actually using.
+const DefaultFontSize = 13
 
 // Settings are the desktop shell's persisted preferences. The zero value is
 // what a first run gets: the system font at the plugin's own default size, no
@@ -24,7 +25,8 @@ type Settings struct {
 	// FontFamily is the terminal's font family list. Empty means the system's
 	// monospaced font.
 	FontFamily string `json:"fontFamily,omitempty"`
-	// FontSize is the terminal's size in DIPs. Zero keeps the plugin's default.
+	// FontSize is the terminal's size in DIPs. Zero keeps the plugin's default,
+	// which is DefaultFontSize.
 	FontSize float64 `json:"fontSize,omitempty"`
 
 	// RelayURL is the relay's member endpoint, such as

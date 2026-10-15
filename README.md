@@ -35,7 +35,12 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   daemon underneath is what lets a browser drive the very shell on screen.
   A Settings window (the toolbar's 设置 button) picks the terminal's font and
   size, stores this machine's relay credential, and turns the local service on
-  or off — the same surface Gloss keeps, drawn the same way.
+  or off — the same surface Gloss keeps, drawn the same way. The font field
+  suggests the families installed on the machine and takes any name, so a Nerd
+  Font build ("Maple Mono NF" beside "Maple Mono") is selectable. Edited text
+  fields are saved by 应用, which the toolbar marks as pending until it is
+  pressed; a tab is named after its shell ("zsh 1") until the shell sets a
+  title of its own.
 - `tfrelay` + `agent`: machines dial out to a public relay and are controllable
   from anywhere; a dropped link is a routing outage, not data loss — sessions
   and their output history live in the member and survive it.
@@ -125,7 +130,9 @@ tabs run) and `-cwd` (their working directory). Its relay credential, the
 terminal's font and size, and whether the local service listens are not flags:
 the Settings window writes them to `settings.json` under the OS config
 directory (`TERM_FLEET_CONFIG_HOME` overrides it) and applies them as you change
-them, so this desktop shell can join a relay without a command line.
+them, so this desktop shell can join a relay without a command line. A new tab
+runs PowerShell on Windows when it is installed (`pwsh`, else `powershell`),
+falling back to `cmd.exe` only if neither is present.
 
 A relay that terminates TLS with a private certificate needs a member to pin
 that certificate, so the Remote pane has a *CA certificate* row. The value is a

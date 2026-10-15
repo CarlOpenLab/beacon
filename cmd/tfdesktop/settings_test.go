@@ -325,3 +325,182 @@ func TestFetchAndPinCASavesTheCertificateTheRelayPresents(t *testing.T) {
 		t.Errorf("pinned fingerprint = %s, want %s", got.Fingerprint, want)
 	}
 }
+
+// --- save feedback ---------------------------------------------------------
+
+// A window that has just loaded its settings has nothing to save, and one with
+// an edited field does. That flag is what the toolbar shows, so a wrong answer
+// here means the window either nags or lies about saving.
+func TestSettingsDirtyTracksTheDraftAgainstTheStore(t *testing.T) {
+	sw, store := newTestSettingsWindow(t)
+
+	if sw.dirty() {
+		t.Fatal("a freshly opened window reports unsaved changes")
+	}
+
+	sw.relay = "wss://relay.example/relay/agent"
+	if !sw.dirty() {
+		t.Fatal("editing the address did not mark the draft as unsaved")
+	}
+
+	sw.commit()
+	if sw.dirty() {
+		t.Fatal("a committed draft still reports unsaved changes")
+	}
+	if got := store.Get().RelayURL; got != "wss://relay.example/relay/agent" {
+		t.Fatalf("stored RelayURL = %q, want the applied value", got)
+	}
+
+	// Whitespace that only the store's own trimming would remove is not a
+	// pending change: otherwise the marker would never go away.
+	sw.relay = "  " + store.Get().RelayURL + "  "
+	if sw.dirty() {
+		t.Error("padding the address with spaces counts as an unsaved change")
+	}
+}
+
+// The toolbar is where the user looks after clicking 应用, so both halves of
+// the feedback have to actually reach the screen.
+func TestSettingsToolbarShowsPendingChangesAndClearsThem(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+
+	if _, ok := tt.Find("● 有未保存的改动"); ok {
+		t.Fatal("the pending-changes marker is shown before anything was edited")
+	}
+
+	sw.relay = "wss://relay.example/relay/agent"
+	tt.Frame()
+	if _, ok := tt.Find("● 有未保存的改动"); !ok {
+		t.Fatalf("no pending-changes marker after editing; texts = %v", tt.Texts())
+	}
+
+	if err := tt.Click("应用"); err != nil {
+		t.Fatalf("Click(应用): %v", err)
+	}
+	tt.Frame()
+	if _, ok := tt.Find("● 有未保存的改动"); ok {
+		t.Fatalf("the pending-changes marker survived 应用; texts = %v", tt.Texts())
+	}
+}
+
+// The status line is the only confirmation the click worked, so it has to name
+// the time it happened and be distinguishable from a failure.
+func TestSettingsStatusReportsWhenItSaved(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	sw.commit()
+
+	if !strings.Contains(sw.status, "已保存") {
+		t.Fatalf("status = %q, want it to say the settings were saved", sw.status)
+	}
+	if !strings.Contains(sw.status, sw.savedAt.Format("15:04:05")) {
+		t.Errorf("status = %q, want it to carry the time %s", sw.status, sw.savedAt.Format("15:04:05"))
+	}
+	if sw.statusErr {
+		t.Error("a successful commit is marked as a failure")
+	}
+	if sw.savedAt.IsZero() {
+		t.Error("a successful commit did not record when it happened")
+	}
+}
+
+func TestSettingsStatusMarksFailures(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	// An unusable CA path is one of the ways applying the draft fails.
+	sw.ca = filepath.Join(t.TempDir(), "missing.pem")
+	sw.relay = "wss://relay.example/relay/agent"
+	sw.relayOn = true
+	sw.commit()
+
+	if !sw.statusErr {
+		t.Fatalf("status = %q, want it marked as a failure", sw.status)
+	}
+
+	// And the line must look different from a save once it is on screen.
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+	if err := tt.Click("远程"); err != nil {
+		t.Fatalf("Click(远程): %v", err)
+	}
+	tt.Frame()
+	if _, ok := tt.Find(sw.status); !ok {
+		t.Errorf("the failure message is not rendered; texts = %v", tt.Texts())
+	}
+}
+
+// --- font picker -----------------------------------------------------------
+
+// The font list has to include what is actually installed. A curated list
+// cannot: Nerd Font builds are named after the family they patch, so a machine
+// can have "Maple Mono NF" while the field only offers "Maple Mono".
+func TestSettingsFontChoicesIncludeInstalledFamilies(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	sw.installedMu.Lock()
+	sw.installed = []string{"Maple Mono NF", "Maple Mono", ""}
+	sw.installedMu.Unlock()
+
+	choices := sw.familyChoices()
+	if !contains(choices, "Maple Mono NF") {
+		t.Fatalf("an installed Nerd Font is not offered: %v", choices)
+	}
+	if choices[0] != systemFamily {
+		t.Errorf("choices start with %q, want %q first", choices[0], systemFamily)
+	}
+
+	// "Maple Mono" is both installed and well known; it must appear once.
+	seen := map[string]int{}
+	for _, name := range choices {
+		seen[name]++
+	}
+	for name, n := range seen {
+		if n > 1 {
+			t.Errorf("%q is offered %d times", name, n)
+		}
+	}
+	if seen[""] != 0 {
+		t.Error("an empty family name reached the suggestions")
+	}
+}
+
+// The field is free text, so a family that no list mentions still has to work:
+// this is the path the report was about.
+func TestSettingsFontFieldAcceptsAnUnlistedFamily(t *testing.T) {
+	sw, store := newTestSettingsWindow(t)
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+
+	rect, ok := tt.Find("字体")
+	if !ok {
+		t.Fatalf("the font field is missing; texts = %v", tt.Texts())
+	}
+	// Start from an empty field so the caret position cannot change what is
+	// typed into it.
+	sw.family = ""
+	tt.Frame()
+	// The label sits above its input, as in the other panes.
+	tt.ClickAt(rect.X+40, rect.Y+rect.H+12)
+	tt.Type("Maple Mono NF")
+	tt.Frame()
+
+	if sw.family != "Maple Mono NF" {
+		t.Fatalf("typed family = %q, want it in the draft", sw.family)
+	}
+	if err := tt.Click("应用"); err != nil {
+		t.Fatalf("Click(应用): %v", err)
+	}
+	tt.Frame()
+
+	if got := store.Get().FontFamily; got != "Maple Mono NF" {
+		t.Errorf("stored FontFamily = %q, want the typed family", got)
+	}
+}
+
+func contains(list []string, want string) bool {
+	for _, item := range list {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
