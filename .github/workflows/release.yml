@@ -23,6 +23,10 @@ concurrency:
 
 env:
   GH_TOKEN: ${{ github.token }}
+  # gh infers the repository from the local checkout, so a job without
+  # actions/checkout (like checksums) would otherwise fail with
+  # "not a git repository".
+  GH_REPO: ${{ github.repository }}
 
 jobs:
   prepare:
