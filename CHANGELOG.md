@@ -24,6 +24,12 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
   the relay path's base64 encoding is linear rather than one concatenation
   per byte, so large pastes stop janking.
 
+**Brand**
+
+- The logo and the web favicon now sit on a white rounded tile with dark
+  ink, so the mark stays legible on dark backgrounds; the README no longer
+  needs two scheme-specific logo files.
+
 ## 0.1.0
 
 First release: terminals from many machines, one browser tab each.

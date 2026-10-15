@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset=".github/assets/logo.png">
-    <img alt="term-fleet" src=".github/assets/logo.png" width="150" height="150">
-  </picture>
+  <img alt="term-fleet" src=".github/assets/logo.png" width="150" height="150">
 </p>
 
 <h1 align="center">term-fleet</h1>

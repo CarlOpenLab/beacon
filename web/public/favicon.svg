@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-  <path fill="#161a22" stroke="none" d="M 44.7 0 H 155.3 A 44.7 44.7 0 0 1 200.0 44.7 V 155.3 A 44.7 44.7 0 0 1 155.3 200.0 H 44.7 A 44.7 44.7 0 0 1 0 155.3 V 44.7 A 44.7 44.7 0 0 1 44.7 0 Z"/>
-  <g transform="matrix(0.9610 0 0 0.9610 3.90 8.70)" color="#e7ecf5">
+  <path fill="#ffffff" stroke="none" d="M 44.7 0 H 155.3 A 44.7 44.7 0 0 1 200.0 44.7 V 155.3 A 44.7 44.7 0 0 1 155.3 200.0 H 44.7 A 44.7 44.7 0 0 1 0 155.3 V 44.7 A 44.7 44.7 0 0 1 44.7 0 Z"/>
+  <g transform="matrix(0.9610 0 0 0.9610 3.90 8.70)" color="#161a22">
   <g id="isometric-triad-nexus" stroke-width="4.0" stroke-linecap="round" stroke-linejoin="round">
       <polygon points="100,28 162,64 162,136 100,172 38,136 38,64" stroke-width="4.0" fill="none"/>
       <line x1="100" y1="100" x2="100" y2="28" stroke-width="4.0"/>
