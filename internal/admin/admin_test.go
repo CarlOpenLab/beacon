@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -270,8 +271,12 @@ func TestPasswordIsStoredHashed(t *testing.T) {
 	if !strings.HasPrefix(creds.Hash, "pbkdf2_sha256$") {
 		t.Fatalf("hash = %q, want a pbkdf2 record", creds.Hash)
 	}
-	if st, _ := os.Stat(filepath.Join(p.dir, "admin.json")); st.Mode().Perm() != 0o600 {
-		t.Fatalf("admin.json mode = %o, want 600", st.Mode().Perm())
+	// Windows has no Unix permission bits: every writable file reports 0666
+	// there, so the mode only means something where those bits exist.
+	if runtime.GOOS != "windows" {
+		if st, _ := os.Stat(filepath.Join(p.dir, "admin.json")); st.Mode().Perm() != 0o600 {
+			t.Fatalf("admin.json mode = %o, want 600", st.Mode().Perm())
+		}
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -305,8 +306,12 @@ func TestFetchAndPinCASavesTheCertificateTheRelayPresents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the certificate was not written: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("mode = %v, want 0600", perm)
+	// Windows has no Unix permission bits: every writable file reports 0666
+	// there, so the mode only means something where those bits exist.
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("mode = %v, want 0600", perm)
+		}
 	}
 
 	// What was pinned must be the certificate the relay actually showed,

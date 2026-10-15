@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -224,8 +225,12 @@ func TestRegistryDeviceRecordShape(t *testing.T) {
 	if rec.Secret != secret || rec.Name != "box" || rec.AddedAt == "" {
 		t.Fatalf("record = %+v, want the enrolled secret, name and timestamp", rec)
 	}
-	if mode := fileMode(t, path); mode != 0o600 {
-		t.Fatalf("devices.json mode = %o, want 600: it holds machine credentials", mode)
+	// Windows has no Unix permission bits: every writable file reports 0666
+	// there, so the mode only means something where those bits exist.
+	if runtime.GOOS != "windows" {
+		if mode := fileMode(t, path); mode != 0o600 {
+			t.Fatalf("devices.json mode = %o, want 600: it holds machine credentials", mode)
+		}
 	}
 }
 

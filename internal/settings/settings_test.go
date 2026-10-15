@@ -3,6 +3,7 @@ package settings
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 )
@@ -82,8 +83,12 @@ func TestSavePreservesFileMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stat: %v", err)
 	}
-	if mode := info.Mode().Perm(); mode != 0o600 {
-		t.Fatalf("settings file mode = %o, want 600", mode)
+	// Windows has no Unix permission bits: every writable file reports 0666
+	// there, so the mode only means something where those bits exist.
+	if runtime.GOOS != "windows" {
+		if mode := info.Mode().Perm(); mode != 0o600 {
+			t.Fatalf("settings file mode = %o, want 600", mode)
+		}
 	}
 }
 

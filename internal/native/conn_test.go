@@ -77,7 +77,10 @@ func TestConnReportsEOFWhenSessionEnds(t *testing.T) {
 	c := NewConn(s)
 	t.Cleanup(func() { _ = c.Close() })
 
-	if _, err := c.Write([]byte(shellLine("printf 'TFBYE\\n'; exit\n", "echo TFBYE & exit\r\n"))); err != nil {
+	// Printed and then exited on two separate lines rather than with cmd's `&`:
+	// the shell a Windows machine picks by default is now PowerShell, which does
+	// not read `&` that way, while both run each line as it arrives.
+	if _, err := c.Write([]byte(shellLine("printf 'TFBYE\\n'\nexit\n", "echo TFBYE\r\nexit\r\n"))); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 

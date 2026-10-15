@@ -5,6 +5,7 @@ package hub_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -213,17 +214,27 @@ func TestViewerCannotInputAndClaimPreempts(t *testing.T) {
 	b.waitOutput("FROM_B")
 }
 
+// printfMarker prints want without the typed command containing it. The PTY
+// echoes what we send, and that echo arrives in arbitrarily sized chunks, so a
+// needle that also appears in the command can be matched out of a half-written
+// echo line: the cursor then points into the echo rather than past the output.
+// Splitting the quoted word leaves the command text (printf 'AA'A\n') free of
+// what it prints (AAA).
+func printfMarker(want string) string {
+	return fmt.Sprintf("printf '%s''%s\\n'\n", want[:len(want)-1], want[len(want)-1:])
+}
+
 func TestAttachResumesFromCursor(t *testing.T) {
 	ts := newTestHub(t)
 	a := dialTest(t, ts)
 	a.create("s1")
 	a.waitFor("role", func(m protocol.Msg) bool { return m.T == protocol.STRole })
 
-	a.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1", Data: []byte("printf 'AAA\\n'\n")})
+	a.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1", Data: []byte(printfMarker("AAA"))})
 	cursor := a.waitOutput("AAA")
 
 	// More output happens while the second client is not watching yet.
-	a.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1", Data: []byte("printf 'BBB\\n'\n")})
+	a.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1", Data: []byte(printfMarker("BBB"))})
 	a.waitOutput("BBB")
 
 	b := dialTest(t, ts)

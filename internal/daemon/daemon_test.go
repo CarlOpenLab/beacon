@@ -145,7 +145,9 @@ func TestStartStopLeavesInjectedHubRunning(t *testing.T) {
 	stop := srv.Start()
 	waitForAnswer(t, srv.BaseURL())
 
-	s, err := h.Create("", 80, 24, "", "/bin/sh")
+	// No shell name: the session should come up on whatever shell the platform
+	// treats as its own, which is also the only thing that works on Windows.
+	s, err := h.Create("", 80, 24, "", "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
