@@ -247,7 +247,9 @@ jobs:
             echo "::warning::no Setup .exe was produced"
           fi
           zip="term-fleet_${VERSION}_windows_amd64_portable.zip"
-          (cd "$d" && zip -q -r "$GITHUB_WORKSPACE/$zip" .)
+          # The Setup .exe lives in the same directory but is uploaded on its
+          # own; keep it out of the portable archive so the two do not duplicate.
+          (cd "$d" && zip -q -r "$GITHUB_WORKSPACE/$zip" . -x "*Setup*.exe")
           assets+=("$zip")
           gh release upload "${{ needs.prepare.outputs.tag }}" "${assets[@]}" --clobber
 
