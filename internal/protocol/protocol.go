@@ -111,10 +111,14 @@ type Host struct {
 // live session and keep the order the server sent, which is what makes the
 // phone list and the PC list one-to-one.
 type Summary struct {
-	SessionID  string   `json:"sessionId"`
-	PID        int      `json:"pid"`
-	Cwd        string   `json:"cwd"`
-	Title      string   `json:"title"`
+	SessionID string `json:"sessionId"`
+	PID       int    `json:"pid"`
+	Cwd       string `json:"cwd"`
+	Title     string `json:"title"`
+	// Shell is the program the session runs. Clients fall back to it when the
+	// shell has not reported a title yet, so a fresh tab reads as "zsh 2"
+	// rather than a bare session id.
+	Shell      string   `json:"shell,omitempty"`
 	Cols       int      `json:"cols"`
 	Rows       int      `json:"rows"`
 	Alive      bool     `json:"alive"`

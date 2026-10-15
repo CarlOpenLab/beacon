@@ -44,6 +44,10 @@ type window struct {
 	tabs     map[string]*tab
 	selected int
 
+	// tabSeq numbers the tabs of this window, so two shells of the same kind
+	// can be told apart ("zsh 1", "zsh 2") before either reports a title.
+	tabSeq int
+
 	// Signature of the session list as last published. The watch loop below
 	// compares against it so an unchanged list costs no repaint; it is the one
 	// field two goroutines share.
@@ -220,7 +224,11 @@ func (w *window) mount(s protocol.Summary) (*tab, error) {
 	}
 	tb := &tab{id: s.SessionID, conn: native.NewConn(sess), title: s.Title}
 	if tb.title == "" {
-		tb.title = s.SessionID
+		// The shell has not named itself yet, so label the tab by what it is
+		// rather than by its session id.
+		w.tabSeq++
+		tb.ordinal = w.tabSeq
+		tb.program = programName(s.Shell)
 	}
 	term, err := terminal.New(terminal.Options{
 		Conn:    tb.conn,
@@ -274,8 +282,12 @@ type tab struct {
 
 	mu    sync.Mutex
 	title string
-	done  bool
-	exit  int
+	// program and ordinal are the fallback label for a shell that has not
+	// reported a title of its own.
+	program string
+	ordinal int
+	done    bool
+	exit    int
 }
 
 func (t *tab) setTitle(title string) {
@@ -297,10 +309,44 @@ func (t *tab) finish(code int) {
 func (t *tab) label() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.done {
-		return fmt.Sprintf("%s (%d)", t.title, t.exit)
+	name := t.title
+	if name == "" {
+		// Nothing named this shell yet. Say what the tab is instead of
+		// showing a session id, which tells the reader nothing.
+		switch {
+		case t.program != "":
+			name = fmt.Sprintf("%s %d", t.program, t.ordinal)
+		case t.ordinal > 0:
+			name = fmt.Sprintf("终端 %d", t.ordinal)
+		default:
+			name = t.id
+		}
 	}
-	return t.title
+	if t.done {
+		return fmt.Sprintf("%s (%d)", name, t.exit)
+	}
+	return name
+}
+
+// programName turns the shell path a session reports into the short name shown
+// on a tab: "/bin/zsh" is "zsh" and `C:\...\powershell.exe` is "PowerShell".
+// Both separators are handled because a client may show a session running on
+// another operating system.
+func programName(path string) string {
+	if path == "" {
+		return ""
+	}
+	base := path
+	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
+		base = base[i+1:]
+	}
+	if i := strings.LastIndex(base, "."); i > 0 {
+		base = base[:i]
+	}
+	if strings.EqualFold(base, "powershell") {
+		return "PowerShell"
+	}
+	return base
 }
 
 // close releases the terminal and detaches the view. The shell is left alone:

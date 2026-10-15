@@ -40,6 +40,7 @@ type Session struct {
 	cols     int
 	rows     int
 	title    string
+	shell    string
 	cwd      string
 	pid      int
 	alive    bool
@@ -80,6 +81,7 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 		cwd:       cwd,
 		pid:       pty.PID(),
 		alive:     true,
+		shell:     path,
 	}
 	go s.pump()
 	go s.wait()
@@ -137,6 +139,7 @@ func (s *Session) Summary() protocol.Summary {
 		PID:       s.pid,
 		Cwd:       s.cwd,
 		Title:     s.title,
+		Shell:     s.shell,
 		Cols:      s.cols,
 		Rows:      s.rows,
 		Alive:     s.alive,
