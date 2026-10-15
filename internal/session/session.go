@@ -37,6 +37,7 @@ type Session struct {
 
 	mu       sync.Mutex
 	pty      ptyProcess
+	ptyOnce  sync.Once
 	cols     int
 	rows     int
 	title    string
@@ -181,12 +182,24 @@ func (s *Session) Resize(cols, rows int) error {
 // manager once wait() reaps it.
 func (s *Session) Close() error {
 	s.mu.Lock()
-	pty, pid, alive := s.pty, s.pid, s.alive
+	pid, alive := s.pid, s.alive
 	s.mu.Unlock()
 	if alive {
 		_ = killProcess(pid)
 	}
-	return pty.Close()
+	return s.closePTY()
+}
+
+// closePTY releases the PTY exactly once, whichever of the two owners gets
+// there first: wait() after the process exits on its own, or Close() when the
+// session is shut down. Closing it twice is not a harmless second error — on
+// Windows one Close() call releases six HANDLEs, and the runtime may have
+// handed a reused value to someone else in the meantime, which turns a double
+// close into corruption rather than an error.
+func (s *Session) closePTY() error {
+	var err error
+	s.ptyOnce.Do(func() { err = s.pty.Close() })
+	return err
 }
 
 func (s *Session) pump() {
@@ -219,6 +232,6 @@ func (s *Session) wait() {
 	s.exitCode = code
 	s.alive = false
 	s.mu.Unlock()
-	_ = s.pty.Close()
+	_ = s.closePTY()
 	close(s.exited)
 }
