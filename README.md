@@ -1,6 +1,19 @@
-# term-fleet
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset=".github/assets/logo.png">
+    <img alt="term-fleet" src=".github/assets/logo.png" width="150" height="150">
+  </picture>
+</p>
 
-One terminal fleet, controlled from anywhere.
+<h1 align="center">term-fleet</h1>
+
+<p align="center">One terminal fleet, controlled from anywhere.</p>
+
+<p align="center">
+  <a href="https://github.com/CarlOpenLab/term-fleet/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/CarlOpenLab/term-fleet/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/CarlOpenLab/term-fleet/releases/latest"><img alt="latest release" src="https://img.shields.io/github/v/release/CarlOpenLab/term-fleet"></a>
+</p>
 
 `tfd` owns the PTY sessions on a machine and serves them over a single
 WebSocket. A desktop client built with Mygo — a native window, drawn by Mygo's
@@ -14,6 +27,26 @@ address, or a VPN. The relay routes bytes and nothing else — see
 [PLAN.md](PLAN.md) §3.
 
 Design notes and the protocol draft live in [PLAN.md](PLAN.md).
+
+## Download
+
+Every [release](https://github.com/CarlOpenLab/term-fleet/releases) ships two
+kinds of package, both built by
+[`.github/workflows/release.yml`](.github/workflows/release.yml) from the pushed
+tag:
+
+| what | assets |
+| --- | --- |
+| the desktop app | macOS `.dmg` (universal), Windows `Setup .exe` plus a portable `.zip`, Linux `.deb` and `.tar.gz` |
+| the command-line tools | `tfd` (the agent) and `tfrelay` (the relay) for macOS, Linux and Windows |
+
+`checksums.txt` holds the SHA-256 of every asset. The desktop app carries its own
+daemon, so a machine that runs the window needs no separate `tfd`; take a tool
+archive for a headless member, and take `tfrelay` for the host that routes.
+
+Release assets carry no Apple or Microsoft signature, so macOS quarantines the
+downloaded `.dmg` and Windows SmartScreen warns about the installer: right-click
+→ Open on macOS, or *More info → Run anyway* on Windows.
 
 ## Status
 
@@ -124,6 +157,7 @@ by accident.
 | `-relay` | dial this relay member endpoint; empty keeps the machine LAN-only |
 | `-device-id` / `-device-secret` | this machine's relay credential |
 | `-machine-name` | the name shown in the relay's machine list |
+| `-relay-ca` | PEM file to trust as the relay's CA, for a relay behind a private certificate |
 
 `tfdesktop` takes `-addr` and `-web-dir` as well, plus `-shell` (the shell new
 tabs run) and `-cwd` (their working directory). Its relay credential, the
@@ -200,6 +234,10 @@ relay can see (everything — it terminates TLS and carries your keystrokes).
 
 ## Tests
 
+`ci.yml` runs the Go build, vet and test suite on Linux, macOS and Windows (with
+the race detector on Linux) plus the web typecheck and build, on every push to
+`main` and every pull request.
+
 ```sh
 pnpm run test          # go test ./...
 pnpm run check         # go vet + tsc --noEmit
@@ -237,6 +275,28 @@ The Go side covers the routing itself, including the case that matters most:
 `TestAgentRedialsAfterLinkLoss` drops every link the relay holds, waits for the
 member to redial on its own, and asserts a session created before the outage is
 still alive and attachable afterwards.
+
+## Releasing
+
+`release.yml` fires on a `vX.Y.Z` tag. It checks the tag against `package.json`
+and `mygo.json` (all three must agree), lifts the matching `## X.Y.Z` section out
+of [CHANGELOG.md](CHANGELOG.md) for the release notes, and publishes the release
+up front. Each platform then attaches its own assets, so one failing platform
+cannot take the rest of the download with it, and a final job hashes whatever
+landed into `checksums.txt`.
+
+```sh
+# 1. agree on the version
+$EDITOR package.json mygo.json CHANGELOG.md
+git commit -am "chore(release): v0.2.0"
+# 2. tag and push — the tag is what triggers the build
+git tag v0.2.0 && git push origin main --tags
+```
+
+Nothing is code-signed, so there is no updater key to configure: the workflow
+uses nothing but the `GITHUB_TOKEN` GitHub hands it. To exercise the whole flow
+without cutting a tag, dispatch `release` from the Actions tab with an existing
+tag as input.
 
 ## Two rules that shape everything
 
