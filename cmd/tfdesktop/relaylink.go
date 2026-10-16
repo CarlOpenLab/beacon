@@ -29,7 +29,7 @@ type relayLink struct {
 func openRelayLink(c *relayclient.Client, machine string) *relayLink {
 	l := &relayLink{link: newLink(), machine: machine}
 	l.stream = c.Open(machine, relayHandlers{l: l})
-	l.send = func(m protocol.Msg) bool { return l.stream.Send(m) }
+	l.setSend(func(m protocol.Msg) bool { return l.stream.Send(m) })
 	return l
 }
 

@@ -118,8 +118,9 @@ func main() {
 		installMenu(app)
 		// Open with one shell, as a terminal app does. What the hub says about
 		// it — and about every other shell on this machine — arrives on the
-		// window's own link, so there is no polling loop to run.
-		go app.create()
+		// window's own link, so there is no polling loop to run. The tab is
+		// window state, so it is opened on the window's thread.
+		app.win.Update(app.newTab)
 	})
 
 	if err := mygo.App.Run(); err != nil {

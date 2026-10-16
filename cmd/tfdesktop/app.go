@@ -252,10 +252,12 @@ func (w *window) view(c *ui.Context) {
 	})
 }
 
-func (w *window) create() {
-	// The tab is opened first so the shell it is waiting for has somewhere to
-	// land; the view re-letters the terminal to the pane it is given, and the
-	// resize that follows is sent as a frame like any other.
+// newTab asks the hub for a shell and gives it a tab to land in. It runs on the
+// window's own thread — the tab is window state, and a goroutine that opened one
+// would race the frame that draws it — and the frame itself does not repaint, so
+// there is nothing to defer. The hub's answer arrives as a `created` frame and
+// adopts the tab that is waiting for it.
+func (w *window) newTab() {
 	w.openTab(machineLocal, "")
 	w.local.create(80, 24, w.cwd, w.shell)
 }

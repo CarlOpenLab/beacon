@@ -94,11 +94,11 @@ func (w *window) sessionPanel(c *ui.Context, labels []string, mode string) {
 	ui.Column(c).Fill().Children(func() {
 		panelHead(c, "会话", len(labels), func() {
 			if iconButton(c, iconPlus, "新建标签页", panelButtonSize).Clicked() {
-				go w.create()
+				w.newTab()
 			}
 			if iconButton(c, iconClose, "关闭标签页", panelButtonSize).Clicked() {
 				if id := w.activeID(); id != "" {
-					go w.kill(id)
+					w.kill(id)
 				}
 			}
 		})

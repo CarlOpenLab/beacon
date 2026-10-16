@@ -28,13 +28,13 @@ func openLocalLink(h *hub.Hub) *localLink {
 	go h.ServeLocal(pipe.Local())
 
 	l := &localLink{link: newLink(), pipe: pipe}
-	l.send = func(m protocol.Msg) bool {
+	l.setSend(func(m protocol.Msg) bool {
 		b, err := encode(m)
 		if err != nil {
 			return false
 		}
 		return pipe.Send(b) == nil
-	}
+	})
 	go l.readLoop(pipe.Recv)
 	return l
 }

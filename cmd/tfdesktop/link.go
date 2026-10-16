@@ -49,8 +49,11 @@ type Handlers interface {
 type link struct {
 	// send puts one frame on the wire. It is set when the link opens and
 	// cleared when it goes away, so a session typed into during a gap is
-	// refused here rather than half-sent.
-	send func(m protocol.Msg) bool
+	// refused here rather than half-sent. The window's thread sets it and the
+	// link's reader goroutine clears it, so it is reached through setSend and
+	// sendMu rather than written directly.
+	send   func(m protocol.Msg) bool
+	sendMu sync.Mutex
 
 	// onSessions is the hub's session list, pushed on every change. onGone is
 	// the link itself ending, with the reason. Both are set by the link's
@@ -146,10 +149,20 @@ func (l *link) epochOf(id string) uint64 {
 }
 
 func (l *link) sendMsg(m protocol.Msg) {
-	if l.send == nil {
+	l.sendMu.Lock()
+	send := l.send
+	l.sendMu.Unlock()
+	if send == nil {
 		return
 	}
-	l.send(m)
+	send(m)
+}
+
+// setSend installs the link's writer, or takes it away with nil.
+func (l *link) setSend(send func(m protocol.Msg) bool) {
+	l.sendMu.Lock()
+	l.send = send
+	l.sendMu.Unlock()
 }
 
 // ---- frames in -----------------------------------------------------------
@@ -262,7 +275,7 @@ func (l *link) close(reason string) {
 	l.sessions = map[string]*session{}
 	l.mu.Unlock()
 
-	l.send = nil
+	l.setSend(nil)
 	if l.onGone != nil {
 		l.onGone(reason)
 	}

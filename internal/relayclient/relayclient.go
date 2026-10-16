@@ -305,8 +305,7 @@ func (c *Client) linkDown(ws *websocket.Conn, reason string) {
 	}
 	c.byStream = map[uint32]*Stream{}
 	for _, s := range c.byMachine {
-		s.stream = 0
-		s.accepted = false
+		s.rename(0)
 	}
 	c.mu.Unlock()
 
@@ -338,9 +337,7 @@ func (c *Client) handle(f tunnel.Frame) {
 		c.flush()
 	case tunnel.TAccept:
 		if s := c.streamOf(f.Stream); s != nil {
-			c.mu.Lock()
-			s.accepted = true
-			c.mu.Unlock()
+			s.accept()
 			s.handlers.Open()
 		}
 	case tunnel.TData:
@@ -382,14 +379,15 @@ func (c *Client) flush() {
 	var closing []*Stream
 	for id, s := range c.byMachine {
 		switch {
-		case online[id] && s.stream == 0:
+		case online[id] && s.number() == 0:
 			c.next++
-			s.stream = c.next
-			c.byStream[s.stream] = s
+			number := c.next
+			c.byStream[number] = s
+			s.rename(number)
 			opening = append(opening, s)
-		case !online[id] && s.stream != 0:
-			delete(c.byStream, s.stream)
-			s.stream, s.accepted = 0, false
+		case !online[id] && s.number() != 0:
+			delete(c.byStream, s.number())
+			s.rename(0)
 			closing = append(closing, s)
 		}
 	}
@@ -470,6 +468,31 @@ type Stream struct {
 	stream   uint32
 	accepted bool
 	closed   bool
+}
+
+// number is the stream's id on the wire, 0 before it is opened.
+func (s *Stream) number() uint32 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stream
+}
+
+// rename gives the stream its id on the wire, or takes it away with 0. It is
+// the only writer of the field besides Close and end, and it is the stream's
+// own lock that guards it: the client's read loop opens and tears down streams
+// while the window sends on them, and two locks over one field is a race.
+func (s *Stream) rename(number uint32) {
+	s.mu.Lock()
+	s.stream = number
+	s.accepted = false
+	s.mu.Unlock()
+}
+
+// accept records that the relay has routed this stream, so frames may flow.
+func (s *Stream) accept() {
+	s.mu.Lock()
+	s.accepted = true
+	s.mu.Unlock()
 }
 
 // Send puts one session frame on the stream. It reports whether the frame went
