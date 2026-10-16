@@ -4,7 +4,7 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
-## Unreleased
+## 0.4.3
 
 **Brand**
 
