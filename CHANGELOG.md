@@ -6,7 +6,23 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
 
 ## Unreleased
 
+**Brand**
+
+- The project wears the mascot: a periwinkle planet with a cream face, a ring and
+  a terminal prompt on its brow. It replaces the mark cut out of the logo sheet,
+  and it is used as drawn rather than recoloured per surface — which is why the
+  app icon, the README's logo and the browser favicon are now the same picture on
+  the shell's ink. The mascot's face is cream: on a white tile, or on the
+  transparent ground a README has on GitHub's light theme, it would run into the
+  page. `resources/brand/make-assets.py` rebuilds all three from the master, and
+  takes a new render as its argument when the art changes again.
+
 **Desktop app**
+
+- The ring around a shell being driven from elsewhere is quieter: a thinner line,
+  a slower flow and a dimmer bloom than the chat-glow example's composer ring,
+  which is drawn to be looked at. (The artist's own reference for this state is
+  still pending — this is the window's own reading of "a signal, not a show".)
 
 - A machine taking its shell back ends the connection, on the machine that was
   driving it: the tabs it had open there close, the link to that machine is
