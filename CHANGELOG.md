@@ -2,6 +2,17 @@
 
 Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
+## 0.4.1
+
+- Fixed three data races the Linux race detector found in the code that reaches
+  another machine: a stream's number and accepted flag were written under the
+  client's lock and read under the stream's own (accepting a stream raced the
+  window sending on it); a link's writer was set at construction and cleared by
+  the link's reader goroutine with nothing between them; and New Tab opened a
+  tab — window state — from a goroutine, racing the frame that draws it, which
+  on a Go map is a fatal error rather than a stale read. The tab is now opened on
+  the window's own thread and the create frame sent from there.
+
 ## 0.4.0
 
 **Taking over a shell on another machine** (`docs/takeover.md`)
