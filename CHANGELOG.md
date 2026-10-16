@@ -2,61 +2,7 @@
 
 Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
-## Unreleased
-
-- The shell window has a left rail: the open shells, `切换到白天/暗黑`, and the
-  settings window. The appearance is saved (`theme`: `light`, `dark`, or unset
-  for the system) and the terminal follows it.
-- The settings window has an 外观 pane with all three modes.
-- New mark, taken from the logo sheet's third row, second column: the app icon
-  keeps the sheet's dark tile, the README logo and the web favicon keep the white
-  tile with dark ink. `resources/logo.svg` and `web/public/favicon.svg` are gone
-  in favour of `favicon.png`.
-- The desktop window has a palette of its own — the navy ground, the violet for
-  what is chosen and the green for what is live — instead of the ui's default
-  greys, and the terminal is themed in the same palette rather than its own.
-- The window is now a 56px strip (the mark at the top, `切换到白天/暗黑` and
-  `设置` at the bottom over the service's state), a column beside it holding the
-  会话 and 机器 panels with a draggable line between them, a header naming the
-  shell on screen, and a bottom line naming the service and the build. The
-  window's body is left to the shell alone.
-- `docs/takeover.md`: taking over a shell on another machine — one writer with an
-  epoch'd lease, the glow and 拿回控制权 popover, and input under latency.
-
-**UI**
-
-- The strip's two controls moved to its bottom, under the shells: the mark heads
-  the strip, and what changes the window itself ends it, so the empty middle no
-  longer reads as a control that was forgotten. The fleet's state stays under
-  them.
-- The column beside the strip is two panels with a draggable line between them:
-  会话 on top, 机器 under it. The tab controls moved into the 会话 panel's title
-  row as icon buttons — they act on that panel — and the window's header is left
-  to naming the shell on screen. Until the line is dragged, the machines' panel
-  takes the room its content needs and the shells take the rest, whatever height
-  the window is.
-- The 机器 panel lists the fleet this window can reach: this machine with the
-  service's state, and the relay it is enrolled with — its address, this
-  machine's device id, and the link's state. Other machines join the list the
-  day the window can drive their shells; the panel says so until then, rather
-  than pretending the list is complete.
-- The settings window is a form: every pane's labels sit in a column beside
-  their controls, right-aligned as macOS forms do, instead of stacked full-width
-  above them. 应用 is offered only when there is something to apply, the panes
-  scroll instead of clipping in a short window, and the 更新 pane hides the
-  check button on a build that cannot update itself rather than offering a
-  control that does nothing.
-- A window flashes the colour of the appearance it is about to paint, so a light
-  window no longer opens with a dark frame around it.
-
-**Browser client**
-
-- Selecting text in a terminal now has the affordance a text surface has: drag a
-  range and a 复制 button appears at it — the copy is a choice, not something
-  that happens because the pointer was released. Right-click copies the
-  selection too, since xterm paints selection in its own layer and the
-  browser's own Copy has nothing to act on. `⌘C` / `Ctrl+Shift+C` work as
-  before.
+## 0.4.0
 
 **Taking over a shell on another machine** (`docs/takeover.md`)
 
@@ -90,6 +36,53 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
   watching the shell instead of a second tab for the same shell. A departing
   controller's lease is released and the epoch bumped in the same frame, so the
   clients still watching learn the shell is free.
+
+**UI**
+
+- The shell window has a left rail: the open shells, `切换到白天/暗黑`, and the
+  settings window. The appearance is saved (`theme`: `light`, `dark`, or unset
+  for the system) and the terminal follows it; the settings window's 外观 pane
+  offers all three modes.
+- New mark, taken from the logo sheet's third row, second column: the app icon
+  keeps the sheet's dark tile, the README logo and the web favicon keep the white
+  tile with dark ink.
+- The desktop window has a palette of its own — the navy ground, the violet for
+  what is chosen and the green for what is live — instead of the ui's default
+  greys, and the terminal is themed in the same palette rather than its own.
+- The strip's two controls moved to its bottom, under the shells: the mark heads
+  the strip, and what changes the window itself ends it, so the empty middle no
+  longer reads as a control that was forgotten. The fleet's state stays under
+  them.
+- The column beside the strip is two panels with a draggable line between them:
+  会话 on top, 机器 under it. The tab controls moved into the 会话 panel's title
+  row as icon buttons — they act on that panel — and the window's header is left
+  to naming the shell on screen. Until the line is dragged, the machines' panel
+  takes the room its content needs and the shells take the rest, whatever height
+  the window is.
+- The 机器 panel lists the fleet this window can reach: this machine with the
+  service's state, the relay it is enrolled with, and every other machine on
+  that relay, each with the shells it is running once the window has looked.
+- The settings window is a form: every pane's labels sit in a column beside
+  their controls, right-aligned as macOS forms do, instead of stacked full-width
+  above them. 应用 is offered only when there is something to apply, the panes
+  scroll instead of clipping in a short window, and the 更新 pane hides the
+  check button on a build that cannot update itself rather than offering a
+  control that does nothing. The 远程 pane gained a 客户端令牌 field, which is
+  what lets the window drive the rest of the fleet.
+- A window flashes the colour of the appearance it is about to paint, so a light
+  window no longer opens with a dark frame around it.
+
+**Browser client**
+
+- Selecting text in a terminal now has the affordance a text surface has: drag a
+  range and a 复制 button appears at it — the copy is a choice, not something
+  that happens because the pointer was released. Right-click copies the
+  selection too, since xterm paints selection in its own layer and the
+  browser's own Copy has nothing to act on. `⌘C` / `Ctrl+Shift+C` work as
+  before.
+- Taking a shell from a live holder asks first: the 接管 button confirms, naming
+  the holder, and the claim carries `steal`. A refused claim is answered with
+  `lease_held` and a line saying who holds it and until when.
 
 ## 0.3.0
 
