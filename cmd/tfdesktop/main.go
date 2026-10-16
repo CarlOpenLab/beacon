@@ -20,12 +20,22 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 )
 
 func main() {
+	// Auto-update: the app checks its own release feed in the background and
+	// offers new versions with their release notes (install / remind me later /
+	// skip this version). The native plugin draws that window with mygo's own UI
+	// rather than a web page, which is what the rest of this app does too — no
+	// WebKitGTK, no WebView2 Runtime. Builds that were never signed for updates
+	// (a development build, or a .deb a package manager installed) say so
+	// instead of checking.
+	mygo.Use(native.Plugin)
+
 	addr := flag.String("addr", "127.0.0.1:0",
 		"loopback address for the daemon under the window; port 0 picks a free one")
 	webDir := flag.String("web-dir", "",

@@ -1,9 +1,14 @@
 name: release
 
-# Pushing a vX.Y.Z tag builds everything and publishes it. The assets are
-# uploaded by plain `gh release upload` rather than `mygo build -upload`, so the
-# workflow needs no updater signing key: the only secret it uses is the one
-# GitHub hands it.
+# Pushing a vX.Y.Z tag builds everything and publishes it. The desktop jobs build
+# with `mygo build -upload` and the updater signing key, so each release carries
+# what installed apps update from: a signed archive, `update-<target>.json` and
+# delta updates, next to the installers the download page names. The CLI assets
+# are still uploaded by plain `gh release upload`, which needs no key.
+#
+# MYGO_UPDATER_PRIVATE_KEY must be set as a repository secret. Without it mygo
+# builds the apps and warns, and the release ships without any update file: the
+# installers are still there, but installed apps see no new version.
 on:
   push:
     tags: ["v*"]
@@ -179,8 +184,10 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm --dir web install --frozen-lockfile
 
-      - name: Build the Debian package and tarball
-        run: go tool mygo build -platform linux/amd64,linux/arm64
+      - name: Build the Debian package, the tarball and the update
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: go tool mygo build -platform linux/amd64,linux/arm64 -upload
 
       - name: Upload
         env:

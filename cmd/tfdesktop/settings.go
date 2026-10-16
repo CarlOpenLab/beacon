@@ -50,6 +50,7 @@ const (
 	paneTerminal = iota
 	paneRelay
 	paneServer
+	paneUpdates
 )
 
 // termFont turns stored settings into the terminal plugin's font.
@@ -266,15 +267,17 @@ func (s *settingsWindow) view(c *ui.Context) {
 				s.restoreDefaults()
 			}
 		})
-		ui.Tabs(c, &s.pane, "终端", "远程", "服务")
+		ui.Tabs(c, &s.pane, "终端", "远程", "服务", "更新")
 		ui.Column(c).Fill().Padding(16).Gap(10).Children(func() {
 			switch s.pane {
 			case paneTerminal:
 				s.terminalPane(c)
 			case paneRelay:
 				s.relayPane(c)
-			default:
+			case paneServer:
 				s.serverPane(c)
+			default:
+				s.updatesPane(c)
 			}
 		})
 		if s.status != "" {

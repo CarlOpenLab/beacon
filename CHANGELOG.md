@@ -4,6 +4,26 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.3.0
+
+**Desktop app**
+
+- The desktop app updates itself. It asks the release feed once a day in the
+  background and, when a version is out, shows its notes in a window with
+  install / remind me later / skip this version; the download is verified
+  against the key built into the app before it replaces anything. macOS also
+  gets 检查更新… in the app menu, and every platform gets a 更新 pane in
+  设置 (automatic checks and downloads, when it last checked, and a check
+  now button).
+- Updates replace the app where it is installed, so they work for the dmg,
+  the Windows installer and the Linux tarball — a .deb is updated by the
+  package manager, and the pane says so instead of offering switches that
+  would do nothing. Development builds behave the same way.
+- Releases now carry, next to the installers, a signed archive and an
+  `update-<target>.json` manifest for every desktop platform, plus delta
+  updates from the versions before, so an update is usually a fraction of
+  the full download.
+
 ## 0.2.0
 
 **Clients (web, desktop, phone)**
