@@ -111,6 +111,10 @@ type settingsWindow struct {
 	ca      string
 	relayOn bool
 	server  bool
+	// control is whether other clients may take a shell on this machine: the
+	// inverse of settings.ControlOff, because the switch reads better as the
+	// thing it allows.
+	control bool
 	token   string
 
 	// caNote is the one line under the CA field: which certificate is pinned,
@@ -149,6 +153,7 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 		ca:      cur.RelayCA,
 		relayOn: cur.RelayOn,
 		server:  !cur.ServerOff,
+		control: !cur.ControlOff,
 		token:   cur.ClientToken,
 	}
 	if s.size <= 0 {
@@ -221,6 +226,7 @@ func (s *settingsWindow) draft() settings.Settings {
 	cur.RelayCA = strings.TrimSpace(s.ca)
 	cur.RelayOn = s.relayOn
 	cur.ServerOff = !s.server
+	cur.ControlOff = !s.control
 	cur.ClientToken = strings.TrimSpace(s.token)
 	return cur
 }
@@ -338,6 +344,18 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 		ui.Field(c, "设备密钥", func() {
 			ui.TextInput(c, &s.secret).Password().Fill()
 		})
+		// The pane's second credential, and a different kind of secret: the device
+		// id and secret are what this machine proves it is, while the client token
+		// is what lets this window drive the *other* machines. They sit next to
+		// each other because they are told apart by their labels, and someone who
+		// has the device secret in hand is exactly who is holding the token too.
+		ui.Field(c, "客户端令牌", func() {
+			// A placeholder, because this field is the one a person arrives at
+			// holding a token they typed somewhere else — the browser asked for the
+			// same string under the name 访问令牌, and nothing else on this pane
+			// says so at a glance.
+			ui.TextInput(c, &s.token).Password().Placeholder("就是浏览器里输的访问令牌").Fill()
+		})
 		ui.Field(c, "CA 证书", func() {
 			ui.Column(c).Gap(6).Children(func() {
 				ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
@@ -376,7 +394,20 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 			ui.Text(c, line).FontSize(11).TextColor(color)
 		}
 	}
+	// The client link is a second connection with a second credential, so it gets
+	// its own line: a token that was never applied and one the relay refused look
+	// exactly like a fleet with nothing in it on the 机器 panel, and this is where
+	// the difference can be seen.
+	if line := s.clientStatusLine(); line != "" {
+		color := t.Warning
+		if strings.HasPrefix(line, "●") {
+			color = t.Success
+		}
+		ui.Text(c, line).FontSize(11).TextColor(color)
+	}
 	ui.Text(c, "地址形如 wss://relay.example/relay/agent。中继用自签或私有 CA 证书时，点「从服务器获取」直接把它取回来并固定，或点「选择文件…」指定已经下载好的 PEM。填完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。").
+		FontSize(11).TextColor(t.TextMuted)
+	ui.Text(c, "「客户端令牌」是中继的 client token，也就是在浏览器里输的那个访问令牌。它让这个窗口去驱动同一中继上其他机器的会话：填上并应用后，机器面板才会把别的机器列出来。留空时，这个窗口只能看本机的会话。").
 		FontSize(11).TextColor(t.TextMuted)
 }
 
@@ -395,6 +426,33 @@ func (s *settingsWindow) relayStatusLine() string {
 		return "○ " + st.Detail
 	default:
 		return "○ 正在接入…"
+	}
+}
+
+// clientStatusLine says what the window's own client link — the one the token
+// above builds — is doing. It is the other half of relayStatusLine: that line is
+// about this machine joining the fleet, this one is about reaching the rest of
+// it, and without it a missing token is indistinguishable from a fleet with
+// nothing in it.
+//
+// An empty field with no link behind it says nothing on purpose: a link nobody
+// asked for has no state worth a line.
+func (s *settingsWindow) clientStatusLine() string {
+	if s.fleet == nil {
+		return ""
+	}
+	switch {
+	case s.fleet.RelayClient() != nil:
+		return "● 已接上中继，机器面板会列出其他机器"
+	case s.fleet.RelayClientErr() != "":
+		return "○ 客户端链接没接上：" + s.fleet.RelayClientErr()
+	case strings.TrimSpace(s.token) != "":
+		// Typed into the right box but not applied yet: every text field on this
+		// pane is written by 应用, and this line is the one that would otherwise
+		// look like a token that does not work.
+		return "○ 点「应用」后这条链接才建立"
+	default:
+		return ""
 	}
 }
 
@@ -487,6 +545,13 @@ func (s *settingsWindow) serverPane(c *ui.Context) {
 		ui.Field(c, "本机服务", func() {
 			ui.Switch(c, &s.server).AlignSelf(ui.Start).OnChange(func() { s.commit() })
 		})
+		// The machine's own shells, and who may type into them. It is here rather
+		// than on the remote pane because it is not about the relay: a browser on
+		// the LAN answers to it too. It applies on the click, like the switch
+		// above, because a switch that guards a machine should not wait for 应用.
+		ui.Field(c, "允许被控制", func() {
+			ui.Switch(c, &s.control).AlignSelf(ui.Start).OnChange(func() { s.commit() })
+		})
 	})
 	if url := s.fleet.BaseURL(); url != "" {
 		ui.Text(c, "这台机器上的浏览器可以打开 "+url+"，看到的是窗口里同一批会话。").
@@ -494,6 +559,16 @@ func (s *settingsWindow) serverPane(c *ui.Context) {
 	} else {
 		ui.Text(c, "本机服务已关闭：不再为浏览器开端口。窗口照常可用，正在跑的终端也不会停。").
 			FontSize(11).TextColor(t.TextMuted)
+	}
+	// What the switch means, said the way the fleet works: joining a relay is the
+	// consent, so this is a way to say no — not a confirmation anyone has to give
+	// for each machine that wants in.
+	if s.control {
+		ui.Text(c, "别的客户端可以接管这台机器的终端：浏览器、手机，或同一中继上的另一台电脑。夺回控制权永远是本机的一键。").
+			FontSize(11).TextColor(t.TextMuted)
+	} else {
+		ui.Text(c, "别的客户端只能只读观看，不能接管、也不能在这台机器上新开终端；本机窗口不受影响。").
+			FontSize(11).TextColor(t.Warning)
 	}
 }
 
@@ -527,6 +602,10 @@ func (s *settingsWindow) commit() {
 		s.fail("本机服务没起来：" + err.Error())
 		return
 	}
+	// Who may drive this machine's shells. It is applied to the hub, so a client
+	// that is holding a shell right now loses it in the same frame the switch
+	// moves, rather than at the next reconnect.
+	s.fleet.SetRemoteControl(!stored.ControlOff)
 	s.savedAt = time.Now()
 	s.statusErr = false
 	s.status = s.summary(stored)
@@ -565,6 +644,7 @@ func (s *settingsWindow) restoreDefaults() {
 	s.caNote = caNoteFor("")
 	s.relayOn = false
 	s.server = true
+	s.control = true
 	s.token = ""
 	s.commit()
 }

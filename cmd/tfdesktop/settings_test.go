@@ -17,6 +17,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
+	"github.com/CarlOpenLab/term-fleet/internal/relay"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 )
 
@@ -125,13 +126,13 @@ func TestSettingsApplyWritesTheStore(t *testing.T) {
 	}
 }
 
-// The remote pane's three fields have to be real text inputs, not in-place
-// editable labels: clicking them and typing must reach the draft. This guards
-// a regression where they were drawn with EditableText, so the pane showed a
+// The remote pane's fields have to be real text inputs, not in-place editable
+// labels: clicking them and typing must reach the draft. This guards a
+// regression where they were drawn with EditableText, so the pane showed a
 // label with no input box under it.
 func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 	sw, _ := newTestSettingsWindow(t)
-	tt := ui.NewTester(sw.view, 640, 480)
+	tt := ui.NewTester(sw.view, 640, 640)
 	tt.Frame()
 	if err := tt.Click("远程"); err != nil {
 		t.Fatalf("Click(远程): %v", err)
@@ -146,6 +147,7 @@ func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 		{"公网地址", "wss://relay.example/relay/agent", func() string { return sw.relay }},
 		{"设备 ID", "mac-mini", func() string { return sw.device }},
 		{"设备密钥", "s3cret", func() string { return sw.secret }},
+		{"客户端令牌", "fleettoken", func() string { return sw.token }},
 	}
 	for _, tc := range cases {
 		if _, ok := tt.Find(tc.label); !ok {
@@ -163,6 +165,133 @@ func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 			t.Errorf("%s: typed %q but the draft holds %q", tc.label, tc.typed, got)
 		}
 	}
+}
+
+// The client token is the whole reason the 机器 panel can show anything but this
+// machine, and it is typed here: the field, 应用, the store the app reads on
+// startup, the window's second link, and the roster that lands in the panel.
+// Before this field existed the panel's own line told people to fill in a
+// control that was not on the form.
+func TestSettingsClientTokenReachesTheFleet(t *testing.T) {
+	// A relay with two machines enrolled: the other one, and this one, which
+	// joins the fleet as a member so the panel's state is the real one.
+	reg, err := relay.OpenRegistry(filepath.Join(t.TempDir(), "devices.json"))
+	if err != nil {
+		t.Fatalf("registry: %v", err)
+	}
+	otherID, _, err := reg.Enroll("other box", "")
+	if err != nil {
+		t.Fatalf("enroll other box: %v", err)
+	}
+	thisID, thisSecret, err := reg.Enroll("this mac", "")
+	if err != nil {
+		t.Fatalf("enroll this mac: %v", err)
+	}
+	rl, err := relay.New(relay.Config{Registry: reg, ClientToken: "fleettoken"})
+	if err != nil {
+		t.Fatalf("relay: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/relay/agent", rl.ServeAgent)
+	mux.HandleFunc("/relay/client", rl.ServeClient)
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	f := newTestFleet(t)
+	store := settings.Open(t.TempDir())
+	w := newWindow(f, store, "", "")
+	sw := newSettingsWindow(w, store, f)
+
+	tt := ui.NewTester(sw.view, 640, 640)
+	tt.Frame()
+	if err := tt.Click("远程"); err != nil {
+		t.Fatalf("Click(远程): %v", err)
+	}
+	tt.Frame()
+	if _, ok := tt.Find("客户端令牌"); !ok {
+		t.Fatalf("the client token field is missing from the remote pane; texts = %v", tt.Texts())
+	}
+
+	// Enrolled with a relay, with no client token: this is the state the report
+	// came from, and it must name the missing credential rather than promise
+	// machines that cannot appear.
+	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/relay/agent"
+	sw.relay, sw.device, sw.secret, sw.relayOn = url, thisID, thisSecret, true
+	tt.Frame()
+	if err := tt.Click("应用"); err != nil {
+		t.Fatalf("Click(应用): %v", err)
+	}
+	tt.Frame()
+	if !f.RelayOn() {
+		t.Fatal("the member link was not asked for after applying the relay")
+	}
+	if note := w.machineNote(); !strings.Contains(note, "没有客户端令牌") {
+		t.Fatalf("with no token the panel says %q, want it to name the missing one", note)
+	}
+	if line := sw.clientStatusLine(); line != "" {
+		t.Errorf("an untouched token field reports %q, want silence", line)
+	}
+
+	// Now the token, the way the report's author would type it.
+	if err := tt.Click("客户端令牌"); err != nil {
+		t.Fatalf("Click(客户端令牌): %v", err)
+	}
+	tt.Type("fleettoken")
+	tt.Frame()
+	if sw.token != "fleettoken" {
+		t.Fatalf("typed token = %q, want it in the draft", sw.token)
+	}
+	// Typed but not applied: nothing is connected yet, and the pane has to say so
+	// rather than leave a token that looks like it was refused.
+	if line := sw.clientStatusLine(); !strings.Contains(line, "应用") {
+		t.Errorf("before applying, the pane says %q, want it to point at 应用", line)
+	}
+	if err := tt.Click("应用"); err != nil {
+		t.Fatalf("Click(应用) with the token: %v", err)
+	}
+	tt.Frame()
+
+	// The store the app reads on the next start holds it, the link is up, and the
+	// pane says so.
+	if got := store.Get().ClientToken; got != "fleettoken" {
+		t.Fatalf("stored ClientToken = %q, want the typed token", got)
+	}
+	if f.RelayClient() == nil {
+		t.Fatalf("no client link after applying the token: %s", f.RelayClientErr())
+	}
+	if line := sw.clientStatusLine(); !strings.HasPrefix(line, "●") {
+		t.Errorf("the pane says %q, want it to report a live link", line)
+	}
+
+	// The roster arrives, and the panel stops saying the token is missing.
+	waitForRoster(t, w, otherID)
+	if note := w.machineNote(); strings.Contains(note, "令牌") {
+		t.Fatalf("the panel still reports a missing token after it was applied: %q", note)
+	}
+
+	// The other machine is not merely in the list: it is drawn, which is the row
+	// the report was about.
+	nav := drawNav(t, w)
+	if !nav.HasText("other box") {
+		t.Fatalf("the machines' panel does not list the other machine; texts = %v", nav.Texts())
+	}
+}
+
+// waitForRoster drains the window until the relay's roster names id. The roster
+// is pushed to the window's own thread, so only a drain makes it visible here.
+func waitForRoster(t *testing.T, w *window, id string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		w.drain()
+		for _, m := range w.roster {
+			if m.ID == id {
+				return
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("the roster never listed %s", id)
 }
 
 // testCertPEM returns a certificate in the shape the desktop has to cope with:
@@ -511,4 +640,60 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// 允许被控制 is the machine's answer to "who may drive the shells on this
+// machine". It has to reach the hub — the thing that arbitrates — rather than
+// being a note the window keeps to itself, and it has to work while clients are
+// already attached.
+func TestSettingsControlSwitchReachesTheHub(t *testing.T) {
+	sw, store := newTestSettingsWindow(t)
+	f := sw.fleet
+
+	if !f.Hub().ControlAllowed() {
+		t.Fatal("a fresh machine refuses other clients; joining a relay is the consent")
+	}
+
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+	if err := tt.Click("服务"); err != nil {
+		t.Fatalf("Click(服务): %v", err)
+	}
+	tt.Frame()
+	if _, ok := tt.Find("允许被控制"); !ok {
+		t.Fatalf("the pane has no control switch; texts = %v", tt.Texts())
+	}
+	if !sw.control {
+		t.Fatal("the switch does not read the saved settings")
+	}
+
+	// The click a person makes: the label names the control, so clicking it
+	// moves the switch.
+	if err := tt.Click("允许被控制"); err != nil {
+		t.Fatalf("Click(允许被控制): %v", err)
+	}
+	tt.Frame()
+	if sw.control {
+		t.Fatal("the switch did not move")
+	}
+	if f.Hub().ControlAllowed() {
+		t.Fatal("turning the switch off left the hub allowing other clients to control it")
+	}
+	if !store.Get().ControlOff {
+		t.Fatal("turning the switch off did not reach the settings file")
+	}
+	// The pane says what that state means, rather than leaving the switch to be
+	// interpreted.
+	if !tt.HasText("只能只读观看") {
+		t.Fatalf("the pane does not explain the off state; texts = %v", tt.Texts())
+	}
+
+	// And back on, because a machine that can say no must be able to say yes.
+	if err := tt.Click("允许被控制"); err != nil {
+		t.Fatalf("Click(允许被控制) again: %v", err)
+	}
+	tt.Frame()
+	if !f.Hub().ControlAllowed() || store.Get().ControlOff {
+		t.Fatal("turning the switch back on did not reach the hub and the store")
+	}
 }

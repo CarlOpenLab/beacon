@@ -55,6 +55,11 @@ const (
 	// and it has not lapsed. The holder is named in Message, and the claim
 	// may be repeated with Steal to take it anyway.
 	ErrLeaseHeld = "lease_held"
+	// ErrControlOff is a claim, an attach that would have taken an unclaimed
+	// shell, or a create refused because the machine does not allow other
+	// clients to control it. It is an answer rather than a failure: watching
+	// still works, and the machine's own window is never refused.
+	ErrControlOff = "control_off"
 )
 
 // Msg is one frame. Every field is optional; T decides which are meaningful.

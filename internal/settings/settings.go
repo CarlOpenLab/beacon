@@ -54,6 +54,13 @@ type Settings struct {
 	// it on, which is what a desktop shell normally wants.
 	ServerOff bool `json:"serverOff,omitempty"`
 
+	// ControlOff refuses other clients — a browser, a phone, another machine —
+	// the control of this machine's shells: they may watch, and that is all.
+	// False keeps the normal answer, which is that joining a relay is the consent
+	// to be driven from elsewhere. The machine's own window is never refused,
+	// because a switch on a machine must not lock the machine out of itself.
+	ControlOff bool `json:"controlOff,omitempty"`
+
 	// Theme is the desktop shell's appearance: "light" or "dark". Empty — what a
 	// first run gets — follows the system.
 	Theme string `json:"theme,omitempty"`

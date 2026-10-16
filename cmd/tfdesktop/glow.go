@@ -4,15 +4,15 @@ package main
 //
 // The lease already tells every client who holds a shell, so the "someone else
 // has this" state needs no new channel: the tab's role frame carries it. This
-// file draws it — a glow along the terminal's edge, breathing through the
-// palette, and a popover naming the holder with the way back.
+// file draws it — the glow along the terminal's edge, and a popover naming the
+// holder with the way back.
 //
-// The shape follows mygo's chat-glow example: colours moving about the pane, a
-// crisp line with softer layers over it. The pinned ui strokes a rounded rect
-// in one colour at a time and has no conic gradient to sweep around one, so the
-// sweep is the ring's colour cycling rather than a wheel of colour turning:
-// the same read — this pane is not yours right now — for a dozen strokes a
-// frame instead of a shader.
+// The glow is MyGo's shader: the ring from the chat-glow example, whose colours
+// flow around the pane's edge, its line thin and its glow falling off outward.
+// MyGo compiles that one shader for whatever draws the window — Metal, Direct3D
+// 11, OpenGL or WebGL 2 — and interprets it on the CPU where none can, so there
+// is no second, approximate drawing to keep in step: what a preview shows is
+// what the window shows.
 //
 // Three rules keep it honest:
 //
@@ -20,32 +20,48 @@ package main
 //     window controls is drawn exactly as it was before;
 //   - it is an overlay the pointer goes through, along the pane's edge rather
 //     than across the text: no re-layout, no re-shaping of the grid;
-//   - the breathing stands still when the desktop asks for less motion, and the
-//     fade is an Animate, which asks for us.
+//   - the flow stands still when the desktop asks for less motion, and the fade
+//     is an Animate, which asks for us.
 
 import (
-	"math"
+	_ "embed"
 	"runtime"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/shader"
 )
 
-// glowCycle is how long the ring takes to breathe through the palette.
-const glowCycle = 7 * time.Second
+// leaseRingSource is the chat-glow ring, kept as the example writes it: a Go
+// file of package main whose Fragment MyGo compiles and runs.
+//
+//go:embed assets/lease-ring.kage
+var leaseRingSource string
+
+// leaseRing is the compiled shader. Its uniforms are looked up once — a lookup
+// per frame would parse a name per frame — and the values are set per frame.
+var (
+	leaseRing       = shader.MustCompile("package main\n" + leaseRingSource)
+	ringTime        = leaseRing.Uniform("Time")
+	ringStrength    = leaseRing.Uniform("Strength")
+	ringPad         = leaseRing.Uniform("Pad")
+	ringRadius      = leaseRing.Uniform("Radius")
+	leaseRingValues = leaseRing.NewValues()
+)
+
+// leaseRingPad is how far the ring sits inside the pane's edge, in DIPs: far
+// enough in that the terminal's own rounded corner does not clip it.
+const leaseRingPad = float32(7)
 
 // glowFade is how long the glow takes to come up and go away. The state itself
 // is a step — a shell is either this window's or it is not — so this is only the
 // eye's transition, and a desktop asking for less motion skips it.
 const glowFade = 260 * time.Millisecond
 
-// glowBands are the glow's layers along the pane's edge: this wide, this
-// transparent, the innermost the brightest, as the chat-glow example stacks
-// them.
-var glowBands = []struct {
-	width float32
-	alpha float32
-}{{10, 0.08}, {6, 0.14}, {3.5, 0.24}, {1.5, 0.9}}
+// glowEpoch is the clock the flow is measured from, so the colours do not jump
+// when a shell is taken over: they are a function of how long a glow has been
+// possible, not of when this pane was drawn.
+var glowEpoch = time.Now()
 
 // leaseGlow draws the glow for a pane whose lease another client holds, as an
 // overlay the pointer goes through. strength is 0 for no glow and 1 for a full
@@ -54,51 +70,42 @@ func leaseGlow(c *ui.Context, strength float64, still bool) {
 	if strength <= 0.001 {
 		return
 	}
-	t := c.Theme()
-	color := glowColor(t, glowPhase(c.Now(), still))
-	corner := float32(10)
-	if runtime.GOOS == "darwin" {
-		corner = 16
-	}
+	corner := paneCorner()
 	ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).PassThrough().
 		Opacity(float32(strength)).
 		Draw(func(p *ui.Painter, r ui.Rect) {
-			for _, band := range glowBands {
-				p.Stroke(r, color.Alpha(band.alpha), corner, band.width)
-			}
+			leaseRing.Draw(p, r, shader.Options{
+				Radius: corner,
+				Values: leaseRingValues.
+					Float(ringTime, float32(glowFlow(c.Now(), still))).
+					// Someone else holds the shell, so the ring is at its
+					// brightest: coming and going is the element's opacity, which
+					// is what the fade animates.
+					Float(ringStrength, 1).
+					Float(ringPad, leaseRingPad).
+					Float(ringRadius, corner),
+			})
 		})
 }
 
-// glowColor is the cycle's colour at a point in it, 0 to 1: the accent that
-// says "chosen", the warning that says "busy", and back through the green that
-// says "live".
-func glowColor(t *ui.Theme, at float64) ui.Color {
-	at = math.Mod(at, 1)
-	switch {
-	case at < 0.25:
-		return mixOklab(t.Accent, t.Warning, at*4)
-	case at < 0.5:
-		return mixOklab(t.Warning, t.Success, (at-0.25)*4)
-	case at < 0.75:
-		return mixOklab(t.Success, t.Warning, (at-0.5)*4)
-	default:
-		return mixOklab(t.Warning, t.Accent, (at-0.75)*4)
-	}
-}
-
-// glowPhase is where the cycle is, 0 to 1. It stands still where the desktop
-// asks for less motion — the phase is then always the start of the cycle,
-// whatever the clock says.
-func glowPhase(now time.Time, still bool) float64 {
+// glowFlow is the shader's Time uniform: seconds of glow, which the ring's
+// colours flow with. It stands still where the desktop asks for less motion, so
+// the pane still says who holds it without anything moving.
+func glowFlow(now time.Time, still bool) float64 {
 	if still {
 		return 0
 	}
-	return math.Mod(now.Sub(glowEpoch).Seconds()/glowCycle.Seconds(), 1)
+	return now.Sub(glowEpoch).Seconds()
 }
 
-// glowEpoch is the clock the cycle is measured from, set at the first frame
-// that draws a glow so the phase does not jump when a shell is taken over.
-var glowEpoch = time.Now()
+// paneCorner is the pane's own corner radius, which the ring follows so that it
+// sits on the pane's edge rather than across it.
+func paneCorner() float32 {
+	if runtime.GOOS == "darwin" {
+		return 16
+	}
+	return 10
+}
 
 // leasePopover is the panel under the glow: who holds the shell, and the way
 // back. anchor is the pane it hangs from; open is the window's own state, so
@@ -136,10 +143,4 @@ func leaseTabMark(c *ui.Context, holder string) {
 		ui.Box(c).Size(7, 7).Radius(3.5).Background(t.Warning)
 		ui.Text(c, holder).FontSize(10).TextColor(t.Warning)
 	})
-}
-
-// mixOklab blends two colours, as the ui's own gradients mix them, so the
-// cycle's midpoints keep their brightness instead of going muddy.
-func mixOklab(from, to ui.Color, at float64) ui.Color {
-	return from.Mix(to, float32(math.Min(math.Max(at, 0), 1)))
 }

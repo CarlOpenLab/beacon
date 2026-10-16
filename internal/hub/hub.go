@@ -50,6 +50,12 @@ type Options struct {
 	Token string
 	// IdleTimeout overrides DefaultIdleController.
 	IdleTimeout time.Duration
+	// ControlOff starts the hub with every client but this machine's own window
+	// refused a shell's lease. Joining a relay is the consent to be driven from
+	// elsewhere, which is why the zero value allows it; this is the switch a
+	// person flips when the shells on this machine should be theirs alone. It can
+	// be changed while the hub runs through SetControlAllowed.
+	ControlOff bool
 }
 
 // Hub owns the sessions on one machine and every connected client.
@@ -63,6 +69,11 @@ type Hub struct {
 	clients map[*client]struct{}
 	watches map[string]*watch
 	nextSeq int
+
+	// allowControl is whether a client that is not this machine's own window may
+	// be given a shell's lease. It is read and written under mu, like everything
+	// else a client's frame can change while other clients are being served.
+	allowControl bool
 }
 
 // watch is the hub-side attachment state for one session.
@@ -134,17 +145,79 @@ func New(opts Options) *Hub {
 		origins = nil
 	}
 	return &Hub{
-		mgr:     session.NewManager(),
-		opts:    opts,
-		host:    opts.Host,
-		idle:    idle,
-		clients: map[*client]struct{}{},
-		watches: map[string]*watch{},
+		mgr:          session.NewManager(),
+		opts:         opts,
+		host:         opts.Host,
+		idle:         idle,
+		allowControl: !opts.ControlOff,
+		clients:      map[*client]struct{}{},
+		watches:      map[string]*watch{},
 	}
 }
 
 // Manager exposes the session set, mainly so a caller can shut it down.
 func (h *Hub) Manager() *session.Manager { return h.mgr }
+
+// ControlAllowed reports whether a client that is not this machine's own window
+// may be given a shell's lease.
+func (h *Hub) ControlAllowed() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.allowControl
+}
+
+// SetControlAllowed turns other clients' control of this machine on or off.
+//
+// The machine's own window is never affected — it is the machine's shell, and a
+// switch on a machine must not lock the machine out of itself. Turning it off
+// takes the lease from whoever else holds one, drops that client to a viewer and
+// bumps the epoch in the same frame, so a controller that was just revoked
+// cannot land one more keystroke; a client that claims afterwards, or asks for a
+// shell of its own, is refused with ControlOff and can still watch.
+func (h *Hub) SetControlAllowed(on bool) {
+	type revoked struct {
+		id    string
+		who   *client
+		epoch uint64
+	}
+	h.mu.Lock()
+	if h.allowControl == on {
+		h.mu.Unlock()
+		return
+	}
+	h.allowControl = on
+	var lost []revoked
+	if !on {
+		now := time.Now()
+		for id, w := range h.watches {
+			if w.controller == nil || w.controller.owner {
+				continue
+			}
+			prev := w.drop(now)
+			if prev != nil {
+				lost = append(lost, revoked{id: id, who: prev, epoch: w.epoch})
+			}
+		}
+	}
+	h.mu.Unlock()
+
+	for _, r := range lost {
+		r.who.send(roleMsg(r.id, protocol.RoleViewer, "", r.epoch))
+	}
+	for _, r := range lost {
+		h.broadcastRole(r.id)
+	}
+	if len(lost) > 0 {
+		h.broadcastSessions()
+	}
+}
+
+// mayControl reports whether c may be given a shell's lease. The machine's own
+// window always may, because it is the machine; every other client may while
+// this machine allows being driven from elsewhere. Callers hold mu.
+func (h *Hub) mayControl(c *client) bool {
+	return c.owner || h.allowControl
+}
 
 // Run drives the janitor that releases idle controllers until ctx is done.
 func (h *Hub) Run(ctx context.Context) {
@@ -332,6 +405,16 @@ func (h *Hub) handle(c *client, m protocol.Msg) {
 }
 
 func (h *Hub) handleCreate(c *client, m protocol.Msg) {
+	// A shell on this machine is this machine's to hand out: with control off, a
+	// client that may not type into a shell may not start one either.
+	h.mu.Lock()
+	allowed := h.mayControl(c)
+	h.mu.Unlock()
+	if !allowed {
+		c.fail(protocol.ErrControlOff,
+			"this machine does not allow other clients to start shells on it", m.SessionID)
+		return
+	}
 	// The session is made quietly and announced in order: the client that asked
 	// for it is told which shell it got before the session list puts that shell
 	// in front of everyone else, so its pending tab becomes the tab watching it
@@ -382,9 +465,10 @@ func (h *Hub) attach(c *client, s *session.Session, cursor int64) {
 		w.renew(now, h.idle)
 	case w.hasViewer(c):
 		// Already watching; only the cursor moves.
-	case !w.held(now):
+	case !w.held(now) && h.mayControl(c):
 		// Unclaimed, or the holder's lease has lapsed: the first watcher takes
-		// it, as the machine's own window does when it opens a shell.
+		// it, as the machine's own window does when it opens a shell. A machine
+		// that allows no other clients to control it leaves them watching.
 		w.take(c, now, h.idle)
 		promoted = true
 	default:
@@ -551,6 +635,13 @@ func (h *Hub) handleClaim(c *client, id string, steal bool) {
 	case w.controller == c:
 		// Already mine: a claim is a renewal, and the epoch does not move.
 		w.renew(now, h.idle)
+	case !h.mayControl(c):
+		// This machine does not allow other clients to control it. The claim is
+		// answered rather than dropped, so the client can say so on screen.
+		h.mu.Unlock()
+		c.fail(protocol.ErrControlOff,
+			"this machine does not allow other clients to control its shells", id)
+		return
 	case !w.held(now) || steal || c.owner:
 		prev = w.take(c, now, h.idle)
 	default:

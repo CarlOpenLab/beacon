@@ -42,6 +42,10 @@ type Options struct {
 	// hub that outlives the local service, so turning that service off and on
 	// again keeps the shells its window is showing.
 	Hub *hub.Hub
+	// ControlOff refuses other clients the control of this machine's shells.
+	// Ignored when Hub is set: that hub already carries the switch, and its owner
+	// is whoever built it.
+	ControlOff bool
 }
 
 // Server is a bound, not yet necessarily serving, term-fleet host.
@@ -75,6 +79,7 @@ func New(opts Options) (*Server, error) {
 			Token:          opts.Token,
 			OriginPatterns: opts.OriginPatterns,
 			IdleTimeout:    opts.IdleTimeout,
+			ControlOff:     opts.ControlOff,
 		})
 	}
 

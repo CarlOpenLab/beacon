@@ -552,3 +552,109 @@ func TestJanitorLeavesALiveLeaseAlone(t *testing.T) {
 		return m.T == protocol.STRole && m.Role == protocol.RoleViewer && m.Controller == ""
 	})
 }
+
+// A machine can be its own. With control turned off, every client that is not
+// the machine's own window is left watching: it cannot take a shell, cannot
+// start one, and a shell it was holding is taken back in the frame that flips
+// the switch. The machine's own window is never refused, because a switch on a
+// machine must not lock the machine out of itself.
+func TestControlOffLeavesOtherClientsWatching(t *testing.T) {
+	h := newLeaseHub(t, time.Hour)
+	pipe := hub.NewPipe()
+	defer pipe.Close()
+	go h.ServeLocal(pipe.Local())
+
+	owner := newPipeConn(t, pipe)
+	ts := serveHub(t, h)
+	remote := dialTest(t, ts)
+	remote.create("s1")
+	remote.waitFor("role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+
+	// Someone flips the switch, which takes the shell back from the remote
+	// holder and says so, rather than leaving it held by a client that may no
+	// longer type.
+	h.SetControlAllowed(false)
+	if h.ControlAllowed() {
+		t.Fatal("ControlAllowed still reports the switch as on")
+	}
+	remote.waitFor("the lease taken back", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer && m.Controller == ""
+	})
+
+	// A claim is refused as a switch, not as a live lease: the answer names the
+	// reason, and stealing does not change it.
+	for _, steal := range []bool{false, true} {
+		remote.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1", Steal: steal})
+		refused := remote.waitFor("control_off", func(m protocol.Msg) bool { return m.T == protocol.STError })
+		if refused.Code != protocol.ErrControlOff {
+			t.Fatalf("claim with steal=%v got %q, want %q", steal, refused.Code, protocol.ErrControlOff)
+		}
+		if refused.Message == "" {
+			t.Error("the refusal does not say why")
+		}
+	}
+
+	// Starting a shell on this machine is control of it too.
+	remote.send(protocol.Msg{
+		T: protocol.CTCreate, SessionID: "s2", Cols: 80, Rows: 24, Shell: "/bin/sh",
+	})
+	refused := remote.waitFor("no new shell", func(m protocol.Msg) bool { return m.T == protocol.STError })
+	if refused.Code != protocol.ErrControlOff {
+		t.Fatalf("create got %q, want %q", refused.Code, protocol.ErrControlOff)
+	}
+
+	// Watching is still allowed: the switch is about who may drive, not about
+	// being able to see.
+	looker := dialTest(t, ts)
+	looker.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	att := looker.waitFor("attached", func(m protocol.Msg) bool { return m.T == protocol.STAttached })
+	if att.Session == nil {
+		t.Fatal("attached carried no session summary")
+	}
+	looker.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1", Data: []byte("printf 'NOPE\\n' 1\n")})
+	denied := looker.waitFor("input refused", func(m protocol.Msg) bool { return m.T == protocol.STError })
+	if denied.Code != protocol.ErrNotController {
+		t.Fatalf("a viewer's input got %q, want %q", denied.Code, protocol.ErrNotController)
+	}
+
+	// The machine's own window is unaffected: it claims, it types, it lands.
+	owner.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	owner.waitFor("attached", func(m protocol.Msg) bool { return m.T == protocol.STAttached })
+	owner.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1"})
+	role := owner.waitFor("owner controls", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	owner.send(protocol.Msg{
+		T: protocol.CTInput, SessionID: "s1", Epoch: role.Epoch,
+		Data: []byte("printf 'MINE\\n' 1\n"),
+	})
+	owner.waitOutput("MINE")
+
+	// And the switch turns back on, so the refusal is not one-way.
+	h.SetControlAllowed(true)
+	remote.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1", Steal: true})
+	remote.waitFor("controls again", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+}
+
+// A hub can be built refusing other clients' control, which is the headless
+// case: a machine whose shells are its own from the moment it starts.
+func TestHubStartsWithControlOff(t *testing.T) {
+	h := hub.New(hub.Options{
+		Host:       protocol.Host{Hostname: "test", Platform: "test", Arch: "test"},
+		ControlOff: true,
+	})
+	ts := serveHub(t, h)
+
+	a := dialTest(t, ts)
+	a.send(protocol.Msg{
+		T: protocol.CTCreate, SessionID: "s1", Cols: 80, Rows: 24, Shell: "/bin/sh",
+	})
+	refused := a.waitFor("no new shell", func(m protocol.Msg) bool { return m.T == protocol.STError })
+	if refused.Code != protocol.ErrControlOff {
+		t.Fatalf("create on a machine that allows no control got %q, want %q", refused.Code, protocol.ErrControlOff)
+	}
+}

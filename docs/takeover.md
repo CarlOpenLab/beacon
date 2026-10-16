@@ -30,17 +30,22 @@ state needs no new channel:
 * A shell whose holder is not this window paints a soft animated glow around its
   pane (the `examples/chat-glow` look) plus a popover naming who holds it, with
   **拿回控制权** / stay read-only. The tab's row in the column carries the
-  holder's name too.
+  holder's name too, and the header of the shell on screen carries the holder and
+  the same offer, so the way back is where the typing is. A shell taken from this
+  window opens that popover by itself, and so does typing into a shell this
+  window does not hold — the hub answers a refused keystroke loudly, and the
+  window says it where the typing went.
 * Reclaiming is local: the machine with the PTY releases the lease with its own
   epoch bump, and the remote controller drops to read-only in the same frame.
   The machine's own window never needs a confirmation to take its shell back —
   the hub marks that client as the owner and honours its claim over anyone
   else's.
-* The effect is cheap and honest: it runs only while someone else holds the
-  lease, it is drawn along the pane's edge rather than over the text (no
-  re-layout, no re-shaping of the grid), its fade is an animation so a desktop
-  asking for less motion gets it at once, and its colour cycle stands still for
-  the same reason.
+* The effect is the ring shader from that example, compiled by MyGo for whatever
+  draws the window and interpreted on the CPU where nothing can: it runs only
+  while someone else holds the lease, it is drawn along the pane's edge rather
+  than over the text (no re-layout, no re-shaping of the grid), its fade is an
+  animation so a desktop asking for less motion gets it at once, and its colour
+  flow stands still for the same reason.
 
 ## Latency: two different problems
 
@@ -80,16 +85,23 @@ state needs no new channel:
   window's local link is the same `link` over an in-process pipe
   (`hub.Pipe`, `ServeLocal`), which is how the machine's own window is a client
   of its own hub and can be marked the owner.
-* **Access control**: what is in place today is the lease itself and the owner's
-  right to its own shell. What is still missing:
+* **Access control**: what is in place today is the lease itself, the owner's
+  right to its own shell, and the machine's own switch over who may control it.
+  What is still missing:
 
 * **Per-device authorization**: the relay knows a client by the fleet's shared
-  token, so any client that holds it may drive any enrolled machine. A machine
-  that wants to say "this laptop, not that one" needs a per-device ACL on the
-  relay and a first-time confirmation on the target machine, neither of which
-  exists yet. Until then, the client token is the whole authority: treat it like
-  the fleet's password, because it is.
-* **Steal confirmation on the target**: a remote steal is confirmed on the
-  *taking* side and toasted on the *losing* one. The design's "ask them first"
-  — a request the holder answers — is not built; the holder learns after the
-  fact.
+  token, so any client that holds it may drive any enrolled machine that allows
+  being driven. A machine that wants to say "this laptop, not that one" needs a
+  per-device ACL on the relay, which does not exist yet. Until then, the client
+  token is the whole authority: treat it like the fleet's password, because it
+  is.
+* **Consent, and why it is not a dialog**: the design first asked the holder to
+  approve a steal, the way a screen share does. That was dropped: a fleet is one
+  person's machines, and nobody is sitting at the far machine to answer. Being
+  enrolled with a relay *is* the consent, and the honest version of "ask them
+  first" turned out to be a switch on the machine rather than a question to the
+  person — 服务 → 允许被控制, and `tfd -allow-control=false` for a headless
+  member. Off, other clients watch and nothing more: no lease, no new shells,
+  and a holder that is not the machine's own window loses the shell in the frame
+  the switch moves. The machine's own window is never refused, because a switch
+  on a machine must not lock the machine out of itself.

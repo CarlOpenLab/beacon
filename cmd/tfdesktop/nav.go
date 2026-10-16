@@ -36,6 +36,11 @@ const (
 	sessionRowHeight = 36
 	machinePanelMost = 300
 
+	// heldLineHeight is the room one line of warning under this machine's row
+	// takes: the height of an 11pt text line and the gap above it, so the note
+	// about shells other clients are driving does not clip.
+	heldLineHeight = 18
+
 	// panelButtonSize is the square of the icon buttons in a panel's title row.
 	// The strip's are bigger; a panel's title row is a thin thing.
 	panelButtonSize = 22
@@ -138,13 +143,37 @@ func (w *window) sessionPanel(c *ui.Context, labels []string, mode string) {
 	})
 }
 
+// ownMachine reports whether a roster entry is this machine. A roster is keyed
+// by the device id a machine was enrolled under, while the window knows itself
+// by hostname, so both are checked: without the device one, a fleet panel lists
+// the machine you are sitting at as another machine — and offers to open its own
+// shells over the relay.
+func (w *window) ownMachine(m tunnel.Machine) bool {
+	if m.ID == machineLocal {
+		return true
+	}
+	if w.fleet == nil {
+		return false
+	}
+	if m.ID == w.fleet.Host().Hostname {
+		return true
+	}
+	_, device := w.fleet.RelayIdentity()
+	return device != "" && m.ID == device
+}
+
 // machinePanelNeed is how much room the machines' panel's content asks for:
 // its own base, plus a row per machine the roster knows and a row under each for
 // the shells that machine is running.
 func (w *window) machinePanelNeed() float32 {
 	need := float32(machinePanelBase)
+	// The line about shells other clients are driving is one more line under this
+	// machine's row, and the panel has to ask for the room to draw it.
+	if w.localHeldByOthers() > 0 {
+		need += heldLineHeight
+	}
 	for _, m := range w.roster {
-		if m.ID == machineLocal {
+		if w.ownMachine(m) {
 			continue
 		}
 		need += machineRowHeight
@@ -176,6 +205,14 @@ func (w *window) machinePanel(c *ui.Context) {
 					ui.Text(c, meta).FontSize(11).TextColor(t.TextMuted)
 				}).Tooltip(w.serviceLine())
 
+				// A shell on this machine that someone else is driving is the next
+				// thing to say: the person at the keyboard is about to find out
+				// anyway, by typing into a shell that does not answer.
+				if n := w.localHeldByOthers(); n > 0 {
+					ui.Text(c, fmt.Sprintf("%d 个会话正被其他客户端控制", n)).
+						FontSize(11).TextColor(t.Warning)
+				}
+
 				if w.relayOn() {
 					st := w.fleet.RelayState()
 					url, device := w.fleet.RelayIdentity()
@@ -191,14 +228,19 @@ func (w *window) machinePanel(c *ui.Context) {
 
 				// The rest of the fleet: one row per machine the relay knows,
 				// and under it the shells that machine is running — which appear
-				// once the window has a stream to it.
+				// once the window has a stream to it. This machine is skipped: it is
+				// the row above, and a panel that names you twice, once by hostname
+				// and once by device id, is a panel nobody can read.
 				for _, m := range w.roster {
-					if m.ID == w.fleet.Host().Hostname || m.ID == machineLocal {
+					if w.ownMachine(m) {
 						continue
 					}
 					w.machineRow(c, m)
 				}
 
+				if w.linkNote != "" {
+					ui.Text(c, w.linkNote).FontSize(11).TextColor(t.Warning)
+				}
 				ui.Text(c, w.machineNote()).FontSize(11).TextColor(t.TextMuted)
 			})
 		})
@@ -260,22 +302,26 @@ func (w *window) remoteSessionRow(c *ui.Context, m tunnel.Machine, s protocol.Su
 }
 
 // lookAtMachine opens the window's link to a machine and asks what it runs. A
-// second look re-uses the stream, so the panel can be clicked freely.
+// second look re-uses the stream, so the panel can be clicked freely. A machine
+// the window cannot reach says why, in the panel: a click that does nothing is
+// the one thing a fleet panel must never do.
 func (w *window) lookAtMachine(machine string) {
 	if l := w.remoteLink(machine); l != nil {
+		w.linkNote = ""
 		l.list()
+		return
 	}
+	w.linkNote = w.noLinkReason(machine)
 }
 
 // openRemoteSession attaches a tab to a shell on another machine.
 func (w *window) openRemoteSession(machine, sessionID string) {
-	if w.remoteLink(machine) == nil {
-		return
-	}
 	if w.tabOf(machine, sessionID) != nil {
 		return
 	}
-	w.openTab(machine, sessionID)
+	if w.openTab(machine, sessionID) == nil {
+		w.linkNote = w.noLinkReason(machine)
+	}
 }
 
 // machineState is what a roster machine's tooltip says about it.
@@ -330,11 +376,15 @@ func (w *window) relayOn() bool {
 }
 
 // machineNote is the line under the machines: what the relay is doing, and what
-// the panel is for. It is the honest answer to "where are my other machines?"
-// until the window can drive them.
+// the panel is for. It is the honest answer to "where are my other machines?",
+// and when the client token is missing it says that rather than leaving an empty
+// panel to be guessed at.
 func (w *window) machineNote() string {
 	if !w.relayOn() {
 		return "未接入中继。接入后，其他机器的会话会列在这里。"
+	}
+	if w.fleet.RelayClient() == nil {
+		return "没有客户端令牌：在 设置 → 远程 → 客户端令牌 填上中继的 client token，其他机器才会列在这里。"
 	}
 	return "同一中继上的其他机器会列在这里。"
 }
@@ -345,7 +395,7 @@ func (w *window) machineNote() string {
 func (w *window) machineCount() int {
 	n := 1
 	for _, m := range w.roster {
-		if m.Online && m.ID != machineLocal {
+		if m.Online && !w.ownMachine(m) {
 			n++
 		}
 	}

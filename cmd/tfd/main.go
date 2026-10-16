@@ -35,6 +35,8 @@ func main() {
 	machineName := flag.String("machine-name", "", "name shown in the relay's machine list (default: hostname)")
 	relayCA := flag.String("relay-ca", "",
 		"PEM file with the certificate (or CA) that signed the relay's TLS certificate; use it when the relay is not behind a public CA")
+	allowControl := flag.Bool("allow-control", true,
+		"let other clients (a browser, a phone, another machine) drive the shells here; -allow-control=false leaves them read-only")
 	flag.Parse()
 
 	srv, err := daemon.New(daemon.Options{
@@ -43,6 +45,7 @@ func main() {
 		OriginPatterns: daemon.SplitList(*origins),
 		IdleTimeout:    *idle,
 		WebDir:         *webDir,
+		ControlOff:     !*allowControl,
 	})
 	if err != nil {
 		log.Fatalf("tfd: %v", err)

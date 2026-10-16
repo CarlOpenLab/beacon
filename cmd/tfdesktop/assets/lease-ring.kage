@@ -1,0 +1,69 @@
+// The ring around a shell another client is driving, taken from MyGo's
+// chat-glow example (examples/chat-glow): a thin line around the rectangle,
+// glowing outward, its colours flowing around it.
+//
+// It is the shader the example draws the composer's ring with, and the reason
+// the pane's edge reads as alive rather than as a coloured border. The glow is
+// drawn only while someone else holds the lease, so its brightness is a fact
+// about the shell, not decoration.
+//
+// Time is where the flow is; it stands still where the desktop asks for less
+// motion, which is a uniform rather than a branch here. Pad is how far inside
+// the pane's edge the line sits, Radius the pane's own corner.
+
+// The glow's colours, around a loop from 0 to 1: violet, pink, periwinkle,
+// purple, coral and peach, as Apple Intelligence's.
+func palette(x float) vec3 {
+	x = fract(x) * 6
+	if x < 1 {
+		return mix(vec3(0.74, 0.51, 0.95), vec3(0.96, 0.73, 0.92), x)
+	}
+	if x < 2 {
+		return mix(vec3(0.96, 0.73, 0.92), vec3(0.55, 0.62, 1), x-1)
+	}
+	if x < 3 {
+		return mix(vec3(0.55, 0.62, 1), vec3(0.67, 0.43, 0.93), x-2)
+	}
+	if x < 4 {
+		return mix(vec3(0.67, 0.43, 0.93), vec3(1, 0.4, 0.47), x-3)
+	}
+	if x < 5 {
+		return mix(vec3(1, 0.4, 0.47), vec3(1, 0.73, 0.44), x-4)
+	}
+	return mix(vec3(1, 0.73, 0.44), vec3(0.74, 0.51, 0.95), x-5)
+}
+
+// roundRect returns the distance from p, from the rectangle's middle, to
+// a rectangle of half size half with corners of radius r: below zero
+// inside.
+func roundRect(p, half vec2, r float) float {
+	q := abs(p) - half + r
+	return length(max(q, 0)) + min(max(q.x, q.y), 0) - r
+}
+
+// around returns where p, from the middle of a box of size, lies around
+// its outline, from 0 to 1.
+func around(p, size vec2) float {
+	return atan2(p.y/size.y, p.x/size.x)/6.2831853 + 0.5
+}
+
+var Time float
+var Strength float
+var Pad float
+var Radius float
+
+func Fragment(dst vec4, pos vec2) vec4 {
+	size := rectSize()
+	p := pos - 0.5*size
+	d := roundRect(p, 0.5*size-Pad, Radius) - 0.6
+	a := around(p, size)
+	flow := a + Time*0.12
+	line := exp(-abs(d) / 0.9)
+	glow := 0.0
+	if d > 0 {
+		glow = (exp(-d/6)*0.55 + exp(-d/16)*0.25) * smoothstep(Pad, Pad*0.3, d)
+	}
+	alpha := clamp(line*(0.5+0.5*Strength)+glow*Strength, 0, 1)
+	col := mix(palette(flow), palette(flow+0.2), glow/(line+glow+0.0001))
+	return vec4(col*alpha, alpha)
+}

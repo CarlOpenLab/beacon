@@ -70,7 +70,8 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   the window can open in a tab of its own.
   A Settings window (the strip's 设置 button, at the bottom under the shells)
   picks the terminal's font and size, stores this machine's relay credential,
-  and turns the local service on or off — the same surface Gloss keeps, drawn
+  turns the local service on or off, and decides whether other clients may take
+  this machine's shells — the same surface Gloss keeps, drawn
   the same way. The font field suggests the families installed on the machine
   and takes any name, so a Nerd Font build ("Maple Mono NF" beside "Maple Mono")
   is selectable. Edited text fields are saved by 应用, which the toolbar offers
@@ -160,6 +161,7 @@ by accident.
 | `-device-id` / `-device-secret` | this machine's relay credential |
 | `-machine-name` | the name shown in the relay's machine list |
 | `-relay-ca` | PEM file to trust as the relay's CA, for a relay behind a private certificate |
+| `-allow-control` | whether other clients (a browser, a phone, another machine) may drive the shells here; default true, `false` leaves them read-only |
 
 `tfdesktop` takes `-addr` and `-web-dir` as well, plus `-shell` (the shell new
 tabs run) and `-cwd` (their working directory). Its relay credential, the

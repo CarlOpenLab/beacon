@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/daemon"
@@ -64,19 +67,34 @@ func TestWindowTakesOverAnotherMachinesShell(t *testing.T) {
 	}
 	go func() { _ = ag.Run(ctx) }()
 
-	// The window's machine, and the window's client link to the relay.
+	// The window's machine, and the window's client link to the relay — set up
+	// the way a person sets it up, through the 远程 pane: the address, the fleet's
+	// client token in its field, 应用. Nothing here reaches past what the window
+	// itself can be told to do, which is the point: the pair of machines this
+	// test stands for is two desktops and a relay.
 	f := newTestFleet(t)
 	store := settings.Open(t.TempDir())
-	if _, err := store.Update(func(s *settings.Settings) {
-		s.RelayURL = "ws" + strings.TrimPrefix(ts.URL, "http") + "/relay/agent"
-		s.ClientToken = "fleettoken"
-	}); err != nil {
-		t.Fatalf("store: %v", err)
-	}
 	w := newWindow(f, store, "", "")
-	// The window's own client link, as the app opens it at startup.
-	if err := f.SetRelayClient(store.Get().RelayURL, store.Get().ClientToken, ""); err != nil {
-		t.Fatalf("relay client: %v", err)
+	sw := newSettingsWindow(w, store, f)
+	tt := ui.NewTester(sw.view, 640, 640)
+	tt.Frame()
+	if err := tt.Click("远程"); err != nil {
+		t.Fatalf("Click(远程): %v", err)
+	}
+	tt.Frame()
+	sw.relay = "ws" + strings.TrimPrefix(ts.URL, "http") + "/relay/agent"
+	tt.Frame()
+	if err := tt.Click("客户端令牌"); err != nil {
+		t.Fatalf("Click(客户端令牌): %v", err)
+	}
+	tt.Type("fleettoken")
+	tt.Frame()
+	if err := tt.Click("应用"); err != nil {
+		t.Fatalf("Click(应用): %v", err)
+	}
+	tt.Frame()
+	if f.RelayClient() == nil {
+		t.Fatalf("the token on the pane did not build a client link: %s", f.RelayClientErr())
 	}
 
 	// The roster arrives, and the other machine is on it, online.
@@ -322,4 +340,145 @@ func TestTakeoverAcrossMachines(t *testing.T) {
 	owner.waitFor("the owner holds it again", func(m protocol.Msg) bool {
 		return m.T == protocol.STRole && m.Role == protocol.RoleController
 	})
+}
+
+// Two desktops, one relay: the pair the report was about. Each machine is a
+// window with its own shells, its own member link and its own client link, set
+// up the way a person sets one up — the address and the client token on the 远程
+// pane, then 应用 — and each drives a shell on the other.
+//
+// The shell on a machine is its own window's to hold, so the far side arrives
+// read-only and takes it back with 拿回控制权: the same steal a browser asks for,
+// answered by the machine that owns the shell, which is what the glow and the
+// popover are for.
+func TestTwoDesktopsDriveEachOther(t *testing.T) {
+	reg, err := relay.OpenRegistry(filepath.Join(t.TempDir(), "devices.json"))
+	if err != nil {
+		t.Fatalf("registry: %v", err)
+	}
+	alphaID, alphaSecret, err := reg.Enroll("alpha", "")
+	if err != nil {
+		t.Fatalf("enroll alpha: %v", err)
+	}
+	betaID, betaSecret, err := reg.Enroll("beta", "")
+	if err != nil {
+		t.Fatalf("enroll beta: %v", err)
+	}
+	rl, err := relay.New(relay.Config{Registry: reg, ClientToken: "fleettoken"})
+	if err != nil {
+		t.Fatalf("relay: %v", err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/relay/agent", rl.ServeAgent)
+	mux.HandleFunc("/relay/client", rl.ServeClient)
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/relay/agent"
+
+	// desk is one desktop, set up the way a person sets one up: a fleet with
+	// shells of its own, and a 远程 pane holding the address, this machine's
+	// device credential, the fleet's client token and the 接入 switch. Nothing
+	// here reaches past the window's own controls, which is the point — the pair
+	// of machines this test stands for is two desktops and a relay.
+	desk := func(deviceID, secret string) (*fleet, *window) {
+		f := newTestFleet(t)
+		store := settings.Open(t.TempDir())
+		w := newWindow(f, store, "", "")
+		sw := newSettingsWindow(w, store, f)
+		tt := ui.NewTester(sw.view, 640, 640)
+		tt.Frame()
+		if err := tt.Click("远程"); err != nil {
+			t.Fatalf("Click(远程): %v", err)
+		}
+		tt.Frame()
+		sw.relay, sw.device, sw.secret, sw.relayOn = url, deviceID, secret, true
+		tt.Frame()
+		if err := tt.Click("客户端令牌"); err != nil {
+			t.Fatalf("Click(客户端令牌): %v", err)
+		}
+		tt.Type("fleettoken")
+		tt.Frame()
+		if err := tt.Click("应用"); err != nil {
+			t.Fatalf("Click(应用): %v", err)
+		}
+		tt.Frame()
+		if !f.RelayOn() {
+			t.Fatalf("%s is not on the relay after 应用", deviceID)
+		}
+		if f.RelayClient() == nil {
+			t.Fatalf("%s has no client link: %s", deviceID, f.RelayClientErr())
+		}
+		return f, w
+	}
+	alpha, alphaDesk := desk(alphaID, alphaSecret)
+	beta, betaDesk := desk(betaID, betaSecret)
+
+	// Each window sees the other on the relay.
+	for _, side := range []struct {
+		w     *window
+		other string
+	}{{alphaDesk, betaID}, {betaDesk, alphaID}} {
+		w, other := side.w, side.other
+		waitFor(t, "the roster to name "+other, 20*time.Second, func() bool {
+			w.drain()
+			for _, m := range w.roster {
+				if m.ID == other && m.Online {
+					return true
+				}
+			}
+			return false
+		})
+	}
+
+	// A shell on each machine, and the other desktop drives it.
+	for _, side := range []struct {
+		who     string
+		w       *window
+		target  string
+		host    *fleet
+		waiting *window
+	}{
+		{"alpha drives beta", alphaDesk, betaID, beta, betaDesk},
+		{"beta drives alpha", betaDesk, alphaID, alpha, alphaDesk},
+	} {
+		s, err := side.host.Hub().Create("", 80, 24, "", "/bin/sh")
+		if err != nil {
+			t.Fatalf("shell on %s: %v", side.target, err)
+		}
+		// The machine's own window takes its own shell: it is watching the shell
+		// on screen, and the first watcher of an unclaimed shell holds it.
+		waitFor(t, side.target+"'s own window to hold it", 20*time.Second, func() bool {
+			side.waiting.drain()
+			tb := side.waiting.tabOf(machineLocal, s.ID)
+			return tb != nil && tb.held()
+		})
+
+		// The other desktop looks at the machine and opens the shell: read-only,
+		// because the shell is the far machine's own window's.
+		side.w.lookAtMachine(side.target)
+		waitFor(t, "the session list from "+side.target, 20*time.Second, func() bool {
+			side.w.drain()
+			return len(side.w.remoteSessions[side.target]) == 1
+		})
+		tb := side.w.openTab(side.target, s.ID)
+		if tb == nil {
+			t.Fatalf("%s: no tab for the shell on %s", side.who, side.target)
+		}
+
+		// 拿回控制权: the far machine is told in the same frame, and the glow and
+		// the popover that say "not yours right now" are what it gets.
+		side.w.reclaim(tb)
+		waitFor(t, side.who+": the lease", 20*time.Second, func() bool {
+			side.w.drain()
+			return tb.held()
+		})
+		waitFor(t, side.target+" to be told it lost the shell", 20*time.Second, func() bool {
+			side.waiting.drain()
+			other := side.waiting.tabOf(machineLocal, s.ID)
+			return other != nil && !other.held() && other.holder() != ""
+		})
+		if !side.waiting.leaseOpen {
+			t.Errorf("%s: the machine that lost the shell did not open the panel that says so", side.target)
+		}
+	}
 }

@@ -47,6 +47,9 @@ export const ERR = {
   badSize: 'bad_size',
   unauthorized: 'unauthorized',
   leaseHeld: 'lease_held',
+  // The machine refuses other clients' control: watching is still allowed, and a
+  // claim comes back with this rather than with a live lease to steal.
+  controlOff: 'control_off',
 } as const
 
 export interface Host {

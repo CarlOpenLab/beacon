@@ -44,6 +44,12 @@ interface MachineView {
   sessions: Summary[]
   host?: Host
   conn: ConnState
+  /**
+   * The machine answered a claim with control_off: it lets other clients watch
+   * and not type. A lease granted afterwards clears it, because the machine can
+   * turn that back on whenever it likes.
+   */
+  controlOff?: boolean
 }
 
 export interface AppOptions {
@@ -334,6 +340,12 @@ export class App {
         if (!tab) return
         tab.role = role
         tab.pane.classList.toggle('readonly', role !== ROLE.controller)
+        if (role === ROLE.controller) {
+          // The machine lets this client type after all; whatever it answered
+          // before is no longer the state of anything.
+          const mv = this.machine(machineId)
+          if (mv) mv.controlOff = false
+        }
         this.renderTabs()
         this.renderBanner()
         this.renderStatus()
@@ -373,6 +385,27 @@ export class App {
           // The lease is live and someone else holds it. The banner offers the
           // steal; a refusal is not an error so much as an answer.
           this.toast(message, 'warn')
+          return
+        }
+        if (code === ERR.controlOff) {
+          // The machine allows watching and not typing. The tab stays readable,
+          // the banner says why, and the offer to take control stays on screen:
+          // the machine can turn that back on, and a button that would work again
+          // is better than a button that was deleted.
+          const mv = this.machine(machineId)
+          if (mv) mv.controlOff = true
+          const tab = sessionId ? this.findTab(machineId, sessionId) : undefined
+          if (tab) tab.role = ROLE.viewer
+          else {
+            // A refused create: the tab that was waiting for a shell has nothing
+            // to wait for, so it goes rather than sitting there empty.
+            const waiting = this.pendingTab(machineId)
+            if (waiting) this.removeTab(waiting)
+          }
+          this.toast(message, 'warn')
+          this.renderBanner()
+          this.renderTabs()
+          this.syncComposer()
           return
         }
         this.toast(`${code}: ${message}`, 'error')
@@ -655,7 +688,14 @@ export class App {
       // The sessions broadcast, not the role frame, is what tells us whether
       // control is merely unclaimed or actually held elsewhere.
       const holder = mv?.sessions.find((s) => s.sessionId === tab.sessionId)?.controller ?? ''
-      text = holder ? `只读：该会话正被 ${holder} 控制` : '只读：当前无人控制'
+      if (mv?.controlOff) {
+        // The machine answered a claim by refusing it: it allows watching and
+        // not typing. The button stays — the switch can move back at any time —
+        // but nobody should have to guess why their typing is going nowhere.
+        text = `只读：${mv.label} 不允许其他客户端控制它的终端`
+      } else {
+        text = holder ? `只读：该会话正被 ${holder} 控制` : '只读：当前无人控制'
+      }
       label = '接管'
       action = () => {
         // Taking a shell from under someone is a thing a person asks for: an

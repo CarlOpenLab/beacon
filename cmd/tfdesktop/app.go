@@ -59,6 +59,14 @@ type window struct {
 	// is what each machine's hub said it was running. Both are the panel's data.
 	roster         []tunnel.Machine
 	remoteSessions map[string][]protocol.Summary
+	// live is this machine's own session list as the hub last pushed it, with who
+	// holds each shell. The panel counts the shells other clients are driving from
+	// it, which is the question a person asks when their typing goes nowhere.
+	live []protocol.Summary
+	// linkNote is why the window could not reach a machine just now, shown in
+	// the panel: a click that does nothing is the one thing a fleet panel must
+	// never do.
+	linkNote string
 
 	// rail is the navigation sidebar's selection: the id of the shell on screen,
 	// or one of the rail's action ids on the frame a click is handled.
@@ -176,6 +184,21 @@ func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) 
 	})
 }
 
+// noLinkReason is why the window has no link to a machine, in the words the
+// panel and the log should use.
+func (w *window) noLinkReason(machine string) string {
+	if machine == machineLocal || machine == "" {
+		return "本机链路未就绪"
+	}
+	if !w.relayOn() {
+		return "未接入中继"
+	}
+	if w.fleet.RelayClientErr() != "" {
+		return "客户端链路失败：" + w.fleet.RelayClientErr()
+	}
+	return "没有客户端令牌，无法连接其他机器"
+}
+
 // linkFor is the link that speaks to a machine: this machine's own, or another
 // machine's through the relay.
 func (w *window) linkFor(machine string) *link {
@@ -271,6 +294,7 @@ func (w *window) kill(id string) {
 // reconcile brings the tabs in line with the sessions the hub reports. It runs
 // on the UI thread.
 func (w *window) reconcile(live []protocol.Summary) {
+	w.live = live
 	present := make(map[string]bool, len(live))
 	for _, s := range live {
 		present[s.SessionID] = true
@@ -324,16 +348,19 @@ func (w *window) mount(s protocol.Summary) error {
 // openTab gives the window a new tab watching a session on machine, attaching
 // to it over that machine's link. A session id of "" is one the window has just
 // asked the hub to create: the tab waits for the hub to name it.
+//
+// It returns nil when there is no link to that machine — which is a thing the
+// caller must say out loud, because attaching a remote session id to the local
+// hub instead would open a tab that shows nothing and explains nothing.
 func (w *window) openTab(machine, sessionID string) *tab {
 	l := w.linkFor(machine)
 	if l == nil {
-		// No link to that machine yet: looking at it opens one.
-		if w.remoteLink(machine) != nil {
-			l = w.linkFor(machine)
+		remote := w.remoteLink(machine)
+		if remote == nil {
+			log.Printf("tfdesktop: no link to %s: %s", machine, w.noLinkReason(machine))
+			return nil
 		}
-	}
-	if l == nil {
-		l = w.local.link
+		l = remote.link
 	}
 	sess := newSession(sessionID, l, nil)
 	conn := newTermConn(sess)
@@ -429,25 +456,30 @@ func (w *window) tabOf(machine, sessionID string) *tab {
 	return nil
 }
 
-// tabOfID is the tab watching a session id, on any machine.
-func (w *window) tabOfID(id string) *tab {
-	if id == "" {
-		return nil
-	}
-	for _, tb := range w.tabs {
-		if tb.id == id {
-			return tb
-		}
-	}
-	return nil
-}
-
 // activeTab is the tab on screen, or nil with none open.
 func (w *window) activeTab() *tab {
 	if w.selected < 0 || w.selected >= len(w.order) {
 		return nil
 	}
 	return w.tabs[w.order[w.selected]]
+}
+
+// localHeldByOthers counts the shells on this machine that another client is
+// driving. It is the machine panel's answer to "why is my typing going nowhere?"
+// for a person who never saw the glow, and it counts a shell this window holds
+// as nobody's but this window's — whichever tab is holding it.
+func (w *window) localHeldByOthers() int {
+	n := 0
+	for _, s := range w.live {
+		if s.Controller == "" {
+			continue
+		}
+		if tb := w.tabOf(machineLocal, s.SessionID); tb != nil && tb.held() {
+			continue
+		}
+		n++
+	}
+	return n
 }
 
 // dropKey removes one key from a slice of them, keeping the rest in order.
@@ -476,7 +508,12 @@ type tabHandlers struct {
 	conn *termConn
 }
 
-func (h tabHandlers) tab() *tab { return h.w.tabOfID(h.sess.id) }
+// tab is the tab watching this handler's session. It is matched by the session
+// object, not by its id: session ids are counted per machine ("s1" on every
+// machine), and a window driving another machine at the same time has a local
+// "s1" and a remote one. An id lookup would hand one shell's role frame, exit or
+// close to the other shell's tab.
+func (h tabHandlers) tab() *tab { return h.w.tabOfSession(h.sess) }
 
 func (h tabHandlers) Attached(sum protocol.Summary, cursor int64, truncated bool) {
 	w := h.w
@@ -512,8 +549,19 @@ func (h tabHandlers) Output(data []byte, resync bool) {
 func (h tabHandlers) Role(role, controller string, epoch uint64) {
 	w := h.w
 	w.update(func() {
-		if tb := h.tab(); tb != nil {
-			tb.setLease(role, controller, epoch)
+		tb := h.tab()
+		if tb == nil {
+			return
+		}
+		held := tb.held()
+		tb.setLease(role, controller, epoch)
+		// A shell taken from this window says so at once, where the typing used to
+		// go: the glow and the tab's mark say which shell, and the popover is the
+		// only place that offers it back. A shell this window never held — one it
+		// opened as a viewer — is not news, so it gets the glow and the mark
+		// rather than a panel in its face.
+		if held && !tb.held() {
+			w.leaseOpen = true
 		}
 		w.invalidate()
 	})
@@ -558,6 +606,28 @@ func (h tabHandlers) Failed(code, message string) {
 	// popover over the terminal says the same thing on screen, and the log
 	// keeps the detail for when it is needed.
 	log.Printf("tfdesktop: %s: %s", code, message)
+	w := h.w
+	switch code {
+	case protocol.ErrNotController:
+		w.update(func() {
+			// The refusal is about one shell while the popover is one window-wide
+			// panel, so it opens only for the shell on screen: a background tab's
+			// refused keystroke must not put a panel over a shell that is fine.
+			if tb := h.tab(); tb != nil && tb == w.activeTab() {
+				w.leaseOpen = true
+			}
+			w.invalidate()
+		})
+	case protocol.ErrControlOff:
+		// The machine said no: it allows other clients to watch and not to type.
+		// There is no holder to name, so this is not the popover — it is the line
+		// under the machines, which is where a refusal that belongs to a whole
+		// machine is explained.
+		w.update(func() {
+			w.linkNote = "这台机器不允许其他客户端控制它：在它的 设置 → 服务 → 允许被控制 里打开。"
+			w.invalidate()
+		})
+	}
 }
 
 // signature is a cheap fingerprint of the session list: enough to tell a

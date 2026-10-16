@@ -148,7 +148,8 @@ func (w *window) header(c *ui.Context, labels []string) {
 	col := shellColorsFor(t)
 
 	name := "term-fleet"
-	if tb := w.activeTab(); tb != nil && tb.id != "" {
+	tb := w.activeTab()
+	if tb != nil && tb.id != "" {
 		name = tb.label()
 	}
 
@@ -161,6 +162,26 @@ func (w *window) header(c *ui.Context, labels []string) {
 			ui.Column(c).Gap(1).Children(func() {
 				ui.Text(c, name).FontSize(14).FontWeight(600)
 				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(t.TextMuted)
+			})
+			// A shell someone else is driving says so here, with the way back: the
+			// glow says "not yours right now", the popover explains it, and this is
+			// the button a person looks for when the keyboard has stopped working.
+			if tb == nil {
+				return
+			}
+			holder := tb.holder()
+			if holder == "" {
+				return
+			}
+			ui.Spacer(c)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Label(holder + " 正在控制").Children(func() {
+					ui.Box(c).Size(8, 8).Radius(4).Background(t.Warning)
+					ui.Text(c, holder+" 正在控制").FontSize(11).TextColor(t.Warning)
+				})
+				if ui.Button(c, "拿回控制权").Clicked() {
+					w.reclaim(tb)
+				}
 			})
 		})
 }

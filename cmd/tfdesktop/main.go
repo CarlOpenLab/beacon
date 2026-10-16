@@ -63,6 +63,10 @@ func main() {
 	if err := f.SetServer(!saved.ServerOff); err != nil {
 		log.Printf("tfdesktop: local service: %v", err)
 	}
+	// Who may drive this machine's shells, applied before anything can reach it:
+	// a machine that was left read-only for other clients must not be reachable
+	// for the moment it takes the window to open.
+	f.SetRemoteControl(!saved.ControlOff)
 	if err := f.SetRelay(saved.RelayURL, saved.DeviceID, saved.DeviceSecret, saved.RelayCA, saved.RelayOn); err != nil {
 		log.Printf("tfdesktop: relay: %v", err)
 	}

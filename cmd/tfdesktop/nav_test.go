@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
 // newTestShellWindow is a shell window with shells open and no hub behind it:
@@ -184,7 +187,9 @@ func TestMachinePanelShowsThisMachineAndTheRelay(t *testing.T) {
 	}
 
 	// Enrolled with a relay: the row appears, with the address and the device id
-	// the link was given, and the note changes with it.
+	// the link was given, and the note changes with it. There is no client link
+	// in this window — no token was ever applied — so the note has to say that
+	// rather than promise machines that cannot appear.
 	if err := f.SetRelay("wss://relay.example/relay/agent", "mac-mini", "secret", "", true); err != nil {
 		t.Fatalf("SetRelay: %v", err)
 	}
@@ -195,8 +200,13 @@ func TestMachinePanelShowsThisMachineAndTheRelay(t *testing.T) {
 	if !tt.HasText("设备 mac-mini") {
 		t.Fatalf("the relay row has no device id; texts = %v", tt.Texts())
 	}
-	if !tt.HasText("同一中继上的其他机器会列在这里") {
-		t.Fatalf("the note did not follow the relay; texts = %v", tt.Texts())
+	if !tt.HasText("没有客户端令牌") {
+		t.Fatalf("the note did not own up to the missing client link; texts = %v", tt.Texts())
+	}
+	// ...and it has to say where the token goes, since that is the only place
+	// this state can be undone.
+	if !tt.HasText("设置 → 远程 → 客户端令牌") {
+		t.Fatalf("the note does not say where the token goes; texts = %v", tt.Texts())
 	}
 }
 
@@ -290,5 +300,54 @@ func TestAppearancePaneOffersAllThreeModes(t *testing.T) {
 	}
 	if got := store.Get().Theme; got != themeDark {
 		t.Fatalf("appearance = %q, want %q", got, themeDark)
+	}
+}
+
+// The roster is keyed by device id and the window knows itself by hostname, so
+// enrolling this machine with a relay used to put it in the panel twice — once
+// as 本机, once as another machine with its own shells. A fleet panel that lists
+// you twice is one nobody can read.
+func TestMachinePanelDoesNotListThisMachineTwice(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = f
+	if err := f.SetRelay("wss://relay.example/relay/agent", "mac-mini-7f3a", "secret", "", true); err != nil {
+		t.Fatalf("SetRelay: %v", err)
+	}
+
+	// The relay's list, as the relay sees it: this machine under its enrolled id,
+	// and another machine.
+	w.roster = []tunnel.Machine{
+		{ID: "mac-mini-7f3a", Name: f.Host().Hostname, Online: true, Host: f.Host()},
+		{ID: "other-box", Name: "other box", Online: true,
+			Host: protocol.Host{Platform: "darwin", Arch: "arm64"}},
+	}
+
+	tt := drawNav(t, w)
+	if !tt.HasText("other box") {
+		t.Fatalf("the panel does not list the other machine; texts = %v", tt.Texts())
+	}
+	// Its own name is on the 本机 row and nowhere else: a second row would be the
+	// roster entry for this machine, which is what the device-id check skips.
+	named := 0
+	for _, text := range tt.Texts() {
+		if strings.TrimSpace(text) == f.Host().Hostname {
+			named++
+		}
+	}
+	if named != 1 {
+		t.Fatalf("this machine is named %d times in the panel, want once; texts = %v", named, tt.Texts())
+	}
+	// The title's count is this machine plus the other one — the self entry would
+	// have made it three.
+	if got := w.machineCount(); got != 2 {
+		t.Fatalf("machineCount = %d, want this machine plus the other one", got)
+	}
+
+	// A machine with no relay still counts itself, and only itself.
+	w.roster = nil
+	tt.Frame()
+	if got := w.machineCount(); got != 1 {
+		t.Fatalf("machineCount with no roster = %d, want this machine alone", got)
 	}
 }

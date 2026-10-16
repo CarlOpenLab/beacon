@@ -157,6 +157,15 @@ func (f *fleet) RelayOn() bool {
 	return f.relayOn
 }
 
+// SetRemoteControl turns other clients' control of this machine's shells on or
+// off. It is the machine's own hub that decides, so the switch reaches every
+// client that reaches this machine — the LAN browser, a phone through a relay,
+// another desktop — and takes the lease back from one of them mid-session. The
+// window is never affected: it is the machine's own client.
+func (f *fleet) SetRemoteControl(on bool) {
+	f.hub.SetControlAllowed(on)
+}
+
 // SetRelay replaces the relay link. An empty URL, or enabled false, drops the
 // current one; a bad credential is reported rather than retried in a loop, so
 // the settings window can say what is wrong. caFile, when set, is the PEM the
