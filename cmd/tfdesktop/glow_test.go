@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
 // The glow is the one piece of chrome that says a shell is being driven from
@@ -178,5 +179,87 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 	nav.Frame()
 	if nav.HasText("正被其他客户端控制") {
 		t.Errorf("the machine panel still reports a driven shell; texts = %v", nav.Texts())
+	}
+}
+
+// A machine that takes its shell back ends the connection: the tabs this window
+// had open there close, the link is dropped, the panels return to this machine,
+// and the window says who did it. Leaving a dead tab on screen would be a
+// connection that cannot type pretending to be one that can.
+func TestAMachineTakingItsShellBackEndsTheConnection(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.machine = "other-box"
+	sess := newSession(tb.id, nil, nil)
+	tb.sess = sess
+	w.remote = map[string]*relayLink{}
+	w.remoteSessions = map[string][]protocol.Summary{
+		"other-box": {{SessionID: tb.id, Alive: true}},
+	}
+	w.machineSel = "other-box"
+	w.roster = []tunnel.Machine{{
+		ID: "other-box", Name: "other box", Online: true,
+		Host: protocol.Host{Platform: "linux", Arch: "amd64"},
+	}}
+
+	h := tabHandlers{w: w, sess: sess}
+	h.Role(protocol.RoleController, "", 3)
+	w.drain()
+	if tb.holder() != "" {
+		t.Fatal("this window did not hold the shell to begin with")
+	}
+
+	// The far machine's own window takes it back: the role frame says this
+	// window is a viewer and nobody else holds it either.
+	h.Role(protocol.RoleViewer, "", 4)
+	w.drain()
+
+	if len(w.tabs) != 0 {
+		t.Fatalf("%d tabs left after the machine took its shell back, want none", len(w.tabs))
+	}
+	if _, ok := w.remote["other-box"]; ok {
+		t.Error("the link to the machine that took its shell back is still open")
+	}
+	if _, ok := w.remoteSessions["other-box"]; ok {
+		t.Error("the window still lists shells from a machine it is no longer connected to")
+	}
+	if got := w.selectedMachine(); got != machineLocal {
+		t.Errorf("the panels are still on %q, want this machine", got)
+	}
+	// And it says who did it, on screen: a shell that vanishes without a word is
+	// the thing this rule exists to avoid.
+	if !strings.Contains(w.currentNotice(), "other box") {
+		t.Fatalf("notice = %q, want it to name the machine", w.currentNotice())
+	}
+	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
+	tt.Frame()
+	if !tt.HasText("拿回了控制权") {
+		t.Fatalf("the notice is not on screen; texts = %v", tt.Texts())
+	}
+}
+
+// The panel under the glow hangs from the top of a pane, and a pane can be
+// narrower than a sentence: it has a width of its own so it cannot run past the
+// terminal it is about.
+func TestLeasePanelStaysInsideThePane(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.term = fedTerminal(t, previewScreen())
+	tb.setLease(protocol.RoleViewer, "c9", 4)
+	w.leaseOpen = true
+
+	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
+	tt.Frame()
+	rect, ok := tt.Find("c9 正在控制这个终端")
+	if !ok {
+		t.Fatalf("the panel does not name the holder; texts = %v", tt.Texts())
+	}
+	if rect.W > leasePopoverWidth {
+		t.Errorf("the panel's text is %v DIPs wide, want it inside %v", rect.W, leasePopoverWidth)
+	}
+	if _, ok := tt.Find("拿回控制权"); !ok {
+		t.Fatalf("the panel lost the way back; texts = %v", tt.Texts())
 	}
 }

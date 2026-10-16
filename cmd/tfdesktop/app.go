@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
@@ -78,6 +79,12 @@ type window struct {
 	// screen; reachErr is why the last attempt did not work.
 	reachPrompt string
 	reachErr    string
+
+	// notice is the window's own line about something that just happened — a
+	// machine taking its shell back — and noticeAt is when it was said, so it can
+	// fade on its own.
+	notice   string
+	noticeAt time.Time
 
 	// rail is the navigation sidebar's selection: the id of the shell on screen,
 	// or one of the rail's action ids on the frame a click is handled.
@@ -291,6 +298,55 @@ func (w *window) view(c *ui.Context) {
 		})
 		w.reachDialog(c)
 	})
+}
+
+// loseMachine is what happens when a machine takes its shells back from this
+// window: the tabs it had open there are closed, the link to that machine is
+// dropped, the panels return to this machine, and the window says who did it.
+//
+// A connection that can no longer type is not worth leaving on screen pretending
+// otherwise, and the person at this keyboard needs to know why their shell
+// vanished — the machine they were driving took it back.
+func (w *window) loseMachine(machine string) {
+	name := w.machineName(machine)
+	var doomed []*tab
+	for _, tb := range w.tabs {
+		if tb.machine == machine {
+			doomed = append(doomed, tb)
+		}
+	}
+	for _, tb := range doomed {
+		w.removeTab(tb)
+	}
+	if l := w.remote[machine]; l != nil {
+		l.close()
+		delete(w.remote, machine)
+	}
+	delete(w.remoteSessions, machine)
+	if w.selectedMachine() == machine {
+		w.machineSel = machineLocal
+	}
+	w.leaseOpen = false
+	w.setNotice(name + " 拿回了控制权：与它的连接已断开")
+}
+
+// noticeTTL is how long the window's own notice stays on screen. Long enough to
+// read after looking away from the terminal, short enough not to become part of
+// the window.
+const noticeTTL = 8 * time.Second
+
+// setNotice puts a line on screen for a while: what just happened, in the
+// status bar, where the window already says what the fleet is doing.
+func (w *window) setNotice(text string) {
+	w.notice, w.noticeAt = text, time.Now()
+}
+
+// currentNotice is that line while it is still worth reading, and "" after.
+func (w *window) currentNotice() string {
+	if w.notice == "" || time.Since(w.noticeAt) > noticeTTL {
+		return ""
+	}
+	return w.notice
 }
 
 // selectedMachine is the machine the panels are about: this machine unless the
@@ -713,12 +769,20 @@ func (h tabHandlers) Role(role, controller string, epoch uint64) {
 		}
 		held := tb.held()
 		tb.setLease(role, controller, epoch)
-		// A shell taken from this window says so at once, where the typing used to
-		// go: the glow and the tab's mark say which shell, and the popover is the
-		// only place that offers it back. A shell this window never held — one it
-		// opened as a viewer — is not news, so it gets the glow and the mark
-		// rather than a panel in its face.
-		if held && !tb.held() {
+		switch {
+		case !held || tb.held():
+			// Nothing changed hands: a viewer is still a viewer, or the lease is
+			// still ours.
+		case tb.machine != "" && tb.machine != machineLocal:
+			// A shell on another machine that this window was driving has been
+			// taken back — by that machine's own window, which is the only client
+			// that can do it without stealing. Per the machine's own rule, our
+			// connection to it is over: see loseMachine.
+			w.loseMachine(tb.machine)
+		default:
+			// A shell of this machine's, taken by someone else: it says so where
+			// the typing used to go. The glow and the tab's mark say which shell,
+			// and the popover is the only place that offers it back.
 			w.leaseOpen = true
 		}
 		w.invalidate()
@@ -948,12 +1012,11 @@ func (t *tab) close() {
 	if t.term != nil {
 		_ = t.term.Close()
 	}
-	_ = t.conn.Close()
+	if t.conn != nil {
+		_ = t.conn.Close()
+	}
 }
 
-// serviceLabel is what the toolbar says about the local service: its address
-// while it is listening, and the fact that it is off when a setting turned it
-// off. The window keeps working either way.
 // serviceLabel is the line the header, the status bar and the rail's tooltip
 // carry: where this machine's browser client can be reached, and what the relay
 // is doing. The relay belongs here rather than in the machines' panel — it is a

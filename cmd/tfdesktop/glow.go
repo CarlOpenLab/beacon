@@ -107,18 +107,24 @@ func paneCorner() float32 {
 	return 10
 }
 
+// leasePopoverWidth is how wide the panel under the glow is allowed to be. The
+// panel hangs from the top of a pane, and a pane can be narrower than a sentence:
+// a panel that grew to fit its words would hang off the terminal it belongs to.
+const leasePopoverWidth = 260
+
 // leasePopover is the panel under the glow: who holds the shell, and the way
 // back. anchor is the pane it hangs from; open is the window's own state, so
-// the panel stays where the user left it.
+// the panel stays where the user left it. Its width is fixed rather than fitted,
+// so it never runs past the pane it is about.
 func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, steal bool, reclaim func()) {
 	t := c.Theme()
 	ui.Popover(c, anchor, open, func() {
-		ui.Column(c).Gap(8).Padding(12).Children(func() {
-			ui.Text(c, "这个终端正被 "+holder+" 控制").FontSize(13)
-			ui.Text(c, "你现在的输入不会送进 shell；拿回控制权后恢复。").
+		ui.Column(c).Gap(8).Padding(12).Width(leasePopoverWidth).Children(func() {
+			ui.Text(c, holder+" 正在控制这个终端").FontSize(13)
+			ui.Text(c, "你的输入不会送进 shell。").
 				FontSize(11).TextColor(t.TextMuted)
 			if steal {
-				ui.Text(c, "这是另一台机器上的 shell，拿回时会通知对方。").
+				ui.Text(c, "拿回时会通知对方。").
 					FontSize(11).TextColor(t.TextMuted)
 			}
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {

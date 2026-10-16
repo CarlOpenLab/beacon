@@ -256,6 +256,13 @@ func (w *window) statusBar(c *ui.Context) {
 		Children(func() {
 			ui.Box(c).Size(8, 8).Radius(4).Background(w.fleetColor(t))
 			ui.Text(c, w.serviceLine()).FontSize(11).TextColor(t.TextMuted)
+			// The window's own news, when there is any: a machine that took its
+			// shell back is something the person here has to be told, and the line
+			// the fleet already lives on is where they look.
+			if n := w.currentNotice(); n != "" {
+				ui.Spacer(c)
+				ui.Text(c, n).FontSize(11).TextColor(t.Warning)
+			}
 			ui.Spacer(c)
 			ui.Text(c, buildLine()).FontSize(11).TextColor(t.TextMuted)
 		})

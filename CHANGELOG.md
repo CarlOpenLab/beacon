@@ -8,6 +8,14 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
 
 **Desktop app**
 
+- A machine taking its shell back ends the connection, on the machine that was
+  driving it: the tabs it had open there close, the link to that machine is
+  dropped, the panels return to this machine, and the status bar says who took
+  the shell back. Before this, the driving window was simply left read-only, with
+  a tab on screen that could not type and no word about why.
+- The panel under the glow — who holds a shell, and 保持只读 / 拿回控制权 — has a
+  width of its own and shorter words. It hangs from the top of a pane, and a pane
+  can be narrower than a sentence: it used to run past the terminal it was about.
 - The 机器 panel is a list you switch between rather than a nest of shells. This
   machine comes first and is picked by default; picking another machine makes it
   the subject of the 会话 panel below and of that panel's 新建标签页, which now

@@ -436,6 +436,25 @@ func TestTwoDesktopsDriveEachOther(t *testing.T) {
 		if tb.holder() != "" {
 			t.Errorf("%s: the window driving the shell thinks someone else holds it", side.who)
 		}
+
+		// The machine takes its shell back — the person sitting at it presses
+		// 拿回控制权 — and the driver's connection to that machine ends: the tab
+		// goes, the link goes, the panels return to its own machine, and it says
+		// who did it.
+		side.waiting.reclaim(side.waiting.tabOf(machineLocal, s.ID))
+		waitFor(t, side.who+" to be disconnected from "+side.target, 20*time.Second, func() bool {
+			side.w.drain()
+			return side.w.tabOf(side.target, s.ID) == nil
+		})
+		if _, open := side.w.remote[side.target]; open {
+			t.Errorf("%s: the link to %s is still open after it took its shell back", side.who, side.target)
+		}
+		if got := side.w.selectedMachine(); got != machineLocal {
+			t.Errorf("%s: the panels are on %q after being disconnected, want this machine", side.who, got)
+		}
+		if notice := side.w.currentNotice(); !strings.Contains(notice, side.w.machineName(side.target)) {
+			t.Errorf("%s: notice = %q, want it to name the machine that took its shell back", side.who, notice)
+		}
 	}
 }
 
