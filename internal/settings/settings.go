@@ -47,6 +47,10 @@ type Settings struct {
 	// client. False — the value a first run and a missing key both give — keeps
 	// it on, which is what a desktop shell normally wants.
 	ServerOff bool `json:"serverOff,omitempty"`
+
+	// Theme is the desktop shell's appearance: "light" or "dark". Empty — what a
+	// first run gets — follows the system.
+	Theme string `json:"theme,omitempty"`
 }
 
 // Dir is where the desktop shell keeps its settings. TERM_FLEET_CONFIG_HOME

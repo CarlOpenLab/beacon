@@ -2,7 +2,20 @@
 
 Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
-`## <version>`.
+`## Unreleased
+
+- The shell window has a left rail: the open shells, `切换到白天/暗黑`, and the
+  settings window. The appearance is saved (`theme`: `light`, `dark`, or unset
+  for the system) and the terminal follows it.
+- The settings window has an 外观 pane with all three modes.
+- New mark, taken from the logo sheet's third row, second column: the app icon
+  keeps the sheet's dark tile, the README logo and the web favicon keep the white
+  tile with dark ink. `resources/logo.svg` and `web/public/favicon.svg` are gone
+  in favour of `favicon.png`.
+- `docs/takeover.md`: taking over a shell on another machine — one writer with an
+  epoch'd lease, the glow and 拿回控制权 popover, and input under latency.
+
+## <version>`.
 
 ## 0.3.0
 

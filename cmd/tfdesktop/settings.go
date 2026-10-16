@@ -51,6 +51,7 @@ const (
 	paneRelay
 	paneServer
 	paneUpdates
+	paneAppearance
 )
 
 // termFont turns stored settings into the terminal plugin's font.
@@ -96,6 +97,11 @@ type settingsWindow struct {
 	win *mygo.Window
 
 	pane int
+
+	// themeSel is the appearance pane's segmented control; it is seeded from the
+	// saved preference on every frame, and the control writes a new index here
+	// while the frame it was clicked in is still being drawn.
+	themeSel int
 
 	family  string
 	size    float64
@@ -247,6 +253,7 @@ func caNoteFor(path string) string {
 }
 
 func (s *settingsWindow) view(c *ui.Context) {
+	applyTheme(c, s.store.Get().Theme)
 	ui.Column(c).Fill().Children(func() {
 		ui.Toolbar(c, func() {
 			ui.Text(c, "设置")
@@ -267,7 +274,7 @@ func (s *settingsWindow) view(c *ui.Context) {
 				s.restoreDefaults()
 			}
 		})
-		ui.Tabs(c, &s.pane, "终端", "远程", "服务", "更新")
+		ui.Tabs(c, &s.pane, "终端", "远程", "服务", "更新", "外观")
 		ui.Column(c).Fill().Padding(16).Gap(10).Children(func() {
 			switch s.pane {
 			case paneTerminal:
@@ -276,6 +283,8 @@ func (s *settingsWindow) view(c *ui.Context) {
 				s.relayPane(c)
 			case paneServer:
 				s.serverPane(c)
+			case paneAppearance:
+				s.appearancePane(c)
 			default:
 				s.updatesPane(c)
 			}
@@ -513,4 +522,20 @@ func (s *settingsWindow) restoreDefaults() {
 	s.relayOn = false
 	s.server = true
 	s.commit()
+}
+
+// appearancePane is the shell's own look, spelled out as the three modes the
+// rail's appearance entry flips through. Naming them here is what makes
+// "follow the system" reachable again once the rail has settled on an explicit
+// mode; the choice applies as soon as it is made, like the switch on the
+// service pane, so there is nothing to save.
+func (s *settingsWindow) appearancePane(c *ui.Context) {
+	mode := s.store.Get().Theme
+	ui.Field(c, "界面外观", func() {
+		s.themeSel = themeIndex(mode)
+		if ui.Segmented(c, &s.themeSel, themeChoices[0].label, themeChoices[1].label, themeChoices[2].label).Changed() {
+			s.desk.setTheme(themeChoices[s.themeSel].id)
+		}
+	})
+	ui.Text(c, "当前是「"+themeName(mode)+"」。跟随系统会跟着系统的浅色/深色设置走；另外两项是固定选择，切换立即生效。")
 }

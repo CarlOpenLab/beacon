@@ -44,6 +44,10 @@ type window struct {
 	tabs     map[string]*tab
 	selected int
 
+	// rail is the navigation sidebar's selection: the id of the shell on screen,
+	// or one of the rail's action ids on the frame a click is handled.
+	rail string
+
 	// tabSeq numbers the tabs of this window, so two shells of the same kind
 	// can be told apart ("zsh 1", "zsh 2") before either reports a title.
 	tabSeq int
@@ -88,41 +92,38 @@ func (w *window) view(c *ui.Context) {
 		w.selected = 0
 	}
 
-	ui.Column(c).Fill().Children(func() {
-		ui.Toolbar(c, func() {
-			if ui.Button(c, "New Tab").Clicked() {
-				go w.create()
+	// The appearance is a saved preference, and the ui reads the theme once per
+	// frame, so every frame of every window asks for it.
+	mode := w.store.Get().Theme
+	applyTheme(c, mode)
+
+	ui.Row(c).Fill().Children(func() {
+		w.sidebar(c, labels, mode)
+		ui.Column(c).Fill().Children(func() {
+			ui.Toolbar(c, func() {
+				if ui.Button(c, "新建标签页").Clicked() {
+					go w.create()
+				}
+				if len(labels) > 0 {
+					if ui.Button(c, "关闭标签页").Clicked() {
+						go w.kill(w.activeID())
+					}
+				}
+				ui.Spacer(c)
+				ui.Text(c, w.serviceLabel())
+			})
+
+			if len(labels) == 0 {
+				ui.Text(c, "还没有终端，先在左侧点「新建标签页」。")
+				return
 			}
-			if len(labels) > 0 && ui.Button(c, "Close Tab").Clicked() {
-				// Read the selection here, on the UI thread, and hand the
-				// goroutine an id rather than a position: the list can change
-				// while it works.
-				id := w.order[w.selected]
-				go w.kill(id)
-			}
-			ui.Spacer(c)
-			// The address a browser on this machine can use to reach the same
-			// shells, which is the point of the daemon sitting underneath.
-			ui.Text(c, w.serviceLabel())
-			if ui.Button(c, "设置").Clicked() {
-				go w.openSettings()
+			if tb := w.tabs[w.order[w.selected]]; tb != nil {
+				terminal.View(c, tb.term).Fill().AutoFocus()
 			}
 		})
-
-		if len(labels) == 0 {
-			ui.Text(c, "No shells yet. New Tab starts one.")
-			return
-		}
-		ui.Tabs(c, &w.selected, labels...)
-		if tb := w.tabs[w.order[w.selected]]; tb != nil {
-			terminal.View(c, tb.term).Fill().AutoFocus()
-		}
 	})
 }
 
-// create starts a shell, which the watch loop then mounts as a new tab. It
-// goes through the daemon's hub rather than around it, so a browser attached
-// to the same hub sees this tab appear as it does its own.
 func (w *window) create() {
 	s, err := w.fleet.Hub().Create("", 80, 24, w.cwd, w.shell)
 	if err != nil {
