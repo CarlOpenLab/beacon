@@ -164,7 +164,7 @@ func settleTabs(t *testing.T, w *window, n int) {
 // it is enrolled with when there is one, and a line saying where the other
 // machines will appear. A window with no relay says so rather than showing an
 // empty panel.
-func TestMachinePanelShowsThisMachineAndTheRelay(t *testing.T) {
+func TestMachinePanelListsOnlyMachines(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = f
@@ -179,34 +179,86 @@ func TestMachinePanelShowsThisMachineAndTheRelay(t *testing.T) {
 	if !tt.HasText("1 个会话") {
 		t.Fatalf("the machine row does not say what this machine is running; texts = %v", tt.Texts())
 	}
-	if !tt.HasText("未接入中继") {
-		t.Fatalf("the panel does not say the relay is off; texts = %v", tt.Texts())
+	if !tt.HasText("只列本机") {
+		t.Fatalf("the panel does not say why it holds nothing else; texts = %v", tt.Texts())
 	}
+	// The relay is a pipe, not a machine: it never gets a row of its own, whether
+	// it is off or on.
 	if _, ok := tt.Find("中继"); ok {
-		t.Fatal("a machine with no relay shows a relay row")
+		t.Fatal("the panel shows a relay row")
 	}
 
-	// Enrolled with a relay: the row appears, with the address and the device id
-	// the link was given, and the note changes with it. There is no client link
-	// in this window — no token was ever applied — so the note has to say that
-	// rather than promise machines that cannot appear.
+	// Enrolled with a relay: still no relay row, and the note says where the
+	// other machines come from.
 	if err := f.SetRelay("wss://relay.example/relay/agent", "mac-mini", "secret", "", true); err != nil {
 		t.Fatalf("SetRelay: %v", err)
 	}
 	tt.Frame()
-	if !tt.HasText("wss://relay.example/relay/agent") {
-		t.Fatalf("the relay row has no address; texts = %v", tt.Texts())
+	if _, ok := tt.Find("中继"); ok {
+		t.Fatalf("an enrolled machine shows a relay row: %v", tt.Texts())
 	}
-	if !tt.HasText("设备 mac-mini") {
-		t.Fatalf("the relay row has no device id; texts = %v", tt.Texts())
+	if tt.HasText("wss://relay.example/relay/agent") {
+		t.Fatalf("the panel shows the relay's address as a row; texts = %v", tt.Texts())
 	}
-	if !tt.HasText("没有客户端令牌") {
-		t.Fatalf("the note did not own up to the missing client link; texts = %v", tt.Texts())
+	if !tt.HasText("点另一台机器") {
+		t.Fatalf("the note does not say what picking a machine does; texts = %v", tt.Texts())
 	}
-	// ...and it has to say where the token goes, since that is the only place
-	// this state can be undone.
-	if !tt.HasText("设置 → 远程 → 客户端令牌") {
-		t.Fatalf("the note does not say where the token goes; texts = %v", tt.Texts())
+}
+
+// Picking a machine this window cannot reach yet asks the relay first, because
+// driving the rest of the fleet means asking it for a credential. The dialog is
+// where a person sees that happen, and where they can say no.
+func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = f
+	// Enrolled, with no client link: the state before the first credential.
+	if err := f.SetRelay("wss://relay.example/relay/agent", "mac-mini", "secret", "", true); err != nil {
+		t.Fatalf("SetRelay: %v", err)
+	}
+	w.roster = []tunnel.Machine{{
+		ID: "other-box", Name: "other box", Online: true,
+		Host: protocol.Host{Platform: "linux", Arch: "amd64"},
+	}}
+
+	if w.selectedMachine() != machineLocal {
+		t.Fatal("a window does not start on its own machine")
+	}
+
+	entry, ok := w.machineByID("other-box")
+	if !ok {
+		t.Fatal("the roster entry is not reachable by id")
+	}
+	w.selectMachine(entry)
+	if w.selectedMachine() != "other-box" {
+		t.Fatalf("picking a machine left the panels on %q", w.selectedMachine())
+	}
+	if w.reachPrompt != "other-box" {
+		t.Fatalf("picking an unreachable machine did not ask for a credential (prompt %q)", w.reachPrompt)
+	}
+
+	// The dialog is on screen, with the machine's name and both answers.
+	tt := ui.NewTester(w.view, 900, 600)
+	tt.Frame()
+	if !tt.HasText("接管 other box") {
+		t.Fatalf("the dialog does not name the machine; texts = %v", tt.Texts())
+	}
+	if _, ok := tt.Find("申请并接管"); !ok {
+		t.Fatalf("the dialog does not offer to ask the relay; texts = %v", tt.Texts())
+	}
+	if _, ok := tt.Find("取消"); !ok {
+		t.Fatalf("the dialog cannot be declined; texts = %v", tt.Texts())
+	}
+
+	if err := tt.Click("取消"); err != nil {
+		t.Fatalf("Click(取消): %v", err)
+	}
+	tt.Frame()
+	if w.reachPrompt != "" {
+		t.Errorf("拒绝之后对话框还在：%q", w.reachPrompt)
+	}
+	if w.selectedMachine() != machineLocal {
+		t.Errorf("declining left the panels on %q, want this machine", w.selectedMachine())
 	}
 }
 

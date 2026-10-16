@@ -95,18 +95,35 @@ func (w *window) sidebar(c *ui.Context, labels []string, mode string) {
 // they act on.
 func (w *window) sessionPanel(c *ui.Context, labels []string, mode string) {
 	t := c.Theme()
+	machine := w.selectedMachine()
+	remote := machine != machineLocal
 
 	ui.Column(c).Fill().Children(func() {
-		panelHead(c, "会话", len(labels), func() {
-			if iconButton(c, iconPlus, "新建标签页", panelButtonSize).Clicked() {
+		// The title counts what the panel is showing, and the two controls act on
+		// the machine it is showing: 新建 opens a shell there, 关闭 ends the one on
+		// screen. A panel whose buttons quietly applied to a different machine than
+		// its list would be the worst of both.
+		count := len(labels)
+		if remote {
+			count = len(w.remoteSessions[machine])
+		}
+		panelHead(c, "会话", count, func() {
+			newTip := "在本机开一个新终端"
+			if remote {
+				newTip = "在 " + w.machineName(machine) + " 上开一个新终端"
+			}
+			if iconButton(c, iconPlus, "新建标签页", panelButtonSize).Tooltip(newTip).Clicked() {
 				w.newTab()
 			}
 			if iconButton(c, iconClose, "关闭标签页", panelButtonSize).Clicked() {
-				if id := w.activeID(); id != "" {
-					w.kill(id)
-				}
+				w.kill(w.activeTab())
 			}
 		})
+
+		if remote {
+			w.remoteSessionList(c, machine)
+			return
+		}
 
 		rail := ui.Sidebar(c, &w.rail, func() {
 			if len(labels) == 0 {
@@ -140,6 +157,34 @@ func (w *window) sessionPanel(c *ui.Context, labels []string, mode string) {
 			// a shell was taken over — so the column follows it on the next frame.
 			w.rail = w.selectionID()
 		}
+	})
+}
+
+// remoteSessionList is the shells another machine is running, as the 会话 panel
+// shows them while that machine is the one picked: one row per shell, and
+// clicking a row opens a tab here watching it.
+func (w *window) remoteSessionList(c *ui.Context, machine string) {
+	t := c.Theme()
+	m, ok := w.machineByID(machine)
+	if !ok {
+		return
+	}
+	list := w.remoteSessions[machine]
+	if len(list) == 0 {
+		// Saying nothing here would leave a machine that is running nothing
+		// looking like a machine that cannot be read.
+		ui.Column(c).Gap(6).Padding(12, 10).Children(func() {
+			ui.Text(c, "这台机器上没有活着的终端。").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, "点标题行的 ＋ 在它上面开一个。").FontSize(11).TextColor(t.TextMuted)
+		})
+		return
+	}
+	ui.Scroll(c).Fill().Children(func() {
+		ui.Column(c).Gap(2).Padding(0, 8, 8, 8).Children(func() {
+			for _, summary := range list {
+				w.remoteSessionRow(c, m, summary)
+			}
+		})
 	})
 }
 
@@ -177,14 +222,15 @@ func (w *window) machinePanelNeed() float32 {
 			continue
 		}
 		need += machineRowHeight
-		need += float32(len(w.remoteSessions[m.ID])) * sessionRowHeight
 	}
 	return need
 }
 
-// machinePanel is the bottom half of the column: the machines this fleet can
-// reach. This machine is always there; the relay's roster adds the rest, each
-// with the shells it is running once the window has looked at it.
+// machinePanel is the machines this window can reach, as a list you switch
+// between: this machine first, then every other machine on the relay. The row
+// that is picked is the machine the 会话 panel below is about, and the one its
+// 新建标签页 opens a shell on — so driving another machine is a matter of picking
+// it, not of remembering which row belongs to whom.
 func (w *window) machinePanel(c *ui.Context) {
 	t := c.Theme()
 
@@ -194,48 +240,23 @@ func (w *window) machinePanel(c *ui.Context) {
 		ui.Scroll(c).Fill().Children(func() {
 			ui.Column(c).Gap(2).Padding(0, 8, 8, 8).Children(func() {
 				// This machine, whatever else the fleet holds: the dot is the
-				// service's state, as the strip's is, and the row is where a
-				// person looks to see which machine they are on.
-				name, meta := w.localMachine()
-				ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius).Children(func() {
-					ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-						ui.Box(c).Size(8, 8).Radius(4).Background(w.fleetColor(t))
-						ui.Text(c, name).FontSize(12)
-					})
-					ui.Text(c, meta).FontSize(11).TextColor(t.TextMuted)
-				}).Tooltip(w.serviceLine())
+				// service's state, as the strip's is, and the row is where a person
+				// looks to see which machine they are on.
+				w.machineChoice(c, w.localEntry())
 
 				// A shell on this machine that someone else is driving is the next
 				// thing to say: the person at the keyboard is about to find out
 				// anyway, by typing into a shell that does not answer.
-				if n := w.localHeldByOthers(); n > 0 {
-					ui.Text(c, fmt.Sprintf("%d 个会话正被其他客户端控制", n)).
+				if w.localHeldByOthers() > 0 && w.selectedMachine() == machineLocal {
+					ui.Text(c, fmt.Sprintf("%d 个会话正被其他客户端控制", w.localHeldByOthers())).
 						FontSize(11).TextColor(t.Warning)
 				}
 
-				if w.relayOn() {
-					st := w.fleet.RelayState()
-					url, device := w.fleet.RelayIdentity()
-					ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius).Children(func() {
-						ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-							ui.Box(c).Size(8, 8).Radius(4).Background(relayColor(t, st.Connected, st.Connecting))
-							ui.Text(c, "中继").FontSize(12)
-						})
-						ui.Text(c, url).FontSize(11).TextColor(t.TextMuted)
-						ui.Text(c, "设备 "+device).FontSize(11).TextColor(t.TextMuted)
-					}).Tooltip(st.Detail)
-				}
-
-				// The rest of the fleet: one row per machine the relay knows,
-				// and under it the shells that machine is running — which appear
-				// once the window has a stream to it. This machine is skipped: it is
-				// the row above, and a panel that names you twice, once by hostname
-				// and once by device id, is a panel nobody can read.
 				for _, m := range w.roster {
 					if w.ownMachine(m) {
 						continue
 					}
-					w.machineRow(c, m)
+					w.machineChoice(c, m)
 				}
 
 				if w.linkNote != "" {
@@ -247,32 +268,85 @@ func (w *window) machinePanel(c *ui.Context) {
 	})
 }
 
-// machineRow is one machine of the roster: its name and where it is, and the
-// shells it is running once the window has looked. Clicking the row asks that
-// machine's hub for its session list; clicking a shell opens a tab on it.
-func (w *window) machineRow(c *ui.Context, m tunnel.Machine) {
+// localEntry is this machine as the panel lists it: the same shape as a roster
+// entry, so one row draws both and nothing about the first row is special.
+func (w *window) localEntry() tunnel.Machine {
+	name, _ := w.localMachine()
+	entry := tunnel.Machine{ID: machineLocal, Name: name, Online: true}
+	if w.fleet != nil {
+		entry.Host = w.fleet.Host()
+	}
+	return entry
+}
+
+// machineChoice is one machine in the panel. Picking a machine is what this
+// panel is for, so the row a person is driving is the row that looks picked: a
+// left bar in the accent, a raised ground, and the hover a plain row has.
+func (w *window) machineChoice(c *ui.Context, m tunnel.Machine) {
 	t := c.Theme()
-	row := ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius).Children(func() {
+	local := m.ID == machineLocal
+	selected := w.selectedMachine() == m.ID
+
+	dot := relayColor(t, m.Online, false)
+	meta := m.Host.Platform + "/" + m.Host.Arch
+	tooltip := m.ID + " · " + machineState(m)
+	if local {
+		dot = w.fleetColor(t)
+		_, meta = w.localMachine()
+		tooltip = w.serviceLine()
+	}
+
+	row := ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius)
+	if selected {
+		row.Background(t.SurfacePressed).BorderWidth(0, 0, 0, 2).BorderColor(t.Accent)
+	} else if row.Hovered() {
+		row.Background(t.SurfaceHover)
+	}
+	row.Tooltip(tooltip).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(8, 8).Radius(4).Background(relayColor(t, m.Online, false))
+			ui.Box(c).Size(8, 8).Radius(4).Background(dot)
 			ui.Text(c, m.Name).FontSize(12)
 			if !m.Online {
 				ui.Text(c, "离线").FontSize(10).TextColor(t.TextMuted)
 			}
 		})
-		ui.Text(c, m.Host.Platform+"/"+m.Host.Arch).FontSize(11).TextColor(t.TextMuted)
+		ui.Text(c, meta).FontSize(11).TextColor(t.TextMuted)
 	})
-	row.Tooltip(m.ID + " · " + machineState(m))
-	if m.Online {
-		if row.Clicked() {
-			w.lookAtMachine(m.ID)
+	if row.Clicked() {
+		w.selectMachine(m)
+	}
+}
+
+// machineByID is a roster entry, or this machine's when asked for it.
+func (w *window) machineByID(id string) (tunnel.Machine, bool) {
+	if id == machineLocal {
+		return w.localEntry(), true
+	}
+	for _, m := range w.roster {
+		if m.ID == id {
+			return m, true
 		}
 	}
-
-	// The shells this machine is running, once its hub has said.
-	for _, s := range w.remoteSessions[m.ID] {
-		w.remoteSessionRow(c, m, s)
+	if w.fleet != nil {
+		if c := w.fleet.RelayClient(); c != nil {
+			if m, ok := c.Machine(id); ok {
+				return m, true
+			}
+		}
 	}
+	return tunnel.Machine{}, false
+}
+
+// machineName is what the panels call a machine: its own name, or the id when
+// the roster has never heard of it.
+func (w *window) machineName(id string) string {
+	if m, ok := w.machineByID(id); ok && m.Name != "" {
+		return m.Name
+	}
+	if id == machineLocal {
+		return "本机"
+	}
+	return id
 }
 
 // remoteSessionRow is one shell on another machine. Opening it attaches over
@@ -302,16 +376,12 @@ func (w *window) remoteSessionRow(c *ui.Context, m tunnel.Machine, s protocol.Su
 }
 
 // lookAtMachine opens the window's link to a machine and asks what it runs. A
-// second look re-uses the stream, so the panel can be clicked freely. A machine
-// the window cannot reach says why, in the panel: a click that does nothing is
-// the one thing a fleet panel must never do.
+// second look re-uses the stream, so the panel can be looked at freely. It is
+// what picking a machine does; a machine the window cannot reach says why, in
+// the panel, because a click that does nothing is the one thing a fleet panel
+// must never do.
 func (w *window) lookAtMachine(machine string) {
-	if l := w.remoteLink(machine); l != nil {
-		w.linkNote = ""
-		l.list()
-		return
-	}
-	w.linkNote = w.noLinkReason(machine)
+	w.ensureSessionList(machine)
 }
 
 // openRemoteSession attaches a tab to a shell on another machine.
@@ -375,18 +445,17 @@ func (w *window) relayOn() bool {
 	return w.fleet != nil && w.fleet.RelayOn()
 }
 
-// machineNote is the line under the machines: what the relay is doing, and what
-// the panel is for. It is the honest answer to "where are my other machines?",
-// and when the client token is missing it says that rather than leaving an empty
-// panel to be guessed at.
+// machineNote is the line under the machines: what the panel is for, and what is
+// stopping it from being more than this machine. It is the honest answer to
+// "where are my other machines?".
 func (w *window) machineNote() string {
 	if !w.relayOn() {
-		return "未接入中继。接入后，其他机器的会话会列在这里。"
+		return "只列本机：在 设置 → 远程 接入中继后，同一中继上的其他机器会出现在这里。"
 	}
 	if w.fleet.RelayClient() == nil {
-		return "没有客户端令牌：在 设置 → 远程 → 客户端令牌 填上中继的 client token，其他机器才会列在这里。"
+		return "点另一台机器会向中继申请一枚短时接管令牌；中继没发下来的原因在 设置 → 远程。"
 	}
-	return "同一中继上的其他机器会列在这里。"
+	return "点一台机器就切过去，它会成为上面「会话」的对象。"
 }
 
 // machineCount is what the panel's title counts: this machine, and every other

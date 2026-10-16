@@ -46,19 +46,29 @@ func TestRenderShellPreviews(t *testing.T) {
 		shell bool
 		taken bool
 		fleet bool
+		pick  bool
+		ask   bool
 	}{
-		{"shell-dark", themeDark, true, false, false},
-		{"shell-light", themeLight, true, false, false},
-		{"empty-dark", themeDark, false, false, false},
-		{"empty-light", themeLight, false, false, false},
+		{"shell-dark", themeDark, true, false, false, false, false},
+		{"shell-light", themeLight, true, false, false, false, false},
+		{"empty-dark", themeDark, false, false, false, false, false},
+		{"empty-light", themeLight, false, false, false, false, false},
 		// A shell another client holds: the glow around the terminal, the
 		// popover under it, and the mark on its row.
-		{"taken-dark", themeDark, true, true, false},
-		{"taken-light", themeLight, true, true, false},
-		// A fleet: this machine, the relay, and another machine with a shell
-		// running on it.
-		{"fleet-dark", themeDark, true, false, true},
-		{"fleet-light", themeLight, true, false, true},
+		{"taken-dark", themeDark, true, true, false, false, false},
+		{"taken-light", themeLight, true, true, false, false, false},
+		// A fleet: the 机器 panel as a list you switch between, with this machine
+		// and one other.
+		{"fleet-dark", themeDark, true, false, true, false, false},
+		{"fleet-light", themeLight, true, false, true, false, false},
+		// Another machine picked: its row carries the selection, and the 会话 panel
+		// below shows the shells that machine is running rather than this one's.
+		{"fleet-picked-dark", themeDark, true, false, true, true, false},
+		{"fleet-picked-light", themeLight, true, false, true, true, false},
+		// Picking an unreachable machine: the dialog that asks the relay for a
+		// short-lived credential first.
+		{"fleet-ask-dark", themeDark, true, false, true, false, true},
+		{"fleet-ask-light", themeLight, true, false, true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := previewWindow(t, tc.mode, tc.shell)
@@ -68,6 +78,12 @@ func TestRenderShellPreviews(t *testing.T) {
 			}
 			if tc.fleet {
 				previewFleet(w)
+			}
+			if tc.pick {
+				w.machineSel = "mac-studio"
+			}
+			if tc.ask {
+				w.reachPrompt = "mac-studio"
 			}
 			tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, previewWidth, previewHeight)
 			out := filepath.Join(dir, tc.name+".png")

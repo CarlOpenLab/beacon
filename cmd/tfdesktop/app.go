@@ -68,6 +68,17 @@ type window struct {
 	// never do.
 	linkNote string
 
+	// machineSel is the machine the 机器 panel is showing: machineLocal, or a
+	// roster id. The 会话 panel below it is that machine's shells, and the panel's
+	// 新建标签页 opens one there.
+	machineSel string
+
+	// reachPrompt is the machine a person picked that this window cannot reach
+	// yet, which is what puts the "ask the relay for a credential" dialog on
+	// screen; reachErr is why the last attempt did not work.
+	reachPrompt string
+	reachErr    string
+
 	// rail is the navigation sidebar's selection: the id of the shell on screen,
 	// or one of the rail's action ids on the frame a click is handled.
 	rail string
@@ -120,6 +131,12 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 	f.onRoster = w.rosterArrived
 	if c := f.RelayClient(); c != nil {
 		c.OnRoster = w.rosterArrived
+		// The roster is pushed on presence changes, not to whoever subscribes: a
+		// window that opens after the relay has already said who is here has to be
+		// told, or the panel stays empty until the next machine comes or goes.
+		if machines := c.Machines(); len(machines) > 0 {
+			w.rosterArrived(machines)
+		}
 	}
 	return w
 }
@@ -272,23 +289,164 @@ func (w *window) view(c *ui.Context) {
 			w.body(c, labels)
 			w.statusBar(c)
 		})
+		w.reachDialog(c)
 	})
 }
 
-// newTab asks the hub for a shell and gives it a tab to land in. It runs on the
-// window's own thread — the tab is window state, and a goroutine that opened one
-// would race the frame that draws it — and the frame itself does not repaint, so
-// there is nothing to defer. The hub's answer arrives as a `created` frame and
-// adopts the tab that is waiting for it.
+// selectedMachine is the machine the panels are about: this machine unless the
+// person picked another one, and this machine again when the picked one leaves
+// the roster — a machine that is gone cannot be the one whose shells are listed.
+func (w *window) selectedMachine() string {
+	if w.machineSel == "" || w.machineSel == machineLocal {
+		return machineLocal
+	}
+	if _, ok := w.machineByID(w.machineSel); !ok {
+		w.machineSel = machineLocal
+		return machineLocal
+	}
+	return w.machineSel
+}
+
+// selectMachine picks the machine the panels are about. A machine this window
+// cannot reach yet is confirmed first: driving the rest of the fleet means
+// asking the relay for a credential that lets this window act as a client, and
+// that is a thing a person says yes to once rather than something a click does
+// behind their back.
+func (w *window) selectMachine(m tunnel.Machine) {
+	if m.ID == machineLocal {
+		w.machineSel, w.linkNote = machineLocal, ""
+		w.invalidate()
+		return
+	}
+	w.machineSel = m.ID
+	w.linkNote = ""
+	if w.fleet != nil && w.fleet.RelayClient() == nil {
+		w.reachErr = ""
+		w.reachPrompt = m.ID
+	} else {
+		w.ensureSessionList(m.ID)
+	}
+	w.invalidate()
+}
+
+// ensureSessionList asks a machine what it is running, opening the window's link
+// to it if there is not one yet. A machine the window cannot reach says why, in
+// the panel, rather than leaving the list empty to be guessed at.
+func (w *window) ensureSessionList(machine string) {
+	if l := w.remoteLink(machine); l != nil {
+		w.linkNote = ""
+		l.list()
+		return
+	}
+	w.linkNote = w.noLinkReason(machine)
+}
+
+// askForReach asks the relay for a short-lived credential and, when one arrives,
+// shows the machine that was picked. The request is a network call, so it runs
+// off the UI thread and the dialog stays up until the relay answers.
+func (w *window) askForReach() {
+	machine := w.reachPrompt
+	if machine == "" {
+		return
+	}
+	w.reachErr = ""
+	w.invalidate()
+	go func() {
+		err := w.fleet.Reach()
+		w.update(func() {
+			if err != nil {
+				w.reachErr = err.Error()
+				w.invalidate()
+				return
+			}
+			w.reachPrompt = ""
+			w.ensureSessionList(machine)
+			w.invalidate()
+		})
+	}()
+}
+
+// reachDialog is the confirmation a person gets the first time they pick a
+// machine this window cannot reach: where the credential comes from, what it is
+// good for, and that the relay is the one checking.
+func (w *window) reachDialog(c *ui.Context) {
+	if w.reachPrompt == "" || w.fleet == nil {
+		return
+	}
+	t := c.Theme()
+	name := w.machineName(w.reachPrompt)
+	open := true
+	ui.Modal(c, &open, func() {
+		ui.Column(c).Gap(10).Padding(18).Width(430).Children(func() {
+			ui.Text(c, "接管 "+name).FontSize(14).FontWeight(600)
+			ui.Text(c, "这个窗口会拿本机的设备密钥向中继申请一枚短时接管令牌，中继核验这台机器是否已注册。拿到之后，同一中继上的机器就都能在这里驱动了。").
+				FontSize(11).TextColor(t.TextMuted)
+			if w.reachErr != "" {
+				ui.Text(c, "中继没有发下接管令牌："+w.reachErr).FontSize(11).TextColor(t.Danger)
+			}
+			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+				if ui.Button(c, "取消").Clicked() {
+					w.reachPrompt, w.reachErr = "", ""
+					w.machineSel = machineLocal
+				}
+				if ui.PrimaryButton(c, "申请并接管").Clicked() {
+					w.askForReach()
+				}
+			})
+		})
+	})
+	if !open {
+		w.reachPrompt, w.reachErr = "", ""
+		w.machineSel = machineLocal
+	}
+}
+
+// newTab asks the machine the panels are showing for a shell and gives it a tab
+// to land in. On this machine that is the hub the window is already a client of;
+// on another it is a create over the relay. It runs on the window's own thread —
+// the tab is window state, and a goroutine that opened one would race the frame
+// that draws it — and the hub's answer arrives as a `created` frame that adopts
+// the tab waiting for it.
 func (w *window) newTab() {
+	if machine := w.selectedMachine(); machine != machineLocal {
+		w.newTabOn(machine)
+		return
+	}
 	w.openTab(machineLocal, "")
 	w.local.create(80, 24, w.cwd, w.shell)
 }
 
-// kill ends the shell behind a tab. The tab itself goes when the hub reports
-// the session gone.
-func (w *window) kill(id string) {
-	w.local.closeSession(id)
+// newTabOn asks another machine's hub for a shell there and gives it a tab here,
+// the same act as New Tab on a machine the window reaches through the relay. The
+// far hub names the shell, its `created` frame binds the waiting tab, and the
+// tab that was opened for it is the tab watching it.
+//
+// Nothing about the shell is guessed here: an empty cwd and shell mean the far
+// machine's own defaults, which is what a person sitting at it would get.
+func (w *window) newTabOn(machine string) {
+	tb := w.openTab(machine, "")
+	if tb == nil {
+		w.linkNote = w.noLinkReason(machine)
+		return
+	}
+	w.linkNote = ""
+	// The link may still be waiting for the relay to route it; the frame waits
+	// with it rather than being dropped, which is what the panel's click would
+	// otherwise do on the first use of a machine.
+	w.linkFor(machine).create(80, 24, "", "")
+}
+
+// kill ends the shell behind a tab — this machine's or another one's, through
+// the link to whichever machine it lives on. The tab itself goes when that hub
+// reports the session gone. A shell the window does not hold is refused by that
+// hub, the same as typing into it.
+func (w *window) kill(tb *tab) {
+	if tb == nil || tb.id == "" {
+		return
+	}
+	if l := w.linkFor(tb.machine); l != nil {
+		l.closeSession(tb.id)
+	}
 }
 
 // reconcile brings the tabs in line with the sessions the hub reports. It runs
@@ -625,6 +783,11 @@ func (h tabHandlers) Failed(code, message string) {
 		// machine is explained.
 		w.update(func() {
 			w.linkNote = "这台机器不允许其他客户端控制它：在它的 设置 → 服务 → 允许被控制 里打开。"
+			// A create that was refused leaves the tab that was waiting for a shell
+			// with nothing to wait for, which is a tab nobody can do anything with.
+			if tb := h.tab(); tb != nil && tb.id == "" {
+				w.removeTab(tb)
+			}
 			w.invalidate()
 		})
 	}
@@ -791,11 +954,29 @@ func (t *tab) close() {
 // serviceLabel is what the toolbar says about the local service: its address
 // while it is listening, and the fact that it is off when a setting turned it
 // off. The window keeps working either way.
+// serviceLabel is the line the header, the status bar and the rail's tooltip
+// carry: where this machine's browser client can be reached, and what the relay
+// is doing. The relay belongs here rather than in the machines' panel — it is a
+// pipe, not a machine — and this is the line that says whether the fleet this
+// window lists is reachable at all.
 func (w *window) serviceLabel() string {
+	parts := []string{}
 	if url := w.fleet.BaseURL(); url != "" {
-		return url
+		parts = append(parts, url)
+	} else {
+		parts = append(parts, "本机服务已关闭")
 	}
-	return "本机服务已关闭"
+	if w.relayOn() {
+		switch st := w.fleet.RelayState(); {
+		case st.Connected:
+			parts = append(parts, "中继已连接")
+		case st.Connecting:
+			parts = append(parts, "中继连接中…")
+		default:
+			parts = append(parts, "中继断开")
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // reletter re-letters every open terminal. The settings window calls it, and it

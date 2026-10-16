@@ -71,11 +71,13 @@ func main() {
 		log.Printf("tfdesktop: relay: %v", err)
 	}
 	// The window's own client link to the relay: the roster of other machines,
-	// and the streams that reach their shells. It is separate from the member
-	// link above and needs the fleet's client token, not this machine's
-	// credential.
-	if err := f.SetRelayClient(saved.RelayURL, saved.ClientToken, saved.RelayCA); err != nil {
-		log.Printf("tfdesktop: relay client: %v", err)
+	// and the streams that reach their shells. It is a second connection with a
+	// credential of its own, asked for on the spot with the member credential
+	// above, so reaching the fleet needs nothing typed into a settings screen.
+	if saved.RelayOn && saved.RelayURL != "" {
+		if err := f.Reach(); err != nil {
+			log.Printf("tfdesktop: control token: %v", err)
+		}
 	}
 
 	if !f.ClientPresent() {

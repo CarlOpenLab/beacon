@@ -57,6 +57,9 @@ type Config struct {
 	// ClientToken is the shared secret a client presents. Browsers cannot set
 	// headers on a WebSocket, so it also arrives in the first frame.
 	ClientToken string
+	// ControlTokenTTL is how long a credential minted for an enrolled machine
+	// stays valid. Zero means DefaultControlTokenTTL.
+	ControlTokenTTL time.Duration
 	// Token is the live client-token store, so the admin page can rotate the
 	// token without a redeploy. Nil means "wrap ClientToken in an in-memory
 	// store". When set, it takes precedence over ClientToken.
@@ -152,6 +155,21 @@ func (r *Relay) Roster() []tunnel.Machine { return r.snapshot() }
 // offering one that was just revoked, without reconnecting.
 func (r *Relay) RefreshRoster() { r.broadcastMachines() }
 
+// RevokeDevice removes a machine's enrollment and every credential minted to it.
+// A revoked machine has to lose its reach now rather than when its credentials
+// happen to expire: the registry is what a member dials against, and a minted
+// token is what it drives the rest of the fleet with.
+func (r *Relay) RevokeDevice(id string) (bool, error) {
+	removed, err := r.reg.Revoke(id)
+	if err != nil {
+		return removed, err
+	}
+	if n := r.token.ForgetDevice(id); n > 0 {
+		r.log.Printf("relay: forgot %d minted credential(s) of %s", n, id)
+	}
+	return removed, nil
+}
+
 // ---------------------------------------------------------------- registry
 
 // Online reports how many members are connected right now. It exists for health
@@ -236,14 +254,61 @@ func (r *Relay) agentAuthOK(rq *http.Request) (string, bool) {
 	return id, true
 }
 
-// tokenOK reports whether a presented client credential matches and is still
-// within its lifetime. Every path that admits a viewer funnels through here, so
-// an expired token stops working everywhere at once.
+// tokenOK reports whether a presented client credential is one this relay
+// honours right now: the shared token while it is within its lifetime, or a live
+// credential minted for an enrolled machine. Every path that admits a viewer
+// funnels through here, so an expired token stops working everywhere at once.
 func (r *Relay) tokenOK(got string) bool {
-	if r.token.Expired() {
-		return false
+	return r.token.Accept(got)
+}
+
+// ControlToken mints a short-lived client credential for an enrolled machine.
+//
+// It is how one desktop reaches the rest of the fleet without anyone typing a
+// token at a settings screen: the machine proves it is itself with the device
+// credential it already dials the member link with, and gets back a credential
+// it may act as a client with for a few minutes. The shared token stays what it
+// was — what a browser or a phone is given — so handing out reach does not hand
+// out the fleet's one secret, and revoking the machine takes this away with it.
+func (r *Relay) ControlToken(w http.ResponseWriter, rq *http.Request) {
+	if rq.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
 	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(r.token.Get())) == 1
+	ip := clientIP(rq, r.cfg.TrustProxy)
+	if allowed, wait := r.lim.allow(ip); !allowed {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		http.Error(w, "too many failed attempts", http.StatusTooManyRequests)
+		return
+	}
+	id, ok := r.agentAuthOK(rq)
+	if !ok {
+		r.lim.fail(ip)
+		r.log.Printf("relay: refused a control token to %s: not an enrolled machine", ip)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	r.lim.ok(ip)
+
+	ttl := r.cfg.ControlTokenTTL
+	if ttl <= 0 {
+		ttl = DefaultControlTokenTTL
+	}
+	token, expiresAt, err := r.token.Mint(id, ttl)
+	if err != nil {
+		r.log.Printf("relay: minting a control token for %s: %v", id, err)
+		http.Error(w, "cannot mint a token", http.StatusInternalServerError)
+		return
+	}
+	r.log.Printf("relay: minted a control token for %s, good for %s", id, ttl.Round(time.Second))
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"token":     token,
+		"expiresAt": expiresAt.UTC().Format(time.RFC3339),
+		"device":    id,
+	})
 }
 
 // headerToken reads a client credential from an Authorization header. Usable by

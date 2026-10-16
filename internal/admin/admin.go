@@ -311,7 +311,9 @@ func (a *Admin) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &body) {
 		return
 	}
-	removed, err := a.opts.Relay.Devices().Revoke(strings.TrimSpace(body.ID))
+	// Through the relay, not the registry alone: revoking a machine also has to
+	// take away the credentials it minted to drive the rest of the fleet.
+	removed, err := a.opts.Relay.RevokeDevice(strings.TrimSpace(body.ID))
 	if err != nil {
 		a.opts.Log.Printf("admin: revoke %q: %v", body.ID, err)
 		a.fail(w, http.StatusInternalServerError, "could not revoke the machine")

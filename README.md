@@ -65,14 +65,21 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   The column beside the strip holds two panels with a draggable line between
   them — the shells on top, the machines under them — and the 会话 panel's title
   row carries 新建标签页 / 关闭标签页 as icon buttons. The 机器 panel lists the
-  fleet this window can reach: this machine, the relay it is enrolled with, and
-  every other machine on that relay — each with the shells it is running, which
-  the window can open in a tab of its own.
+  machines this window can reach, as a list you switch between: this machine
+  first, then every other machine on the relay. The one that is picked is the
+  machine the 会话 panel is about, and the one its 新建标签页 opens a shell on, so
+  driving another machine is a matter of picking it. The relay itself gets no
+  row — it is the pipe, not a machine — and 新建 on another machine asks that
+  machine's hub for a shell over the relay, which lands in a tab here under that
+  machine's arbitration.
   A Settings window (the strip's 设置 button, at the bottom under the shells)
   picks the terminal's font and size, stores this machine's relay credential,
   turns the local service on or off, and decides whether other clients may take
   this machine's shells — the same surface Gloss keeps, drawn
-  the same way. The font field suggests the families installed on the machine
+  the same way. Reaching the other machines needs nothing typed: a window asks
+  the relay for a short-lived *control token*, proving itself with the device
+  credential it already joins the fleet with (`/relay/control-token`), and that
+  credential — not the fleet's shared secret — is what its client link presents. The font field suggests the families installed on the machine
   and takes any name, so a Nerd Font build ("Maple Mono NF" beside "Maple Mono")
   is selectable. Edited text fields are saved by 应用, which the toolbar offers
   only while there is something to apply; a tab is named after its shell
@@ -162,6 +169,11 @@ by accident.
 | `-machine-name` | the name shown in the relay's machine list |
 | `-relay-ca` | PEM file to trust as the relay's CA, for a relay behind a private certificate |
 | `-allow-control` | whether other clients (a browser, a phone, another machine) may drive the shells here; default true, `false` leaves them read-only |
+
+`tfrelay` also takes `-control-token-ttl` (default 15m), the lifetime of the
+credential an enrolled machine gets from `/relay/control-token`. It is how a
+desktop reaches the rest of the fleet without the shared client token, which
+stays what a browser or a phone is given.
 
 `tfdesktop` takes `-addr` and `-web-dir` as well, plus `-shell` (the shell new
 tabs run) and `-cwd` (their working directory). Its relay credential, the

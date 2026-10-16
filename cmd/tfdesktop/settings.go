@@ -115,7 +115,6 @@ type settingsWindow struct {
 	// inverse of settings.ControlOff, because the switch reads better as the
 	// thing it allows.
 	control bool
-	token   string
 
 	// caNote is the one line under the CA field: which certificate is pinned,
 	// or why the last attempt failed. It is state, not a transient message,
@@ -154,7 +153,6 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 		relayOn: cur.RelayOn,
 		server:  !cur.ServerOff,
 		control: !cur.ControlOff,
-		token:   cur.ClientToken,
 	}
 	if s.size <= 0 {
 		s.size = settings.DefaultFontSize
@@ -227,7 +225,6 @@ func (s *settingsWindow) draft() settings.Settings {
 	cur.RelayOn = s.relayOn
 	cur.ServerOff = !s.server
 	cur.ControlOff = !s.control
-	cur.ClientToken = strings.TrimSpace(s.token)
 	return cur
 }
 
@@ -344,18 +341,6 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 		ui.Field(c, "设备密钥", func() {
 			ui.TextInput(c, &s.secret).Password().Fill()
 		})
-		// The pane's second credential, and a different kind of secret: the device
-		// id and secret are what this machine proves it is, while the client token
-		// is what lets this window drive the *other* machines. They sit next to
-		// each other because they are told apart by their labels, and someone who
-		// has the device secret in hand is exactly who is holding the token too.
-		ui.Field(c, "客户端令牌", func() {
-			// A placeholder, because this field is the one a person arrives at
-			// holding a token they typed somewhere else — the browser asked for the
-			// same string under the name 访问令牌, and nothing else on this pane
-			// says so at a glance.
-			ui.TextInput(c, &s.token).Password().Placeholder("就是浏览器里输的访问令牌").Fill()
-		})
 		ui.Field(c, "CA 证书", func() {
 			ui.Column(c).Gap(6).Children(func() {
 				ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
@@ -394,11 +379,10 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 			ui.Text(c, line).FontSize(11).TextColor(color)
 		}
 	}
-	// The client link is a second connection with a second credential, so it gets
-	// its own line: a token that was never applied and one the relay refused look
-	// exactly like a fleet with nothing in it on the 机器 panel, and this is where
-	// the difference can be seen.
-	if line := s.clientStatusLine(); line != "" {
+	// The client link is a second connection with a credential of its own, so it
+	// gets its own line: a fleet with nothing in it and a link that was refused
+	// look the same on the 机器 panel, and this is where the difference is read.
+	if line := s.reachStatusLine(); line != "" {
 		color := t.Warning
 		if strings.HasPrefix(line, "●") {
 			color = t.Success
@@ -407,7 +391,7 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 	}
 	ui.Text(c, "地址形如 wss://relay.example/relay/agent。中继用自签或私有 CA 证书时，点「从服务器获取」直接把它取回来并固定，或点「选择文件…」指定已经下载好的 PEM。填完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。").
 		FontSize(11).TextColor(t.TextMuted)
-	ui.Text(c, "「客户端令牌」是中继的 client token，也就是在浏览器里输的那个访问令牌。它让这个窗口去驱动同一中继上其他机器的会话：填上并应用后，机器面板才会把别的机器列出来。留空时，这个窗口只能看本机的会话。").
+	ui.Text(c, "接入后，这台机器会拿自己的设备密钥向中继换一枚短时接管令牌（默认 15 分钟），用来自动找到同一中继上的其他机器并接管它们的会话——不需要在这里填任何密码。令牌到期会自动再换一枚。").
 		FontSize(11).TextColor(t.TextMuted)
 }
 
@@ -429,30 +413,26 @@ func (s *settingsWindow) relayStatusLine() string {
 	}
 }
 
-// clientStatusLine says what the window's own client link — the one the token
-// above builds — is doing. It is the other half of relayStatusLine: that line is
-// about this machine joining the fleet, this one is about reaching the rest of
-// it, and without it a missing token is indistinguishable from a fleet with
-// nothing in it.
-//
-// An empty field with no link behind it says nothing on purpose: a link nobody
-// asked for has no state worth a line.
-func (s *settingsWindow) clientStatusLine() string {
-	if s.fleet == nil {
+// reachStatusLine says whether this window can drive the rest of the fleet: the
+// other half of relayStatusLine, which is about this machine joining it. Without
+// this line a relay that never minted a credential and a fleet with nothing in it
+// look the same on the 机器 panel.
+func (s *settingsWindow) reachStatusLine() string {
+	if s.fleet == nil || !s.relayOn {
 		return ""
 	}
 	switch {
 	case s.fleet.RelayClient() != nil:
-		return "● 已接上中继，机器面板会列出其他机器"
+		if exp := s.fleet.ControlExpiry(); !exp.IsZero() {
+			if left := time.Until(exp).Round(time.Minute); left > 0 {
+				return "● 可以接管同一中继上的其他机器（接管令牌还有 " + left.String() + "）"
+			}
+		}
+		return "● 可以接管同一中继上的其他机器"
 	case s.fleet.RelayClientErr() != "":
-		return "○ 客户端链接没接上：" + s.fleet.RelayClientErr()
-	case strings.TrimSpace(s.token) != "":
-		// Typed into the right box but not applied yet: every text field on this
-		// pane is written by 应用, and this line is the one that would otherwise
-		// look like a token that does not work.
-		return "○ 点「应用」后这条链接才建立"
+		return "○ 接管链接没接上：" + s.fleet.RelayClientErr()
 	default:
-		return ""
+		return "○ 正在向中继申请接管令牌…"
 	}
 }
 
@@ -591,11 +571,18 @@ func (s *settingsWindow) commit() {
 		s.fail("远程渠道没接上：" + err.Error())
 		return
 	}
-	// The client link is a second connection with a second credential: the
-	// member one is how this machine joins the fleet, and this one is what lets
-	// the window drive the other machines' shells.
-	if err := s.fleet.SetRelayClient(stored.RelayURL, stored.ClientToken, stored.RelayCA); err != nil {
-		s.fail("客户端链接没接上：" + err.Error())
+	// The client link is a second connection with a credential of its own: the
+	// member one is how this machine joins the fleet, and this one — asked for on
+	// the spot, short-lived — is what lets the window drive the other machines'
+	// shells. Asking needs the member link to be dialling, so this comes after
+	// the relay above.
+	if stored.RelayOn && stored.RelayURL != "" {
+		if err := s.fleet.Reach(); err != nil {
+			s.fail("接管令牌没申请下来：" + err.Error())
+			return
+		}
+	} else if err := s.fleet.SetRelayClient("", "", ""); err != nil {
+		s.fail("客户端链接没断开：" + err.Error())
 		return
 	}
 	if err := s.fleet.SetServer(!stored.ServerOff); err != nil {
@@ -628,7 +615,7 @@ func (s *settingsWindow) summary(stored settings.Settings) string {
 	if stored.RelayOn && stored.RelayURL != "" {
 		parts = append(parts, "已接入 "+stored.RelayURL)
 	}
-	if stored.ClientToken != "" {
+	if s.fleet.RelayClient() != nil {
 		parts = append(parts, "可接管其他机器")
 	}
 	return strings.Join(parts, " · ")
@@ -645,7 +632,6 @@ func (s *settingsWindow) restoreDefaults() {
 	s.relayOn = false
 	s.server = true
 	s.control = true
-	s.token = ""
 	s.commit()
 }
 

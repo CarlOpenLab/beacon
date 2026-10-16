@@ -104,6 +104,7 @@ func runServe(args []string) {
 	clientToken := flag.String("client-token", os.Getenv("TFRELAY_CLIENT_TOKEN"), "shared secret clients must present (required; defaults to $TFRELAY_CLIENT_TOKEN)")
 	tokenFile := flag.String("token-file", "", "where a rotated client token is persisted (default: token.txt beside -devices)")
 	tokenTTL := flag.Duration("client-token-ttl", relay.DefaultClientTokenTTL, "how long a client token minted from the panel stays valid; 0 means it never expires")
+	controlTTL := flag.Duration("control-token-ttl", relay.DefaultControlTokenTTL, "how long a credential minted for an enrolled machine stays valid; it is what lets a desktop reach the other machines without the shared token")
 	adminOn := flag.Bool("admin", true, "serve the web admin panel")
 	adminPath := flag.String("admin-path", "/admin", "URL path the admin panel is mounted at")
 	adminStore := flag.String("admin-store", "", "admin account file (default: admin.json beside -devices)")
@@ -162,6 +163,7 @@ func runServe(args []string) {
 		OriginPatterns:  patterns,
 		TrustProxy:      *trustProxy,
 		AuthMaxFailures: *maxFailures,
+		ControlTokenTTL: *controlTTL,
 		Log:             log.Default(),
 	})
 	if err != nil {
@@ -172,6 +174,7 @@ func runServe(args []string) {
 	mux.HandleFunc("/relay/agent", r.ServeAgent)
 	mux.HandleFunc("/relay/client", r.ServeClient)
 	mux.HandleFunc("/relay/machines", r.Machines)
+	mux.HandleFunc("/relay/control-token", r.ControlToken)
 	// The relay serves the same client bundle a daemon does, and tells it which
 	// transport to use. Without this a phone could not reach a fleet at all: the
 	// relay is the only address that is reachable from outside the LAN.

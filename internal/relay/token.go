@@ -1,10 +1,12 @@
 package relay
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -14,23 +16,51 @@ import (
 // valid when the operator does not pick a lifetime.
 const DefaultClientTokenTTL = 24 * time.Hour
 
-// TokenStore is the client credential: the shared secret a browser or phone
-// presents before it may see any machine.
+// DefaultControlTokenTTL is how long a credential minted for an enrolled machine
+// stays valid when the relay is not told otherwise. Short on purpose: it is
+// handed to a machine so that a window can drive the rest of the fleet, and a
+// machine that keeps asking is a machine that still wants to.
+const DefaultControlTokenTTL = 15 * time.Minute
+
+// TokenStore is the client credential: the secret a client presents before it
+// may see any machine.
 //
-// It is a store rather than a plain string because the admin page can rotate it
-// while the relay runs. Rotation is the point: the token is the one secret that
-// everyone who views the fleet shares, so it is the one most likely to leak, and
-// invalidating it must not need a redeploy.
+// It is a store rather than a plain string because the admin page can rotate the
+// shared token while the relay runs. Rotation is the point: the shared token is
+// the one secret everyone who views the fleet holds, so it is the one most
+// likely to leak, and invalidating it must not need a redeploy.
 //
-// A token may also carry an expiry. That is the second half of the same idea:
-// a token that leaks should stop working on its own, without anyone noticing the
-// leak first.
+// A token may carry an expiry, and that is the second half of the same idea: a
+// token that leaks should stop working on its own, without anyone noticing the
+// leak first. The shared token's expiry is the admin page's; the minted ones
+// below are handed to enrolled machines and are always short-lived.
 type TokenStore struct {
 	path string
 
 	mu        sync.RWMutex
 	token     string
 	expiresAt time.Time // zero means the token does not expire
+	// minted are credentials issued to enrolled machines, keyed by the token
+	// itself: a machine asks the relay for one (ControlToken) instead of being
+	// handed the shared secret, so revoking a machine, or simply waiting, takes
+	// its reach away. They are kept in memory only — a credential that outlives
+	// the process that asked for it is longer lived than anything that needs it —
+	// and each remembers which machine asked, so an operator can see who was
+	// handed one.
+	minted map[string]mintedToken
+}
+
+// mintedToken is one credential handed to an enrolled machine.
+type mintedToken struct {
+	device    string
+	expiresAt time.Time
+}
+
+// MintedToken is one live machine credential, as the admin page and the tests
+// see it.
+type MintedToken struct {
+	Device    string    `json:"device"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // NewTokenStore wraps an initial token. When path is set the token is persisted
@@ -88,11 +118,93 @@ func OpenTokenStore(path, initial string) (*TokenStore, error) {
 	return s, nil
 }
 
-// Get returns the current token.
+// Get returns the current shared token.
 func (s *TokenStore) Get() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.token
+}
+
+// Accept reports whether a presented credential is one this relay honours: the
+// shared token while it has not expired, or a live credential minted for an
+// enrolled machine. Comparisons are constant time, so a caller cannot learn a
+// token one byte at a time.
+func (s *TokenStore) Accept(got string) bool {
+	if got == "" {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := time.Now()
+	if s.token != "" && (s.expiresAt.IsZero() || now.Before(s.expiresAt)) {
+		if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
+			return true
+		}
+	}
+	for token, m := range s.minted {
+		if now.Before(m.expiresAt) && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// Mint issues a credential to the machine named device, good for ttl (a ttl
+// <= 0 gets DefaultControlTokenTTL). Expired credentials are dropped on the way
+// through, so the set stays as small as the machines actually asking for one.
+func (s *TokenStore) Mint(device string, ttl time.Duration) (string, time.Time, error) {
+	if ttl <= 0 {
+		ttl = DefaultControlTokenTTL
+	}
+	token, err := newSecret()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	expiresAt := time.Now().Add(ttl)
+
+	s.mu.Lock()
+	now := time.Now()
+	for t, m := range s.minted {
+		if !now.Before(m.expiresAt) {
+			delete(s.minted, t)
+		}
+	}
+	if s.minted == nil {
+		s.minted = map[string]mintedToken{}
+	}
+	s.minted[token] = mintedToken{device: device, expiresAt: expiresAt}
+	s.mu.Unlock()
+	return token, expiresAt, nil
+}
+
+// Minted lists the live machine credentials, oldest expiry first.
+func (s *TokenStore) Minted() []MintedToken {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := time.Now()
+	out := make([]MintedToken, 0, len(s.minted))
+	for _, m := range s.minted {
+		if now.Before(m.expiresAt) {
+			out = append(out, MintedToken{Device: m.device, ExpiresAt: m.expiresAt})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ExpiresAt.Before(out[j].ExpiresAt) })
+	return out
+}
+
+// ForgetDevice drops every live credential minted to device. It is what makes
+// revoking a machine mean something immediately rather than at the next expiry.
+func (s *TokenStore) ForgetDevice(device string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for t, m := range s.minted {
+		if m.device == device {
+			delete(s.minted, t)
+			n++
+		}
+	}
+	return n
 }
 
 // ExpiresAt reports when the token stops being accepted. The zero time means it

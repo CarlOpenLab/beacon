@@ -147,7 +147,6 @@ func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 		{"公网地址", "wss://relay.example/relay/agent", func() string { return sw.relay }},
 		{"设备 ID", "mac-mini", func() string { return sw.device }},
 		{"设备密钥", "s3cret", func() string { return sw.secret }},
-		{"客户端令牌", "fleettoken", func() string { return sw.token }},
 	}
 	for _, tc := range cases {
 		if _, ok := tt.Find(tc.label); !ok {
@@ -167,14 +166,13 @@ func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 	}
 }
 
-// The client token is the whole reason the 机器 panel can show anything but this
-// machine, and it is typed here: the field, 应用, the store the app reads on
-// startup, the window's second link, and the roster that lands in the panel.
-// Before this field existed the panel's own line told people to fill in a
-// control that was not on the form.
-func TestSettingsClientTokenReachesTheFleet(t *testing.T) {
-	// A relay with two machines enrolled: the other one, and this one, which
-	// joins the fleet as a member so the panel's state is the real one.
+// 应用 with a relay is what makes the 机器 panel show anything but this machine.
+// Nothing is typed: this machine proves itself with its own device credential,
+// the relay hands it a short-lived credential to drive the fleet with, and that
+// link is what carries the roster. Before this existed, the panel's own line
+// told people to fill in a control that was not on the form.
+func TestSettingsApplyingTheRelayReachesTheFleet(t *testing.T) {
+	// A relay with this machine and another enrolled.
 	reg, err := relay.OpenRegistry(filepath.Join(t.TempDir(), "devices.json"))
 	if err != nil {
 		t.Fatalf("registry: %v", err)
@@ -194,6 +192,7 @@ func TestSettingsClientTokenReachesTheFleet(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/relay/agent", rl.ServeAgent)
 	mux.HandleFunc("/relay/client", rl.ServeClient)
+	mux.HandleFunc("/relay/control-token", rl.ControlToken)
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
@@ -208,13 +207,12 @@ func TestSettingsClientTokenReachesTheFleet(t *testing.T) {
 		t.Fatalf("Click(远程): %v", err)
 	}
 	tt.Frame()
-	if _, ok := tt.Find("客户端令牌"); !ok {
-		t.Fatalf("the client token field is missing from the remote pane; texts = %v", tt.Texts())
+	// There is no credential field to fill in: that is the point of the mint.
+	if _, ok := tt.Find("客户端令牌"); ok {
+		t.Fatalf("the pane still asks for a token; texts = %v", tt.Texts())
 	}
 
-	// Enrolled with a relay, with no client token: this is the state the report
-	// came from, and it must name the missing credential rather than promise
-	// machines that cannot appear.
+	// Enrolled with a relay, with nothing else configured.
 	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/relay/agent"
 	sw.relay, sw.device, sw.secret, sw.relayOn = url, thisID, thisSecret, true
 	tt.Frame()
@@ -222,51 +220,25 @@ func TestSettingsClientTokenReachesTheFleet(t *testing.T) {
 		t.Fatalf("Click(应用): %v", err)
 	}
 	tt.Frame()
+
 	if !f.RelayOn() {
 		t.Fatal("the member link was not asked for after applying the relay")
 	}
-	if note := w.machineNote(); !strings.Contains(note, "没有客户端令牌") {
-		t.Fatalf("with no token the panel says %q, want it to name the missing one", note)
-	}
-	if line := sw.clientStatusLine(); line != "" {
-		t.Errorf("an untouched token field reports %q, want silence", line)
-	}
-
-	// Now the token, the way the report's author would type it.
-	if err := tt.Click("客户端令牌"); err != nil {
-		t.Fatalf("Click(客户端令牌): %v", err)
-	}
-	tt.Type("fleettoken")
-	tt.Frame()
-	if sw.token != "fleettoken" {
-		t.Fatalf("typed token = %q, want it in the draft", sw.token)
-	}
-	// Typed but not applied: nothing is connected yet, and the pane has to say so
-	// rather than leave a token that looks like it was refused.
-	if line := sw.clientStatusLine(); !strings.Contains(line, "应用") {
-		t.Errorf("before applying, the pane says %q, want it to point at 应用", line)
-	}
-	if err := tt.Click("应用"); err != nil {
-		t.Fatalf("Click(应用) with the token: %v", err)
-	}
-	tt.Frame()
-
-	// The store the app reads on the next start holds it, the link is up, and the
-	// pane says so.
-	if got := store.Get().ClientToken; got != "fleettoken" {
-		t.Fatalf("stored ClientToken = %q, want the typed token", got)
-	}
+	// The window's own client link, with a credential the relay minted.
 	if f.RelayClient() == nil {
-		t.Fatalf("no client link after applying the token: %s", f.RelayClientErr())
+		t.Fatalf("no client link after applying: %s", f.RelayClientErr())
 	}
-	if line := sw.clientStatusLine(); !strings.HasPrefix(line, "●") {
-		t.Errorf("the pane says %q, want it to report a live link", line)
+	if f.ControlExpiry().IsZero() {
+		t.Error("the link came up with no lifetime recorded for its credential")
+	}
+	if line := sw.reachStatusLine(); !strings.HasPrefix(line, "●") {
+		t.Errorf("the pane says %q, want it to report the fleet is reachable", line)
 	}
 
-	// The roster arrives, and the panel stops saying the token is missing.
+	// The roster follows, and the panel stops saying the token is missing.
 	waitForRoster(t, w, otherID)
 	if note := w.machineNote(); strings.Contains(note, "令牌") {
-		t.Fatalf("the panel still reports a missing token after it was applied: %q", note)
+		t.Fatalf("the panel still asks for a token it no longer needs: %q", note)
 	}
 
 	// The other machine is not merely in the list: it is drawn, which is the row

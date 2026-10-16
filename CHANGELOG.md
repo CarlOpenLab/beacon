@@ -4,6 +4,27 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## Unreleased
+
+**Desktop app**
+
+- The 机器 panel is a list you switch between rather than a nest of shells. This
+  machine comes first and is picked by default; picking another machine makes it
+  the subject of the 会话 panel below and of that panel's 新建标签页, which now
+  starts a shell *on that machine* over the relay and opens it here. The relay
+  itself has no row any more — it is the pipe, not a machine — and its state
+  moved to the line the header and status bar already carry.
+- Reaching the other machines no longer needs a secret typed anywhere. 设置 → 远程
+  lost the 客户端令牌 field: a window asks its relay for a short-lived *control
+  token*, proving itself with the device credential it already joins the fleet
+  with, and that is what its client link presents. Picking a machine the window
+  cannot reach yet asks first, in a dialog, so "this window is about to ask the
+  relay for reach" is something a person sees and can decline. The fleet's shared
+  token is unchanged and is now only what a browser or a phone is given:
+  `tfrelay -control-token-ttl` (default 15m) bounds what a machine gets, revoking
+  a machine at the relay takes its credentials away at once, and the machine's own
+  允许被控制 switch is unchanged.
+
 ## 0.4.2
 
 **Desktop app**

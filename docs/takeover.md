@@ -75,9 +75,18 @@ state needs no new channel:
 
 * **Presence**: the relay already broadcasts its roster to clients
   (`machines`, pushed on every presence change). The desktop window opens a
-  *client* connection beside its member one — a second link with the fleet's
-  client token rather than this machine's device credential — so it receives
-  that roster and lists it in the 机器 panel. No relay change was needed.
+  *client* connection beside its member one, so it receives that roster and lists
+  it in the 机器 panel — a list you switch between, this machine first, with the
+  relay itself getting no row: it is the pipe, not a machine.
+* **The credential a window drives with**: not the fleet's shared secret. An
+  enrolled machine asks its relay for a short-lived *control token*
+  (`POST /relay/control-token`, authenticated with the device credential it
+  already dials the member link with), and the window's client link presents
+  that. So reaching the rest of the fleet is something a machine does rather than
+  something a person types, a leaked control token expires on its own in minutes,
+  and revoking the machine at the relay takes the reach away at once
+  (`Relay.RevokeDevice` forgets the tokens it minted). The shared client token
+  stays what it was: what a browser or a phone is given.
 * **Remote attach**: `internal/relayclient` is the Go half of the relay protocol
   for a program that drives a fleet. One stream per machine carries the session
   protocol inside it, so the window is an ordinary client of that machine's hub
@@ -89,12 +98,14 @@ state needs no new channel:
   right to its own shell, and the machine's own switch over who may control it.
   What is still missing:
 
-* **Per-device authorization**: the relay knows a client by the fleet's shared
-  token, so any client that holds it may drive any enrolled machine that allows
-  being driven. A machine that wants to say "this laptop, not that one" needs a
-  per-device ACL on the relay, which does not exist yet. Until then, the client
-  token is the whole authority: treat it like the fleet's password, because it
-  is.
+* **Per-device authorization**: any *enrolled* machine may drive any other that
+  allows being driven — that is the intended shape for one person's fleet, and
+  the switch below is the brake — but nothing finer exists yet. A machine that
+  wants to say "this laptop, not that one" needs an ACL on the relay: who may
+  mint a control token for which machine. Until then, the device credential is
+  the whole authority for control: whoever holds a machine's secret can drive the
+  fleet from it. The shared token, meanwhile, only ever buys the roster and the
+  read-only view a viewer gets.
 * **Consent, and why it is not a dialog**: the design first asked the holder to
   approve a steal, the way a screen share does. That was dropped: a fleet is one
   person's machines, and nobody is sitting at the far machine to answer. Being

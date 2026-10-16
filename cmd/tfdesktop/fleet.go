@@ -65,8 +65,25 @@ type fleet struct {
 	// agent is actually dialling and the device id it dials as. The panel shows
 	// these rather than the store's copy, so what is on screen is what the link
 	// is doing even when the settings window has a half-typed address in it.
+	//
+	// relaySecret and relayCA are kept beside them for one reason: the window asks
+	// the relay for a short-lived control credential with the credential it
+	// already joins with, and that call needs the secret and the pin. Neither is
+	// ever shown.
 	relayURL    string
 	relayDevice string
+	relaySecret string
+	relayCA     string
+
+	// controlExpiry is when the credential behind the current client link stops
+	// being accepted. An established link outlives it — the relay checks a
+	// credential when a client connects — so this is what decides when to ask
+	// again after a drop, not a deadline the link dies at.
+	controlExpiry time.Time
+	// reachedAt is the last time a control token was asked for. It throttles
+	// asking again for a link that keeps failing, which is otherwise a machine
+	// asking a relay for a credential in a loop.
+	reachedAt time.Time
 
 	// relayState is the last thing the agent said about the link, kept so the
 	// settings window can answer "why is this machine offline?" instead of
@@ -180,6 +197,7 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 	}
 	f.relayState = agent.State{}
 	f.relayURL, f.relayDevice = "", ""
+	f.relaySecret, f.relayCA = "", ""
 	if !enabled || relayURL == "" {
 		return nil
 	}
@@ -207,6 +225,7 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 	f.stopAgent = cancel
 	f.relayOn = true
 	f.relayURL, f.relayDevice = relayURL, deviceID
+	f.relaySecret, f.relayCA = secret, caFile
 	f.log.Printf("fleet: joining %s as %q", relayURL, deviceID)
 	go func() {
 		if err := a.Run(ctx); err != nil && ctx.Err() == nil {
@@ -216,11 +235,12 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 	return nil
 }
 
-// SetRelayClient starts or replaces the window's client link to the relay. It
-// needs the fleet's client token, which is not this machine's device
-// credential: the member link proves this machine is itself, and the client
-// link is what lets the window drive another machine's shells. An empty token
-// drops the link.
+// SetRelayClient starts or replaces the window's client link to the relay: the
+// connection that carries the roster of other machines and one stream per
+// machine the window drives. The credential is not this machine's device one —
+// that is what the member link proves itself with — but a short-lived token the
+// relay minted for this machine, which Reach asks for. An empty token drops the
+// link.
 func (f *fleet) SetRelayClient(relayURL, token, caFile string) error {
 	f.mu.Lock()
 	if f.client != nil {
@@ -245,7 +265,7 @@ func (f *fleet) SetRelayClient(relayURL, token, caFile string) error {
 			OnRoster: onRoster,
 			// The client link's own state is a reason to repaint: the machine
 			// panel shows whether the fleet is reachable at all.
-			OnState: func(relayclient.State, string) { f.noteClientState() },
+			OnState: f.noteClientState,
 		})
 	f.mu.Lock()
 	f.client = c
@@ -253,19 +273,107 @@ func (f *fleet) SetRelayClient(relayURL, token, caFile string) error {
 		f.clientErr = err.Error()
 	}
 	f.mu.Unlock()
-	f.noteClientState()
+	f.noteClientState(relayclient.StateOffline, f.RelayClientErr())
 	return err
 }
 
+// Reach opens the window's client link with a credential asked for on the spot:
+// the machine proves it is itself with the credential it already joins the fleet
+// with, and the relay hands back one that expires. Nothing is typed, nothing is
+// stored, and revocation at the relay takes the reach away.
+//
+// Calling it while a link is up replaces that link, which is what a renewal
+// after a drop looks like.
+func (f *fleet) Reach() error {
+	f.mu.Lock()
+	relayURL, device, secret, ca := f.relayURL, f.relayDevice, f.relaySecret, f.relayCA
+	f.reachedAt = time.Now()
+	f.mu.Unlock()
+	if relayURL == "" || device == "" {
+		return nil
+	}
+
+	var roots *x509.CertPool
+	if ca != "" {
+		pool, err := agent.LoadCACert(ca)
+		if err != nil {
+			f.setClientErr(err.Error())
+			return err
+		}
+		roots = pool
+	}
+	token, err := agent.RequestControlToken(relayURL, device, secret, roots, 20*time.Second)
+	if err != nil {
+		// A relay too old to mint one is not an error the person can fix from
+		// here, and saying so beats an empty fleet with no explanation.
+		f.setClientErr(err.Error())
+		return err
+	}
+	f.mu.Lock()
+	f.controlExpiry = token.ExpiresAt
+	f.clientErr = ""
+	f.mu.Unlock()
+	f.noteClientState(relayclient.StateAuth, "")
+	return f.SetRelayClient(relayURL, token.Token, ca)
+}
+
+// setClientErr records why the window has no reach, for the panel and the pane.
+func (f *fleet) setClientErr(reason string) {
+	f.mu.Lock()
+	f.clientErr = reason
+	f.mu.Unlock()
+	f.noteClientState(relayclient.StateOffline, reason)
+}
+
+// ControlExpiry is when the credential behind the current client link stops
+// being accepted, or the zero time when there is none.
+func (f *fleet) ControlExpiry() time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.controlExpiry
+}
+
+// renewClient asks for a fresh credential after the link dropped, at most once
+// every reachRenewAfter. A relay that is down, or a machine that was revoked,
+// would otherwise be asked in a loop.
+func (f *fleet) renewClient(state relayclient.State, _ string) {
+	if state != relayclient.StateOffline {
+		return
+	}
+	f.mu.Lock()
+	url, device := f.relayURL, f.relayDevice
+	wait := reachRenewAfter - time.Since(f.reachedAt)
+	if url == "" || device == "" || wait > 0 {
+		f.mu.Unlock()
+		return
+	}
+	f.reachedAt = time.Now()
+	f.mu.Unlock()
+
+	go func() {
+		if err := f.Reach(); err != nil {
+			f.log.Printf("fleet: asking for a control token: %v", err)
+		}
+	}()
+}
+
+// reachRenewAfter is how long to wait before asking the relay for another
+// credential after the client link dropped.
+const reachRenewAfter = 20 * time.Second
+
 // noteClientState asks whoever is watching for a repaint after the client link
-// changes state.
-func (f *fleet) noteClientState() {
+// changes state, and asks the relay for a fresh credential when the link drops:
+// a client link's credential is checked when it connects, so a reconnect after
+// the token expired needs a new one. Renewals are throttled inside, so a link
+// that keeps failing does not become a machine asking in a loop.
+func (f *fleet) noteClientState(state relayclient.State, reason string) {
 	f.mu.Lock()
 	notify := f.onState
 	f.mu.Unlock()
 	if notify != nil {
 		notify()
 	}
+	f.renewClient(state, reason)
 }
 
 // RelayClient is the window's client link, or nil without a token.
