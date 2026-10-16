@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
@@ -112,4 +113,22 @@ func (w *window) setTheme(mode string) {
 		win.Invalidate()
 	}
 	w.invalidateSettings()
+}
+
+// windowGround is the colour a window is filled with until its first frame
+// paints. It has to agree with the appearance that frame will ask for: a dark
+// flash in front of a light window is the one piece of the dark theme a
+// light-mode user sees. The system's own answer is read from the app, which is
+// running by the time any window is opened.
+func windowGround(mode string) string {
+	switch normalizeTheme(mode) {
+	case themeLight:
+		return "#f6f7fb"
+	case themeDark:
+		return "#0b0d15"
+	}
+	if mygo.Theme.IsDark() {
+		return "#0b0d15"
+	}
+	return "#f6f7fb"
 }

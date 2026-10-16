@@ -90,6 +90,12 @@ export class Fleet {
   private intents = new Map<string, Intent>()
   /** Input typed but not yet on the wire, per session. */
   private pending = new Map<string, string>()
+  /**
+   * The lease epoch each session is at, from its last role frame. Input,
+   * resize and close carry it: a frame at a past epoch is one the hub drops,
+   * because the holder that sent it has been replaced.
+   */
+  private epochs = new Map<string, number>()
   private flushTimer?: number
 
   /** Set by the app layer when this Fleet belongs to a machine in a roster. */
@@ -220,6 +226,10 @@ export class Fleet {
       }
       case ST.role: {
         if (msg.sessionId && msg.role) {
+          // The epoch in force is remembered per session: every input, resize
+          // and close frame carries it, and a frame at a past epoch is one the
+          // hub drops because its holder has been replaced.
+          this.epochs.set(msg.sessionId, msg.epoch ?? 0)
           this.handlers.role?.(msg.sessionId, msg.role, msg.controller ?? '')
         }
         break
@@ -314,17 +324,22 @@ export class Fleet {
     for (const id of ids) {
       const buf = this.pending.get(id)
       if (!buf) continue
-      if (!this.send({ t: CT.input, sessionId: id, data: encodeData(buf) })) continue
+      if (!this.send({ t: CT.input, sessionId: id, data: encodeData(buf), epoch: this.epochs.get(id) ?? 0 })) continue
       this.pending.delete(id)
     }
   }
 
   resize(sessionId: string, cols: number, rows: number): void {
-    this.send({ t: CT.resize, sessionId, cols, rows })
+    this.send({ t: CT.resize, sessionId, cols, rows, epoch: this.epochs.get(sessionId) ?? 0 })
   }
 
-  claim(sessionId: string): void {
-    this.send({ t: CT.claim, sessionId })
+  /**
+   * Ask for the lease. Steal takes it from a holder whose lease has not
+   * lapsed; without it the hub refuses the claim and names the holder, which
+   * is what lets a client offer "take it anyway" rather than assuming.
+   */
+  claim(sessionId: string, steal = false): void {
+    this.send({ t: CT.claim, sessionId, steal: steal || undefined })
   }
 
   release(sessionId: string): void {
@@ -332,11 +347,6 @@ export class Fleet {
   }
 
   closeSession(sessionId: string): void {
-    this.send({ t: CT.close, sessionId })
-  }
-
-  /** Last cursor consumed for a session, for callers that need to hand it off. */
-  cursorOf(sessionId: string): number {
-    return this.intents.get(sessionId)?.cursor ?? 0
+    this.send({ t: CT.close, sessionId, epoch: this.epochs.get(sessionId) ?? 0 })
   }
 }

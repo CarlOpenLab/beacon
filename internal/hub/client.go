@@ -21,6 +21,13 @@ type client struct {
 	done chan struct{}
 	once sync.Once
 
+	// owner marks the client that IS the machine: the desktop window's own
+	// connection, over an in-process transport rather than a socket. Its claim
+	// is always honoured, because a shell on this machine is the machine's to
+	// take back — the one case where no confirmation and no lease expiry
+	// stands between a person and their own shell.
+	owner bool
+
 	mu      sync.Mutex
 	cursors map[string]int64
 }
@@ -39,6 +46,13 @@ func (h *Hub) newClient(tp Transport) *client {
 		done:    make(chan struct{}),
 		cursors: map[string]int64{},
 	}
+}
+
+// ownerClient is newClient marked as the machine itself.
+func (h *Hub) ownerClient(tp Transport) *client {
+	c := h.newClient(tp)
+	c.owner = true
+	return c
 }
 
 // send enqueues a frame. It never blocks the hub: a client that is not

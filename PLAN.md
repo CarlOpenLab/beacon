@@ -232,7 +232,7 @@ NAT / CGNAT。没配 `-relay` 时 `tfd` 的行为一个字都不变，局域网�
   （与关掉一个终端模拟器一致）。
 
   PC 窗口曾经就是「把窗口指向本机的 loopback」，现在改为 mygo 原生 UI
-  （`ui` 控件 + `plugins/terminal` 画终端，`internal/native` 把会话接到
+  （`ui` 控件 + `plugins/terminal` 画终端，`cmd/tfdesktop` 的 link 把会话接到
   原生终端视图）。窗口不再加载 web 产物，但**仍然挂在同一个 daemon 上**，
   所以窗口里的 tab 与浏览器/手机看到的 tab 仍是同一个会话：两侧都能建、
   都能打。原生窗口多出一个 `-shell` / `-cwd`（新 tab 的 shell 与工作目录）。

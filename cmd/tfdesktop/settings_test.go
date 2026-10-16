@@ -148,12 +148,15 @@ func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 		{"设备密钥", "s3cret", func() string { return sw.secret }},
 	}
 	for _, tc := range cases {
-		rect, ok := tt.Find(tc.label)
-		if !ok {
+		if _, ok := tt.Find(tc.label); !ok {
 			t.Fatalf("Find(%q): the field label is missing from the pane", tc.label)
 		}
-		// The label sits above its input, so aim just below the label's box.
-		tt.ClickAt(rect.X+40, rect.Y+rect.H+12)
+		// The label names its control in the form, so a click on it is a click
+		// on the field: the same click a user makes, whichever side of the
+		// label the control sits on.
+		if err := tt.Click(tc.label); err != nil {
+			t.Fatalf("Click(%q): %v", tc.label, err)
+		}
 		tt.Type(tc.typed)
 		tt.Frame()
 		if got := tc.draft(); got != tc.typed {
@@ -483,8 +486,8 @@ func TestSettingsFontFieldAcceptsAnUnlistedFamily(t *testing.T) {
 	// typed into it.
 	sw.family = ""
 	tt.Frame()
-	// The label sits above its input, as in the other panes.
-	tt.ClickAt(rect.X+40, rect.Y+rect.H+12)
+	// The label focuses its control, as every field in the form does.
+	tt.ClickAt(rect.X+rect.W/2, rect.Y+rect.H/2)
 	tt.Type("Maple Mono NF")
 	tt.Frame()
 

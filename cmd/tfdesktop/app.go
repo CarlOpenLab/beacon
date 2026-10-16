@@ -5,16 +5,14 @@ import (
 	"log"
 	"strings"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/native"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
 // window is the desktop window's state: the shells on this machine, one native
@@ -40,40 +38,186 @@ type window struct {
 	settingsMu  sync.Mutex
 	settingsWin *mygo.Window
 
-	order    []string // session ids, in tab order
-	tabs     map[string]*tab
+	// order is the tabs in the order they were opened, by key; selected indexes
+	// it. A tab is keyed rather than named by session id because a tab exists
+	// for a moment before the hub has told the window which session it got.
+	order    []int
+	tabs     map[int]*tab
 	selected int
+
+	// local is the window's own client connection to this machine's hub. Every
+	// shell on this machine is watched through it, under the same lease a
+	// browser answers to.
+	local *localLink
+
+	// remote is one link per machine the window drives through the relay, keyed
+	// by that machine's roster id. They are opened lazily: a machine the panel
+	// shows but nobody has looked at yet has no stream.
+	remote map[string]*relayLink
+
+	// roster is the relay's machine list as it last pushed it, and remoteSessions
+	// is what each machine's hub said it was running. Both are the panel's data.
+	roster         []tunnel.Machine
+	remoteSessions map[string][]protocol.Summary
 
 	// rail is the navigation sidebar's selection: the id of the shell on screen,
 	// or one of the rail's action ids on the frame a click is handled.
 	rail string
 
+	// sidebarSplit is the height of the shells' panel in the column, which the
+	// line between it and the machines' panel drags. A negative value means the
+	// line has not been dragged: the shells then take whatever the machines do
+	// not need, so the machines' panel is as tall as its content and no taller,
+	// whatever height the window is.
+	sidebarSplit float32
+
 	// tabSeq numbers the tabs of this window, so two shells of the same kind
 	// can be told apart ("zsh 1", "zsh 2") before either reports a title.
-	tabSeq int
+	tabSeq  int
+	nextKey int
 
-	// Signature of the session list as last published. The watch loop below
-	// compares against it so an unchanged list costs no repaint; it is the one
-	// field two goroutines share.
-	sig atomic.Value // string
+	// leaseOpen is whether the popover over a taken-over shell is showing. It
+	// is the window's own state, so the panel stays where the user left it.
+	leaseOpen bool
 
-	pokes chan struct{} // a nudge to the watch loop, as after New Tab
-	focus atomic.Value  // string: the session to select once it appears
+	// posted is what the links have reported and the UI thread has not applied
+	// yet. Everything the links say reaches the window's state through it, so
+	// that state belongs to one thread: the UI thread in the app, and whichever
+	// thread drains in a test.
+	postedMu sync.Mutex
+	posted   []func()
 }
 
 func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 	w := &window{
-		fleet: f,
-		store: store,
-		font:  termFont(store.Get()),
-		shell: shell,
-		cwd:   cwd,
-		tabs:  make(map[string]*tab),
-		pokes: make(chan struct{}, 1),
+		fleet:        f,
+		store:        store,
+		font:         termFont(store.Get()),
+		shell:        shell,
+		cwd:          cwd,
+		tabs:         make(map[int]*tab),
+		sidebarSplit: -1,
+		nextKey:      1,
 	}
-	w.sig.Store("")
-	w.focus.Store("")
+	// The window is a client of its own hub from the moment it opens, so every
+	// shell it shows — including one a browser took over — arrives as frames
+	// and answers to the hub's arbitration.
+	w.local = openLocalLink(f.Hub())
+	w.local.onSessions = w.sessionsArrived
+	w.local.onGone = w.linkGone
+	w.remote = map[string]*relayLink{}
+	w.remoteSessions = map[string][]protocol.Summary{}
+	// The relay's roster reaches the panel through the fleet's client link, and
+	// keeps reaching it when the settings window remakes that link.
+	f.onRoster = w.rosterArrived
+	if c := f.RelayClient(); c != nil {
+		c.OnRoster = w.rosterArrived
+	}
 	return w
+}
+
+// update posts fn to the window's own thread. Everything the links report comes
+// from their reader goroutines and reaches the window's state this way: the UI
+// thread in the app, and whichever thread drains in a test.
+func (w *window) update(fn func()) {
+	w.postedMu.Lock()
+	w.posted = append(w.posted, fn)
+	win := w.win
+	w.postedMu.Unlock()
+	if win != nil {
+		win.Update(w.drain)
+	}
+}
+
+// drain applies everything the links have posted. It runs on the UI thread in
+// the app; a test calls it by hand, which is what makes the posted state visible
+// to the test's own reads.
+func (w *window) drain() {
+	w.postedMu.Lock()
+	fns := w.posted
+	w.posted = nil
+	w.postedMu.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
+	w.invalidate()
+}
+
+// invalidate asks for a repaint. The ui is immediate-mode: the next frame
+// draws the window's state as it now stands.
+func (w *window) invalidate() {
+	if w.win != nil {
+		w.win.Invalidate()
+	}
+}
+
+// sessionsArrived is the hub's session list, pushed on every change: a shell
+// started from anywhere — the New Tab button here, or a browser driving this
+// machine — turns up the same way.
+func (w *window) sessionsArrived(list []protocol.Summary) {
+	w.update(func() { w.reconcile(list) })
+}
+
+// rosterArrived is the relay pushing its machine list. The panel redraws from
+// it; the streams themselves are opened by looking at a machine, so a machine
+// nobody has asked about costs nothing.
+func (w *window) rosterArrived(machines []tunnel.Machine) {
+	w.update(func() {
+		w.roster = machines
+		w.invalidate()
+	})
+}
+
+// remoteSessionsArrived is a remote machine's hub reporting what it runs.
+func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) {
+	w.update(func() {
+		w.remoteSessions[machine] = list
+		w.invalidate()
+	})
+}
+
+// linkFor is the link that speaks to a machine: this machine's own, or another
+// machine's through the relay.
+func (w *window) linkFor(machine string) *link {
+	if machine == machineLocal || machine == "" {
+		return w.local.link
+	}
+	if l := w.remote[machine]; l != nil {
+		return l.link
+	}
+	return nil
+}
+
+// remoteLink opens (or reuses) the window's link to a machine, and asks that
+// machine's hub what it is running.
+func (w *window) remoteLink(machine string) *relayLink {
+	if l := w.remote[machine]; l != nil {
+		return l
+	}
+	c := w.fleet.RelayClient()
+	if c == nil {
+		return nil
+	}
+	l := openRelayLink(c, machine)
+	l.onSessions = func(list []protocol.Summary) { w.remoteSessionsArrived(machine, list) }
+	l.onGone = func(reason string) {
+		w.update(func() {
+			delete(w.remote, machine)
+			delete(w.remoteSessions, machine)
+			log.Printf("tfdesktop: %s: %s", machine, reason)
+			w.invalidate()
+		})
+	}
+	w.remote[machine] = l
+	return l
+}
+
+// linkGone is the window's own connection to its hub ending.
+func (w *window) linkGone(reason string) {
+	w.update(func() {
+		log.Printf("tfdesktop: %s", reason)
+		w.invalidate()
+	})
 }
 
 // view draws the window: a toolbar, a tab per shell, and the shell the user is
@@ -109,49 +253,17 @@ func (w *window) view(c *ui.Context) {
 }
 
 func (w *window) create() {
-	s, err := w.fleet.Hub().Create("", 80, 24, w.cwd, w.shell)
-	if err != nil {
-		log.Printf("tfdesktop: new tab: %v", err)
-		return
-	}
-	w.focus.Store(s.ID)
-	w.poke()
+	// The tab is opened first so the shell it is waiting for has somewhere to
+	// land; the view re-letters the terminal to the pane it is given, and the
+	// resize that follows is sent as a frame like any other.
+	w.openTab(machineLocal, "")
+	w.local.create(80, 24, w.cwd, w.shell)
 }
 
-// kill ends the shell behind a tab. The tab itself goes when the watch loop
-// sees the session disappear.
+// kill ends the shell behind a tab. The tab itself goes when the hub reports
+// the session gone.
 func (w *window) kill(id string) {
-	if err := w.fleet.Hub().Kill(id); err != nil {
-		log.Printf("tfdesktop: close tab: %v", err)
-		return
-	}
-	w.poke()
-}
-
-func (w *window) poke() {
-	select {
-	case w.pokes <- struct{}{}:
-	default:
-	}
-}
-
-// watch mirrors this machine's sessions into tabs. It polls rather than
-// subscribing so that a shell started from anywhere — the New Tab button here,
-// or a browser driving this machine — turns up the same way.
-func (w *window) watch(win *mygo.Window) {
-	tick := time.NewTicker(250 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		select {
-		case <-tick.C:
-		case <-w.pokes:
-		}
-		live := w.fleet.Hub().Sessions()
-		if signature(live) == w.published() {
-			continue
-		}
-		win.Update(func() { w.reconcile(live) })
-	}
+	w.local.closeSession(id)
 }
 
 // reconcile brings the tabs in line with the sessions the hub reports. It runs
@@ -163,30 +275,22 @@ func (w *window) reconcile(live []protocol.Summary) {
 	}
 
 	// A shell that ended takes its tab with it.
-	for id, tb := range w.tabs {
-		if present[id] {
+	for key, tb := range w.tabs {
+		if tb.id == "" || present[tb.id] {
 			continue
 		}
 		tb.close()
-		delete(w.tabs, id)
-		w.order = dropID(w.order, id)
+		delete(w.tabs, key)
+		w.order = dropKey(w.order, key)
 	}
 
 	// A shell that appeared gets one.
 	for _, s := range live {
-		if _, ok := w.tabs[s.SessionID]; ok {
+		if w.tabOf(machineLocal, s.SessionID) != nil {
 			continue
 		}
-		tb, err := w.mount(s)
-		if err != nil {
+		if err := w.mount(s); err != nil {
 			log.Printf("tfdesktop: tab for %s: %v", s.SessionID, err)
-			continue
-		}
-		w.tabs[s.SessionID] = tb
-		w.order = append(w.order, s.SessionID)
-		if w.focus.Load() == s.SessionID {
-			w.selected = len(w.order) - 1
-			w.focus.Store("")
 		}
 	}
 
@@ -196,29 +300,46 @@ func (w *window) reconcile(live []protocol.Summary) {
 	if w.selected < 0 {
 		w.selected = 0
 	}
-	w.sig.Store(signature(live))
 }
 
 // mount gives a session its native terminal. The terminal reads and writes the
-// session through native.Conn, so it draws the real shell — the same one a
-// browser sees — and types into it.
-func (w *window) mount(s protocol.Summary) (*tab, error) {
-	sess, ok := w.fleet.Hub().Session(s.SessionID)
-	if !ok {
-		return nil, fmt.Errorf("session is gone")
-	}
-	tb := &tab{id: s.SessionID, conn: native.NewConn(sess), title: s.Title}
-	if tb.title == "" {
+// session through the window's link, so it draws the real shell — the same one
+// a browser sees — and types into it under the same lease a browser answers to.
+func (w *window) mount(s protocol.Summary) error {
+	tb := w.openTab(machineLocal, s.SessionID)
+	if s.Title != "" {
+		tb.setTitle(s.Title)
+	} else {
 		// The shell has not named itself yet, so label the tab by what it is
 		// rather than by its session id.
 		w.tabSeq++
 		tb.ordinal = w.tabSeq
 		tb.program = programName(s.Shell)
 	}
+	return nil
+}
+
+// openTab gives the window a new tab watching a session on machine, attaching
+// to it over that machine's link. A session id of "" is one the window has just
+// asked the hub to create: the tab waits for the hub to name it.
+func (w *window) openTab(machine, sessionID string) *tab {
+	l := w.linkFor(machine)
+	if l == nil {
+		// No link to that machine yet: looking at it opens one.
+		if w.remoteLink(machine) != nil {
+			l = w.linkFor(machine)
+		}
+	}
+	if l == nil {
+		l = w.local.link
+	}
+	sess := newSession(sessionID, l, nil)
+	conn := newTermConn(sess)
+	sess.handlers = tabHandlers{w: w, sess: sess, conn: conn}
 	term, err := terminal.New(terminal.Options{
-		Conn:    tb.conn,
-		OnTitle: tb.setTitle,
-		OnExit:  tb.finish,
+		Conn:    conn,
+		OnTitle: func(string) {},
+		OnExit:  func(int) {},
 		// The font saved in settings, so a tab opened after a change — or on a
 		// later run — is lettered the same as the ones already on screen.
 		Font: w.font,
@@ -227,16 +348,214 @@ func (w *window) mount(s protocol.Summary) (*tab, error) {
 		DarkTheme: terminalTheme(true),
 	})
 	if err != nil {
-		_ = tb.conn.Close()
-		return nil, err
+		log.Printf("tfdesktop: terminal: %v", err)
 	}
-	tb.term = term
-	return tb, nil
+	key := w.nextKey
+	w.nextKey++
+	tb := &tab{
+		id:      sessionID,
+		term:    term,
+		conn:    conn,
+		sess:    sess,
+		machine: machine,
+	}
+	w.tabs[key] = tb
+	w.order = append(w.order, key)
+	w.selected = len(w.order) - 1
+
+	if sessionID != "" {
+		sess.bind(sessionID)
+		l.attach(sessionID, 0)
+	} else {
+		// The hub's answer names this session; until it arrives the link holds
+		// the tab's place.
+		l.watch(sess)
+	}
+	return tb
 }
 
-func (w *window) published() string {
-	s, _ := w.sig.Load().(string)
-	return s
+// removeTab takes a tab away. The shell is left alone: ending it is the hub's
+// job, so closing a tab here never takes the shell away from a browser still
+// attached to it. Nothing is sent — the hub forgets a watcher when its session
+// goes away, and a detach here would broadcast a session list that still holds
+// a shell that is on its way out, which the next frame would answer by opening
+// a tab for it.
+func (w *window) removeTab(tb *tab) {
+	key := -1
+	for k, t := range w.tabs {
+		if t == tb {
+			key = k
+			break
+		}
+	}
+	if key < 0 {
+		return
+	}
+	tb.close()
+	delete(w.tabs, key)
+	w.order = dropKey(w.order, key)
+	if w.selected >= len(w.order) {
+		w.selected = len(w.order) - 1
+	}
+	if w.selected < 0 {
+		w.selected = 0
+	}
+}
+
+// tabOfSession is the tab a session belongs to, found through the session
+// rather than its id: a session the hub has just named has a tab whose id the
+// window is only now learning.
+func (w *window) tabOfSession(s *session) *tab {
+	for _, tb := range w.tabs {
+		if tb.sess == s {
+			return tb
+		}
+	}
+	return nil
+}
+
+// tabOf is the tab watching a session on a machine, or nil.
+func (w *window) tabOf(machine, sessionID string) *tab {
+	if sessionID == "" {
+		return nil
+	}
+	for _, tb := range w.tabs {
+		if tb.machine == machine && tb.id == sessionID {
+			return tb
+		}
+	}
+	return nil
+}
+
+// tabOfID is the tab watching a session id, on any machine.
+func (w *window) tabOfID(id string) *tab {
+	if id == "" {
+		return nil
+	}
+	for _, tb := range w.tabs {
+		if tb.id == id {
+			return tb
+		}
+	}
+	return nil
+}
+
+// activeTab is the tab on screen, or nil with none open.
+func (w *window) activeTab() *tab {
+	if w.selected < 0 || w.selected >= len(w.order) {
+		return nil
+	}
+	return w.tabs[w.order[w.selected]]
+}
+
+// dropKey removes one key from a slice of them, keeping the rest in order.
+func dropKey(keys []int, key int) []int {
+	kept := keys[:0]
+	for _, k := range keys {
+		if k != key {
+			kept = append(kept, k)
+		}
+	}
+	return kept
+}
+
+// machineLocal is the roster id of the machine this window runs on. Every other
+// machine is reached through the relay, which the Reach phase adds; until then
+// this machine is the only one there is.
+const machineLocal = "local"
+
+// tabHandlers routes one session's frames to its tab. They run on the link's
+// reader goroutine, so everything that touches window state goes through
+// update, and a change asks for a repaint: the window is immediate-mode, and
+// the next frame draws whatever the lease now says.
+type tabHandlers struct {
+	w    *window
+	sess *session
+	conn *termConn
+}
+
+func (h tabHandlers) tab() *tab { return h.w.tabOfID(h.sess.id) }
+
+func (h tabHandlers) Attached(sum protocol.Summary, cursor int64, truncated bool) {
+	w := h.w
+	w.update(func() {
+		tb := h.tab()
+		if tb == nil {
+			return
+		}
+		tb.alive = sum.Alive
+		if sum.Title != "" {
+			tb.setTitle(sum.Title)
+		}
+		w.invalidate()
+	})
+}
+
+func (h tabHandlers) Created(id string) {
+	w := h.w
+	w.update(func() {
+		// The tab that asked for this shell is the one watching it now: its
+		// label, its pane and its lease all belong to the same tab.
+		if tb := w.tabOfSession(h.sess); tb != nil {
+			tb.bind(id)
+		}
+		w.invalidate()
+	})
+}
+
+func (h tabHandlers) Output(data []byte, resync bool) {
+	h.conn.feed(data, resync)
+}
+
+func (h tabHandlers) Role(role, controller string, epoch uint64) {
+	w := h.w
+	w.update(func() {
+		if tb := h.tab(); tb != nil {
+			tb.setLease(role, controller, epoch)
+		}
+		w.invalidate()
+	})
+}
+
+func (h tabHandlers) Exit(code int) {
+	w := h.w
+	// The line goes straight to the terminal: the hub has already flushed the
+	// shell's last output, and this is the window's own word on the end.
+	h.conn.feed([]byte(fmt.Sprintf("\r\n\x1b[2m[进程已退出，退出码 %d]\x1b[0m\r\n", code)), false)
+	w.update(func() {
+		if tb := h.tab(); tb != nil {
+			tb.finish(code)
+		}
+		w.invalidate()
+	})
+}
+
+func (h tabHandlers) Closed() {
+	w := h.w
+	w.update(func() {
+		if tb := h.tab(); tb != nil {
+			w.removeTab(tb)
+		}
+		w.invalidate()
+	})
+}
+
+func (h tabHandlers) Gone(reason string) {
+	w := h.w
+	w.update(func() {
+		if tb := h.tab(); tb != nil {
+			w.removeTab(tb)
+		}
+		log.Printf("tfdesktop: %s", reason)
+		w.invalidate()
+	})
+}
+
+func (h tabHandlers) Failed(code, message string) {
+	// A refused keystroke and a refused claim are answers, not failures: the
+	// popover over the terminal says the same thing on screen, and the log
+	// keeps the detail for when it is needed.
+	log.Printf("tfdesktop: %s: %s", code, message)
 }
 
 // signature is a cheap fingerprint of the session list: enough to tell a
@@ -266,7 +585,17 @@ func dropID(ids []string, id string) []string {
 type tab struct {
 	id   string
 	term *terminal.Terminal
-	conn *native.Conn
+	conn *termConn
+	sess *session
+
+	// machine is the roster id this shell runs on: machineLocal for this
+	// machine, or another machine's id when the shell was taken over through
+	// the relay.
+	machine string
+
+	// alive is what the hub last said about the shell: false once it has
+	// exited, which is what marks the tab dead.
+	alive bool
 
 	mu    sync.Mutex
 	title string
@@ -276,6 +605,46 @@ type tab struct {
 	ordinal int
 	done    bool
 	exit    int
+
+	// lease is what the hub last said about who may type: this window's role,
+	// who holds the lease when it is not this window, and the epoch.
+	role       string
+	controller string
+	epoch      uint64
+}
+
+// bind gives the tab its session id, once the hub has named it. Until then the
+// tab is one the window has asked for and not yet been told about.
+func (t *tab) bind(id string) {
+	t.mu.Lock()
+	t.id = id
+	t.mu.Unlock()
+	t.sess.bind(id)
+}
+
+// held reports whether this window may type into the shell: it holds the lease.
+// The glow and the popover are drawn from the same answer.
+func (t *tab) held() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.role == protocol.RoleController
+}
+
+// holder is who holds the lease when this window does not.
+func (t *tab) holder() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.role == protocol.RoleController {
+		return ""
+	}
+	return t.controller
+}
+
+// setLease records a role frame.
+func (t *tab) setLease(role, controller string, epoch uint64) {
+	t.mu.Lock()
+	t.role, t.controller, t.epoch = role, controller, epoch
+	t.mu.Unlock()
 }
 
 func (t *tab) setTitle(title string) {
@@ -401,11 +770,11 @@ func (w *window) openSettings() {
 	sw := newSettingsWindow(w, w.store, w.fleet)
 	win := mygo.NewWindow(mygo.WindowOptions{
 		Title:           "term-fleet 设置",
-		Width:           560,
-		Height:          460,
-		MinWidth:        460,
-		MinHeight:       340,
-		BackgroundColor: "#0b0e14",
+		Width:           540,
+		Height:          440,
+		MinWidth:        440,
+		MinHeight:       360,
+		BackgroundColor: windowGround(w.store.Get().Theme),
 		StateKey:        "settings",
 		Content:         ui.View(sw.view),
 	})

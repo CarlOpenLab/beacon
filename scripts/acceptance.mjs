@@ -170,6 +170,54 @@ class Page {
   paneReadonly() {
     return this.evaluate(`!!document.querySelector('.tf-pane.active.readonly')`)
   }
+  /** Drag across the terminal's text, the way a reader selects a range. */
+  async selectRange(fromFraction = 0.005, toFraction = 0.22) {
+    const box = await this.evaluate(
+      `(() => { const r = document.querySelector('.tf-pane.active .xterm').getBoundingClientRect();` +
+        ` return { x: r.x, y: r.y, w: r.width, h: r.height }; })()`,
+    )
+    const y1 = box.y + box.h * fromFraction
+    const y2 = box.y + box.h * toFraction
+    await this.cdp('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      x: box.x + box.w * 0.05,
+      y: y1,
+      button: 'left',
+      clickCount: 1,
+    })
+    for (let i = 1; i <= 8; i++) {
+      await this.cdp('Input.dispatchMouseEvent', {
+        type: 'mouseMoved',
+        x: box.x + box.w * (0.05 + 0.04 * i),
+        y: y1 + ((y2 - y1) * i) / 8,
+        button: 'left',
+        buttons: 1, // the bitmask, not the button name, is what says "still down"
+      })
+    }
+    await this.cdp('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      x: box.x + box.w * 0.37,
+      y: y2,
+      button: 'left',
+    })
+  }
+  /** The copy button the selection puts on screen, with where to click it. */
+  copyChip() {
+    return this.evaluate(
+      `(() => { const c = document.querySelector('.tf-pane.active .tf-copy-chip'); if (!c) return null;` +
+        ` const r = c.getBoundingClientRect(); return { hidden: c.hidden, x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
+    )
+  }
+  async clickCopyChip() {
+    const chip = await this.copyChip()
+    if (!chip) throw new Error('no copy chip on screen')
+    await this.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: chip.x, y: chip.y, button: 'left', clickCount: 1 })
+    await this.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: chip.x, y: chip.y, button: 'left', clickCount: 1 })
+  }
+  /** Every text the app has asked the clipboard to hold, in order. */
+  copied() {
+    return this.evaluate(`window.__copied ?? []`)
+  }
   async waitReady() {
     await waitFor('app shell', async () =>
       this.evaluate(`!!document.querySelector('.tf-tab-add') && !!document.querySelector('.tf-side')`),
@@ -187,6 +235,23 @@ class TrackingWebSocket extends WebSocket {
   constructor(...args) { super(...args); (window.__sockets ||= []).push(this) }
 }
 window.WebSocket = TrackingWebSocket
+`
+
+// The clipboard is read through the app, not around it: every write is recorded
+// so a check can assert what was copied without depending on the browser
+// granting read access to the system clipboard.
+const TRACK_CLIPBOARD = `
+window.__copied = [];
+const write = navigator.clipboard?.writeText?.bind(navigator.clipboard);
+if (write) navigator.clipboard.writeText = (text) => { window.__copied.push(text); return write(text); };
+`
+
+// Taking a shell from a live holder is confirmed first. The dialog is answered
+// here — a modal dialog would otherwise block the page — and what it asked is
+// recorded, so a check can assert the question named the holder.
+const TRACK_CONFIRM = `
+window.__confirmed = [];
+window.confirm = (message) => { window.__confirmed.push(String(message)); return true; };
 `
 
 // The daemon is started here rather than expected to be running, because the
@@ -231,7 +296,7 @@ try {
   })
 
   // ------------------------------------------------------------ single client
-  page1 = await Page.open(APP, TRACK_SOCKETS)
+  page1 = await Page.open(APP, TRACK_SOCKETS + TRACK_CLIPBOARD + TRACK_CONFIRM)
   await page1.waitReady()
   check('页面加载出应用外壳（侧栏 + 标签栏）', true)
   check('WebSocket 连上 daemon', true, await page1.status())
@@ -257,6 +322,31 @@ try {
   }, 20000)
   check('键入命令并回显输出', true, 'echo M1_OK')
   check('回显里同时含命令与结果', /echo M1_OK[\s\S]*M1_OK/.test(typed), JSON.stringify(typed.slice(-60)))
+
+  // ------------------------------------------------------------ selection copy
+  // The terminal paints selection in its own layer, so the browser's Copy has
+  // nothing to act on: the range has to be copyable from the app, and copying
+  // has to be a choice rather than something that happens on mouse-up.
+  await page1.selectRange()
+  const chip = await page1.copyChip()
+  check('拖选终端文本出现复制按钮', !!chip && !chip.hidden, chip ? `chip at ${Math.round(chip.x)},${Math.round(chip.y)}` : 'no chip')
+  await page1.clickCopyChip()
+  await waitFor('the selection reached the clipboard', async () => (await page1.copied()).length > 0)
+  const copied = (await page1.copied())[0]
+  check('点复制按钮把选中的文本写进剪贴板', /M1_OK/.test(copied), JSON.stringify(copied.slice(0, 40)))
+  check('复制后选中范围还在', (await page1.copyChip())?.hidden === false)
+
+  // Right-click is the other way in, and it must not fall through to the
+  // browser's own menu, whose Copy would copy nothing.
+  const box = await page1.evaluate(
+    `(() => { const r = document.querySelector('.tf-pane.active .xterm').getBoundingClientRect();` +
+      ` return { x: r.x + r.width * 0.2, y: r.y + r.height * 0.1 }; })()`,
+  )
+  await page1.cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'right', clickCount: 1 })
+  await page1.cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'right', clickCount: 1 })
+  await waitFor('right-click copied too', async () => (await page1.copied()).length > 1)
+  check('右键也复制选中的文本', /M1_OK/.test((await page1.copied())[1]), JSON.stringify((await page1.copied())[1].slice(0, 40)))
+
   check('状态栏显示控制权', /控制中/.test(await page1.status()), await page1.status())
 
   const s1 = (await page1.sideIds())[0]
@@ -299,7 +389,7 @@ try {
   check('重连后仍可继续输入', Boolean(after), after ? 'echo AFTER_RECONNECT' : '未收到输出')
 
   // ------------------------------------------------------- control arbitration
-  page2 = await Page.open(APP)
+  page2 = await Page.open(APP, TRACK_CONFIRM)
   await page2.waitReady()
   check('第二个客户端连上同一 daemon', true)
 
@@ -328,6 +418,11 @@ try {
   await page2.evaluate(`document.querySelector('.tf-banner button').click()`)
   await waitFor('page2 becomes controller', async () => /控制中/.test(await page2.status()), 20000)
   check('点「接管」抢到控制权', true)
+
+  // The takeover asked first, and named the holder it was taking from: a shell
+  // is not taken from under someone by a stray click.
+  const asked = await page2.evaluate(`window.__confirmed ?? []`)
+  check('接管前会确认，并说明从谁手里接管', asked.length === 1 && /c\d/.test(asked[0]), JSON.stringify(asked))
 
   await waitFor('page1 demoted', async () => /只读/.test(await page1.banner()), 20000)
   check('原控制端被降级为只读并收到提示', true, await page1.banner())

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/daemon"
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/internal/relayclient"
+	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
 // loopback is where the local service binds. Port 0 lets the OS choose, so the
@@ -34,11 +37,36 @@ type fleet struct {
 	addr   string
 	webDir string
 
+	// host is what this machine tells every client about itself in the
+	// handshake. The window shows it in the machine panel, which is the one
+	// place a person looks to see which machine they are on.
+	host protocol.Host
+
 	mu        sync.Mutex
 	srv       *daemon.Server
 	stopSrv   func()
 	stopAgent func()
 	relayOn   bool
+
+	// client is the window's own link to the relay as a *client*: it carries the
+	// roster of other machines and one stream per machine the window drives. It
+	// is a second, separate connection from the member link above — the member
+	// one is how this machine joins the fleet, this one is how the window
+	// reaches the rest of it.
+	client    *relayclient.Client
+	clientErr string
+
+	// onRoster, when set, is called with the relay's machine list on every
+	// change. One subscription for the life of the fleet, so a link remade from
+	// the settings window keeps feeding the same panel.
+	onRoster func([]tunnel.Machine)
+
+	// relayURL and relayDevice are the link as it was last configured: what the
+	// agent is actually dialling and the device id it dials as. The panel shows
+	// these rather than the store's copy, so what is on screen is what the link
+	// is doing even when the settings window has a half-typed address in it.
+	relayURL    string
+	relayDevice string
 
 	// relayState is the last thing the agent said about the link, kept so the
 	// settings window can answer "why is this machine offline?" instead of
@@ -52,19 +80,21 @@ type fleet struct {
 // sessions for the life of ctx.
 func newFleet(ctx context.Context, log *log.Logger) *fleet {
 	hostname, _ := os.Hostname()
-	h := hub.New(hub.Options{
-		Host: protocol.Host{
-			Hostname: hostname,
-			Platform: runtime.GOOS,
-			Arch:     runtime.GOARCH,
-		},
-	})
+	host := protocol.Host{
+		Hostname: hostname,
+		Platform: runtime.GOOS,
+		Arch:     runtime.GOARCH,
+	}
+	h := hub.New(hub.Options{Host: host})
 	go h.Run(ctx)
-	return &fleet{ctx: ctx, hub: h, log: log, addr: loopback}
+	return &fleet{ctx: ctx, hub: h, log: log, addr: loopback, host: host}
 }
 
 // Hub is the session authority every client — window, browser, relay — shares.
 func (f *fleet) Hub() *hub.Hub { return f.hub }
+
+// Host is what this machine reports about itself.
+func (f *fleet) Host() protocol.Host { return f.host }
 
 // BaseURL is the local service's address, or "" while it is off.
 func (f *fleet) BaseURL() string {
@@ -140,6 +170,7 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 		f.stopAgent, f.relayOn = nil, false
 	}
 	f.relayState = agent.State{}
+	f.relayURL, f.relayDevice = "", ""
 	if !enabled || relayURL == "" {
 		return nil
 	}
@@ -166,6 +197,7 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 	ctx, cancel := context.WithCancel(f.ctx)
 	f.stopAgent = cancel
 	f.relayOn = true
+	f.relayURL, f.relayDevice = relayURL, deviceID
 	f.log.Printf("fleet: joining %s as %q", relayURL, deviceID)
 	go func() {
 		if err := a.Run(ctx); err != nil && ctx.Err() == nil {
@@ -175,12 +207,95 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 	return nil
 }
 
+// SetRelayClient starts or replaces the window's client link to the relay. It
+// needs the fleet's client token, which is not this machine's device
+// credential: the member link proves this machine is itself, and the client
+// link is what lets the window drive another machine's shells. An empty token
+// drops the link.
+func (f *fleet) SetRelayClient(relayURL, token, caFile string) error {
+	f.mu.Lock()
+	if f.client != nil {
+		f.client.Close()
+		f.client = nil
+	}
+	f.clientErr = ""
+	f.mu.Unlock()
+
+	if token == "" || relayURL == "" {
+		return nil
+	}
+	// The callbacks go in with the connection: the roster can arrive while Dial
+	// is still waiting for the welcome, and one assigned afterwards would miss it.
+	f.mu.Lock()
+	onRoster := f.onRoster
+	f.mu.Unlock()
+
+	c, err := relayclient.Dial(f.ctx, clientURL(relayURL), token,
+		relayclient.Options{CAFile: caFile},
+		relayclient.Hooks{
+			OnRoster: onRoster,
+			// The client link's own state is a reason to repaint: the machine
+			// panel shows whether the fleet is reachable at all.
+			OnState: func(relayclient.State, string) { f.noteClientState() },
+		})
+	f.mu.Lock()
+	f.client = c
+	if err != nil {
+		f.clientErr = err.Error()
+	}
+	f.mu.Unlock()
+	f.noteClientState()
+	return err
+}
+
+// noteClientState asks whoever is watching for a repaint after the client link
+// changes state.
+func (f *fleet) noteClientState() {
+	f.mu.Lock()
+	notify := f.onState
+	f.mu.Unlock()
+	if notify != nil {
+		notify()
+	}
+}
+
+// RelayClient is the window's client link, or nil without a token.
+func (f *fleet) RelayClient() *relayclient.Client {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.client
+}
+
+// RelayClientErr is why the client link is not up, or "".
+func (f *fleet) RelayClientErr() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.clientErr
+}
+
+// clientURL is the client endpoint of a relay, from its member endpoint: the
+// two live beside each other on the same host.
+func clientURL(memberURL string) string {
+	if i := strings.LastIndex(memberURL, "/"); i >= 0 {
+		return memberURL[:i+1] + "client"
+	}
+	return memberURL
+}
+
 // RelayState reports what the agent last said about the link. It is what turns
 // "the machine is still offline" into something actionable.
 func (f *fleet) RelayState() agent.State {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.relayState
+}
+
+// RelayIdentity is the relay the link was given and the device id it dials as,
+// empty while there is no link. It is what the machine panel shows.
+func (f *fleet) RelayIdentity() (url, device string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.relayURL, f.relayDevice
 }
 
 // noteRelayState records a state change and asks for a repaint. The notify is
@@ -208,5 +323,9 @@ func (f *fleet) Close() {
 	if f.stopSrv != nil {
 		f.stopSrv()
 		f.srv, f.stopSrv = nil, nil
+	}
+	if f.client != nil {
+		f.client.Close()
+		f.client = nil
 	}
 }

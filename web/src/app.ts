@@ -30,6 +30,8 @@ interface Tab {
   history: string[]
   /** Recall position: `history.length` means "back to the live draft". */
   histIdx: number
+  /** Undoes the selection wiring, so a closed tab leaves nothing behind. */
+  unwire: () => void
 }
 
 /** One reachable machine and everything we know about it. */
@@ -367,6 +369,12 @@ export class App {
           }
           return
         }
+        if (code === ERR.leaseHeld) {
+          // The lease is live and someone else holds it. The banner offers the
+          // steal; a refusal is not an error so much as an answer.
+          this.toast(message, 'warn')
+          return
+        }
         this.toast(`${code}: ${message}`, 'error')
       },
     }
@@ -649,7 +657,13 @@ export class App {
       const holder = mv?.sessions.find((s) => s.sessionId === tab.sessionId)?.controller ?? ''
       text = holder ? `只读：该会话正被 ${holder} 控制` : '只读：当前无人控制'
       label = '接管'
-      action = () => this.fleetOf(tab)?.claim(tab.sessionId)
+      action = () => {
+        // Taking a shell from under someone is a thing a person asks for: an
+        // unclaimed shell is claimed outright, a held one is confirmed first,
+        // and the holder is told either way.
+        if (holder && !window.confirm(`从 ${holder} 手中接管这个会话？\n\n对方会收到通知并变为只读。`)) return
+        this.fleetOf(tab)?.claim(tab.sessionId, Boolean(holder))
+      }
     }
 
     this.banner.classList.toggle('on', Boolean(text))
@@ -847,7 +861,7 @@ export class App {
     const bundle = createTerminal()
     const pane = el('div', 'tf-pane')
     bundle.term.open(pane)
-    this.wireTerminal(bundle)
+    const unwire = this.wireTerminal(bundle, pane)
     const tab: Tab = {
       key: this.nextKey++,
       machineId,
@@ -860,6 +874,7 @@ export class App {
       draft: '',
       history: [],
       histIdx: 0,
+      unwire,
     }
     this.panes.append(pane)
     this.tabs.push(tab)
@@ -935,6 +950,7 @@ export class App {
   }
 
   private removeTab(tab: Tab): void {
+    tab.unwire()
     tab.bundle.dispose()
     tab.pane.remove()
     this.tabs = this.tabs.filter((t) => t !== tab)
@@ -988,7 +1004,7 @@ export class App {
     }, 60)
   }
 
-  private wireTerminal(bundle: TerminalBundle): void {
+  private wireTerminal(bundle: TerminalBundle, pane: HTMLElement): () => void {
     const { term } = bundle
     // No onData: the terminal's stdin is off. Everything the shell receives
     // arrives through the composer bar or the key bar, which is what keeps
@@ -1012,6 +1028,96 @@ export class App {
       tab.title = title
       this.renderTabs()
     })
+    return this.wireSelection(bundle, pane)
+  }
+
+  /**
+   * Selection is the one thing the terminal does that the composer cannot, so
+   * it gets the affordance a text surface has: drag a range, then decide. The
+   * chip appears at the selection when the pointer is up — not mid-drag, where
+   * it would jump under the hand making the selection — and copying leaves the
+   * selection alone, so a second range can be taken from the same screen.
+   *
+   * The returned function undoes what was wired, for the tab's close: the
+   * pointerup listener is the window's, and a closed tab's terminal is not
+   * something a window listener should keep alive.
+   */
+  private wireSelection(bundle: TerminalBundle, pane: HTMLElement): () => void {
+    const { term } = bundle
+    const chip = el('button', 'tf-copy-chip', '复制')
+    chip.type = 'button'
+    chip.hidden = true
+    chip.title = '复制选中的文本'
+    chip.addEventListener('click', () => {
+      const text = term.getSelection()
+      if (!text) return
+      void copyText(text).then((ok) => {
+        if (ok) this.toast('已复制', 'info')
+      })
+    })
+    pane.append(chip)
+
+    let dragging = false
+    const onDown = (ev: PointerEvent) => {
+      // A press on the chip itself is a copy, not the start of a new range.
+      if (chip.contains(ev.target as Node)) return
+      dragging = true
+      chip.hidden = true
+    }
+    const onUp = () => {
+      dragging = false
+      this.placeCopyChip(term, pane, chip)
+    }
+    const onMenu = (ev: MouseEvent) => {
+      // xterm draws its own selection layer, so the browser's Copy — the
+      // context menu's, Edit → Copy — has nothing to act on. Right-click
+      // copies instead.
+      const text = term.getSelection()
+      if (!text) return
+      ev.preventDefault()
+      void copyText(text).then((ok) => {
+        if (ok) this.toast('已复制', 'info')
+      })
+    }
+    pane.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointerup', onUp)
+    pane.addEventListener('contextmenu', onMenu)
+
+    term.onSelectionChange(() => {
+      if (dragging) return
+      this.placeCopyChip(term, pane, chip)
+    })
+
+    return () => {
+      pane.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointerup', onUp)
+      pane.removeEventListener('contextmenu', onMenu)
+      chip.remove()
+    }
+  }
+
+  /** Put the chip at the top-left of the selection, clamped inside the pane. */
+  private placeCopyChip(term: TerminalBundle['term'], pane: HTMLElement, chip: HTMLElement): void {
+    if (!term.hasSelection()) {
+      chip.hidden = true
+      return
+    }
+    const first = pane.querySelector('.xterm-selection div')
+    if (!first) {
+      chip.hidden = true
+      return
+    }
+    const paneBox = pane.getBoundingClientRect()
+    const selBox = first.getBoundingClientRect()
+    chip.hidden = false
+    const chipBox = chip.getBoundingClientRect()
+    const top = Math.max(4, selBox.top - paneBox.top - chipBox.height - 4)
+    const left = Math.min(
+      Math.max(4, selBox.left - paneBox.left),
+      Math.max(4, paneBox.width - chipBox.width - 4),
+    )
+    chip.style.top = `${top}px`
+    chip.style.left = `${left}px`
   }
 
   private bindKeys(): void {

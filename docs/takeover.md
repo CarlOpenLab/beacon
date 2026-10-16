@@ -5,14 +5,17 @@ session (`claim`/`release` in the protocol). This is the design for letting a
 desktop that is registered on a relay reach *other* machines, take one of their
 shells, and hand it back without two people typing into the same shell.
 
+**Status: built.** The lease, the reach and the chrome are in. What is left is
+the access-control layer, at the bottom of this file.
+
 ## One writer, and it is the machine holding the PTY
 
 * The daemon holding the PTY is the owner: the only writer to the PTY, and the
   only sequencer of input. The relay carries frames and never writes.
 * A session has a **lease**: `{holder, epoch, deadline}`. Attaching without the
   lease is read-only. `claim` takes it, `release` gives it back, and taking it
-  from someone else asks them first (`steal` → a toast on their side, forced
-  only after the lease deadline or with an explicit confirmation).
+  from someone else asks first (`steal` → a toast on their side, forced only
+  after the lease deadline or with an explicit confirmation).
 * Every input frame carries the epoch it was sent under. The owner drops frames
   whose epoch is stale, so input from a controller that was just revoked cannot
   land after the handoff.
@@ -24,14 +27,20 @@ shells, and hand it back without two people typing into the same shell.
 The lease is already broadcast to every client, so the "someone else has this"
 state needs no new channel:
 
-* A shell whose holder is not this window paints a soft animated glow behind its
-  text (the `examples/chat-glow` look) plus a floating popover over the terminal:
-  who is attached, and **拿回控制权** / stay read-only.
+* A shell whose holder is not this window paints a soft animated glow around its
+  pane (the `examples/chat-glow` look) plus a popover naming who holds it, with
+  **拿回控制权** / stay read-only. The tab's row in the column carries the
+  holder's name too.
 * Reclaiming is local: the machine with the PTY releases the lease with its own
   epoch bump, and the remote controller drops to read-only in the same frame.
-* Keep the effect cheap and honest: it runs only while someone else holds the
-  lease, it is drawn behind the grid (no re-layout, no re-shaping of text), and
-  it is skipped when reduced motion is set.
+  The machine's own window never needs a confirmation to take its shell back —
+  the hub marks that client as the owner and honours its claim over anyone
+  else's.
+* The effect is cheap and honest: it runs only while someone else holds the
+  lease, it is drawn along the pane's edge rather than over the text (no
+  re-layout, no re-shaping of the grid), its fade is an animation so a desktop
+  asking for less motion gets it at once, and its colour cycle stands still for
+  the same reason.
 
 ## Latency: two different problems
 
@@ -57,14 +66,30 @@ state needs no new channel:
   sequence it consumed and asks for the missing tail on reconnect (the same
   session resume the browser client already uses).
 
-## What is missing today
+## How it is wired
 
-* **Presence**: the relay has no device registry. Add `device.announce`
-  (id, name, sessions) and a `fleet.devices` broadcast; the desktop rail gets a
-  机器 section listing other machines and their shells.
-* **Access control**: taking over must be authorized per device pair (the relay
-  knows clients by join secret; extend it with a per-device ACL and a visible
-  first-time confirmation on the target machine).
-* **Remote attach in the desktop**: the native client speaks the local hub
-  protocol; it needs the relay's device route, which `internal/viewer` and the
-  web client already model.
+* **Presence**: the relay already broadcasts its roster to clients
+  (`machines`, pushed on every presence change). The desktop window opens a
+  *client* connection beside its member one — a second link with the fleet's
+  client token rather than this machine's device credential — so it receives
+  that roster and lists it in the 机器 panel. No relay change was needed.
+* **Remote attach**: `internal/relayclient` is the Go half of the relay protocol
+  for a program that drives a fleet. One stream per machine carries the session
+  protocol inside it, so the window is an ordinary client of that machine's hub
+  — the same frames and the same arbitration as a browser, over the tunnel. The
+  window's local link is the same `link` over an in-process pipe
+  (`hub.Pipe`, `ServeLocal`), which is how the machine's own window is a client
+  of its own hub and can be marked the owner.
+* **Access control**: what is in place today is the lease itself and the owner's
+  right to its own shell. What is still missing:
+
+* **Per-device authorization**: the relay knows a client by the fleet's shared
+  token, so any client that holds it may drive any enrolled machine. A machine
+  that wants to say "this laptop, not that one" needs a per-device ACL on the
+  relay and a first-time confirmation on the target machine, neither of which
+  exists yet. Until then, the client token is the whole authority: treat it like
+  the fleet's password, because it is.
+* **Steal confirmation on the target**: a remote steal is confirmed on the
+  *taking* side and toasted on the *losing* one. The design's "ask them first"
+  — a request the holder answers — is not built; the holder learns after the
+  fact.

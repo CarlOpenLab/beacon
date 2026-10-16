@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -14,11 +15,16 @@ import (
 func newTestShellWindow(t *testing.T, titles ...string) (*window, string) {
 	t.Helper()
 	dir := t.TempDir()
-	w := &window{store: settings.Open(dir), tabs: make(map[string]*tab)}
+	w := &window{
+		store:        settings.Open(dir),
+		tabs:         make(map[int]*tab),
+		sidebarSplit: -1,
+		nextKey:      1,
+	}
 	for i, title := range titles {
 		id := fmt.Sprintf("s%d", i+1)
-		w.tabs[id] = &tab{id: id, title: title, ordinal: i + 1}
-		w.order = append(w.order, id)
+		w.tabs[i+1] = &tab{id: id, title: title, ordinal: i + 1}
+		w.order = append(w.order, i+1)
 	}
 	return w, dir
 }
@@ -37,8 +43,13 @@ func drawNav(t *testing.T, w *window) *ui.Tester {
 				labels = append(labels, tb.label())
 			}
 		}
-		w.activityRail(c, mode)
-		w.sidebar(c, labels, mode)
+		// A row, as the window draws them: the strip beside the column, both as
+		// tall as the window. Stacked, the strip's controls would land where no
+		// window ever puts them.
+		ui.Row(c).Fill().Children(func() {
+			w.activityRail(c, mode)
+			w.sidebar(c, labels, mode)
+		})
 	}, activityWidth+sidebarWidth, 420)
 }
 
@@ -66,6 +77,126 @@ func TestSidebarListsTheOpenShellsAndPicksOne(t *testing.T) {
 	}
 	if w.selected != 0 {
 		t.Fatalf("selected = %d, want the first shell", w.selected)
+	}
+}
+
+// The shells' panel holds the two things a shell needs — one more, and an end to
+// this one — as icon buttons beside the panel's title, because that is the panel
+// they act on. They have to work from there, not merely be present: the button
+// speaks to the hub over the window's own link, and the hub's answer comes back
+// as frames.
+func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t)
+	w.fleet = f
+	w.local = openLocalLink(f.Hub())
+	w.local.onSessions = w.sessionsArrived
+	w.local.onGone = w.linkGone
+
+	tt := drawNav(t, w)
+	for _, want := range []string{"新建标签页", "关闭标签页"} {
+		if _, ok := tt.Find(want); !ok {
+			t.Fatalf("the shells' panel has no %q control; texts = %v", want, tt.Texts())
+		}
+	}
+
+	// A new shell, from the panel's button.
+	if err := tt.Click("新建标签页"); err != nil {
+		t.Fatalf("Click(新建标签页): %v", err)
+	}
+	if got := waitSessions(f, 1); got != 1 {
+		t.Fatalf("the button left %d shells, want 1", got)
+	}
+
+	// The hub pushed the session list, and the window opened a tab for it — the
+	// same path a shell started from a browser takes.
+	settleTabs(t, w, 1)
+
+	// ...and an end to the one on screen.
+	if err := tt.Click("关闭标签页"); err != nil {
+		t.Fatalf("Click(关闭标签页): %v", err)
+	}
+	if got := waitSessions(f, 0); got != 0 {
+		t.Fatalf("the button left %d shells, want 0", got)
+	}
+	settleTabs(t, w, 0)
+}
+
+// waitSessions waits for the hub to hold n sessions: the panel's controls act
+// from their own goroutines, as the window's clicks do.
+func waitSessions(f *fleet, n int) int {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got := len(f.Hub().Sessions())
+		if got == n || time.Now().After(deadline) {
+			return got
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// settleTabs waits until the window's tabs name the sessions the hub holds:
+// what the links report is posted to the window's thread, and a test applies it
+// by draining.
+func settleTabs(t *testing.T, w *window, n int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		w.drain()
+		named := 0
+		for _, key := range w.order {
+			if w.tabs[key].id != "" {
+				named++
+			}
+		}
+		if named == n && len(w.order) == n {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("tabs did not settle to %d named sessions: order=%v", n, w.order)
+}
+
+// The machines' panel is the fleet's own view of itself: this machine, the relay
+// it is enrolled with when there is one, and a line saying where the other
+// machines will appear. A window with no relay says so rather than showing an
+// empty panel.
+func TestMachinePanelShowsThisMachineAndTheRelay(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = f
+
+	tt := drawNav(t, w)
+	if !tt.HasText("机器") {
+		t.Fatalf("the column has no machines' panel; texts = %v", tt.Texts())
+	}
+	if !tt.HasText(f.Host().Hostname) {
+		t.Fatalf("the machine row does not name this machine; texts = %v", tt.Texts())
+	}
+	if !tt.HasText("1 个会话") {
+		t.Fatalf("the machine row does not say what this machine is running; texts = %v", tt.Texts())
+	}
+	if !tt.HasText("未接入中继") {
+		t.Fatalf("the panel does not say the relay is off; texts = %v", tt.Texts())
+	}
+	if _, ok := tt.Find("中继"); ok {
+		t.Fatal("a machine with no relay shows a relay row")
+	}
+
+	// Enrolled with a relay: the row appears, with the address and the device id
+	// the link was given, and the note changes with it.
+	if err := f.SetRelay("wss://relay.example/relay/agent", "mac-mini", "secret", "", true); err != nil {
+		t.Fatalf("SetRelay: %v", err)
+	}
+	tt.Frame()
+	if !tt.HasText("wss://relay.example/relay/agent") {
+		t.Fatalf("the relay row has no address; texts = %v", tt.Texts())
+	}
+	if !tt.HasText("设备 mac-mini") {
+		t.Fatalf("the relay row has no device id; texts = %v", tt.Texts())
+	}
+	if !tt.HasText("同一中继上的其他机器会列在这里") {
+		t.Fatalf("the note did not follow the relay; texts = %v", tt.Texts())
 	}
 }
 

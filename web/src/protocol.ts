@@ -46,6 +46,7 @@ export const ERR = {
   notController: 'not_controller',
   badSize: 'bad_size',
   unauthorized: 'unauthorized',
+  leaseHeld: 'lease_held',
 } as const
 
 export interface Host {
@@ -98,6 +99,15 @@ export interface Msg {
 
   role?: Role
   controller?: string
+
+  /**
+   * The lease. The role frame carries the epoch in force; input, resize, close
+   * and claim carry the epoch the client believes it holds. A frame at a past
+   * epoch belonged to a holder that has since been replaced and is dropped.
+   */
+  epoch?: number
+  /** Take the lease from a live holder rather than asking for a free one. */
+  steal?: boolean
 
   code?: string
   message?: string

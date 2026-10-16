@@ -70,39 +70,50 @@ func lastCheckLabel(when time.Time) string {
 // A build that cannot update itself gets the reason instead of switches — a
 // control that cannot do anything is worse than a sentence saying so.
 func (s *settingsWindow) updatesPane(c *ui.Context) {
+	t := c.Theme()
 	prefs := loadUpdatePrefs()
 
-	ui.Field(c, "当前版本", func() { ui.Text(c, versionLabel()) })
-	ui.Field(c, "上次检查", func() { ui.Text(c, lastCheckLabel(prefs.lastCheck)) })
+	ui.Form(c, func() {
+		ui.Field(c, "当前版本", func() { ui.Text(c, versionLabel()) })
+		ui.Field(c, "上次检查", func() { ui.Text(c, lastCheckLabel(prefs.lastCheck)) })
 
-	if !prefs.available {
-		ui.Field(c, "自动检查更新", func() { ui.Text(c, "不可用") })
-		ui.Field(c, "自动下载更新", func() { ui.Text(c, "不可用") })
+		if !prefs.available {
+			ui.Field(c, "自动检查更新", func() { ui.Text(c, "不可用") })
+			ui.Field(c, "自动下载更新", func() { ui.Text(c, "不可用") })
+		} else {
+			// Each switch is drawn from the plugin's state and pushed back when
+			// clicked, so the pane reads what is on disk every frame and keeps no
+			// second copy of it.
+			checks := prefs.automaticChecks
+			ui.Field(c, "自动检查更新", func() {
+				if ui.Switch(c, &checks).AlignSelf(ui.Start).Clicked() {
+					saveUpdatePrefs(checks, prefs.automaticDownloads)
+				}
+			})
+			downloads := prefs.automaticDownloads
+			ui.Field(c, "自动下载更新", func() {
+				if ui.Switch(c, &downloads).AlignSelf(ui.Start).Clicked() {
+					saveUpdatePrefs(prefs.automaticChecks, downloads)
+				}
+			})
+		}
+	})
+	ui.Text(c, "每天在后台问一次；打开自动下载后，新版本装好，下次启动就是新版本。").
+		FontSize(11).TextColor(t.TextMuted)
+
+	// A build that cannot update itself gets the reason instead of a button —
+	// the same rule the two switches above follow.
+	if prefs.available {
+		if ui.Button(c, "检查更新…").Clicked() {
+			checkForUpdatesNow()
+		}
+		ui.Text(c, "发现新版本时会弹出窗口，列出版本说明，可以安装、稍后提醒或跳过这一版。").
+			FontSize(11).TextColor(t.TextMuted)
+	} else {
 		ui.Text(c, "这份构建不能自我更新：开发构建，或由包管理器（.deb 等）安装，更新交给它。"+
-			"用安装器或 tar.gz 装的版本会自己更新。")
-		return
+			"用安装器或 tar.gz 装的版本会自己更新。").
+			FontSize(11).TextColor(t.TextMuted)
 	}
-
-	// Each switch is drawn from the plugin's state and pushed back when
-	// clicked, so the pane reads what is on disk every frame and keeps no
-	// second copy of it.
-	checks := prefs.automaticChecks
-	ui.Field(c, "自动检查更新", func() {
-		if ui.Switch(c, &checks).Clicked() {
-			saveUpdatePrefs(checks, prefs.automaticDownloads)
-		}
-	})
-	downloads := prefs.automaticDownloads
-	ui.Field(c, "自动下载更新", func() {
-		if ui.Switch(c, &downloads).Clicked() {
-			saveUpdatePrefs(prefs.automaticChecks, downloads)
-		}
-	})
-	ui.Text(c, "每天在后台问一次；打开自动下载后，新版本装好，下次启动就是新版本。")
-
-	if ui.Button(c, "检查更新…").Clicked() {
-		checkForUpdatesNow()
-	}
-	ui.Text(c, "发现新版本时会弹出窗口，列出版本说明，可以安装、稍后提醒或跳过这一版。")
-	ui.Text(c, "更新源：github.com/CarlOpenLab/term-fleet 的正式发布版，包带签名校验。")
+	ui.Text(c, "更新源：github.com/CarlOpenLab/term-fleet 的正式发布版，包带签名校验。").
+		FontSize(11).TextColor(t.TextMuted)
 }

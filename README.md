@@ -52,8 +52,8 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
 - PTY sessions, byte-offset output history, one multiplexed WebSocket, and a
   single-controller model with viewers.
 - The browser client: tabs, session inventory, keyboard-driven new/close,
-  copy, reopen-from-cursor after a dropped link, and a machine-grouped sidebar
-  when more than one machine is reachable.
+  selection with a copy button at it, reopen-from-cursor after a dropped link,
+  and a machine-grouped sidebar when more than one machine is reachable.
 - It is served by the daemon *and* by the relay, from one build: the server
   reports which transport it speaks (`/tf/config`), so a browser tab and a
   phone load the same code. The desktop window is native, and attaches to the
@@ -62,14 +62,20 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   controls and its terminal plugin draw the tabs, so there is no WebView and no
   xterm in the PC client. A tab there is a real shell on the machine, and the
   daemon underneath is what lets a browser drive the very shell on screen.
-  A Settings window (the toolbar's 设置 button) picks the terminal's font and
-  size, stores this machine's relay credential, and turns the local service on
-  or off — the same surface Gloss keeps, drawn the same way. The font field
-  suggests the families installed on the machine and takes any name, so a Nerd
-  Font build ("Maple Mono NF" beside "Maple Mono") is selectable. Edited text
-  fields are saved by 应用, which the toolbar marks as pending until it is
-  pressed; a tab is named after its shell ("zsh 1") until the shell sets a
-  title of its own.
+  The column beside the strip holds two panels with a draggable line between
+  them — the shells on top, the machines under them — and the 会话 panel's title
+  row carries 新建标签页 / 关闭标签页 as icon buttons. The 机器 panel lists the
+  fleet this window can reach: this machine, the relay it is enrolled with, and
+  every other machine on that relay — each with the shells it is running, which
+  the window can open in a tab of its own.
+  A Settings window (the strip's 设置 button, at the bottom under the shells)
+  picks the terminal's font and size, stores this machine's relay credential,
+  and turns the local service on or off — the same surface Gloss keeps, drawn
+  the same way. The font field suggests the families installed on the machine
+  and takes any name, so a Nerd Font build ("Maple Mono NF" beside "Maple Mono")
+  is selectable. Edited text fields are saved by 应用, which the toolbar offers
+  only while there is something to apply; a tab is named after its shell
+  ("zsh 1") until the shell sets a title of its own.
 - `tfrelay` + `agent`: machines dial out to a public relay and are controllable
   from anywhere; a dropped link is a routing outage, not data loss — sessions
   and their output history live in the member and survive it.
@@ -93,8 +99,8 @@ cmd/tfrelay/           the public-side router: enroll members, route streams
 internal/protocol/     the wire format, shared with clients
 internal/tunnel/       the relay envelope; the session protocol rides inside it
 internal/session/      PTY, output ring buffer, session manager
-internal/native/       adapts a session to a native terminal view (mygo plugin)
-internal/hub/          WebSocket fan-out and who-may-type policy
+internal/hub/          WebSocket fan-out and who-may-type policy (the lease lives here)
+internal/relayclient/  the client half of the relay protocol, for a program that drives a fleet
 internal/relay/        member registry, stream routing, presence
 internal/agent/        dials out to a relay, projects streams onto the hub
 internal/daemon/       hub + client wiring shared by both entry points
@@ -163,6 +169,16 @@ directory (`TERM_FLEET_CONFIG_HOME` overrides it) and applies them as you change
 them, so this desktop shell can join a relay without a command line. A new tab
 runs PowerShell on Windows when it is installed (`pwsh`, else `powershell`),
 falling back to `cmd.exe` only if neither is present.
+
+Enrolled with a relay *and* holding its client token, the window drives the rest
+of the fleet: the 机器 panel lists every machine on the relay, and a shell on
+another machine opens in a tab here under that machine's own arbitration — one
+writer at a time, on a lease with an epoch. A shell someone else holds glows
+around its pane and offers 拿回控制权; the machine the shell runs on takes it
+back with one click, because it is that machine's shell. The token is the fleet's
+client secret, not this machine's device credential: keep it like a password,
+because today it is the whole authority over every machine on the relay.
+`docs/takeover.md` has the design and what is still missing.
 
 A relay that terminates TLS with a private certificate needs a member to pin
 that certificate, so the Remote pane has a *CA certificate* row. The value is a

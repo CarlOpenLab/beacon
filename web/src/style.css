@@ -381,6 +381,33 @@ body {
   pointer-events: none;
 }
 
+/* The copy affordance for a terminal selection. xterm paints selection in its
+   own layer, so the browser's Copy has nothing to act on; this is the button
+   that says a range can be taken, and leaves taking it to the user. */
+.tf-copy-chip {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.tf-copy-chip:hover {
+  background: #212a3c;
+}
+
+.tf-copy-chip[hidden] {
+  display: none;
+}
+
 /* ------------------------------------------------------------------ status */
 
 .tf-status {

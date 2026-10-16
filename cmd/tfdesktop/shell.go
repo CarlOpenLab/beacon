@@ -17,6 +17,9 @@ import (
 // activityWidth is the strip's width: one column of square controls.
 const activityWidth = 56
 
+// activityButtonSize is the square of the strip's controls.
+const activityButtonSize = 34
+
 //go:embed assets/mark.png
 var markPNG []byte
 
@@ -41,9 +44,10 @@ func markTile(c *ui.Context, size float32) {
 	ui.Image(c, mark).Size(size, size).Radius(size * 0.28).Label("term-fleet")
 }
 
-// activityRail draws the strip down the left edge: the mark, the two controls
-// that change the window itself, and the state of the fleet tucked against the
-// bottom. It is deliberately narrow — the window it leaves is for shells.
+// activityRail draws the strip down the left edge: the mark heads it, and the
+// two controls that change the window itself sit against the bottom, over the
+// state of the fleet. It is deliberately narrow — the window it leaves is for
+// shells.
 func (w *window) activityRail(c *ui.Context, mode string) {
 	t := c.Theme()
 	col := shellColorsFor(t)
@@ -56,9 +60,16 @@ func (w *window) activityRail(c *ui.Context, mode string) {
 		BorderWidth(0, 1, 0, 0).BorderColor(col.hairline).
 		Children(func() {
 			markTile(c, 30)
-			// A fixed gap rather than a spacer: a spacer would grow, and the
-			// strip's two controls would drift into the middle of the window.
-			ui.Box(c).Height(12)
+			// A spacer rather than a fixed gap: the strip's controls belong at
+			// the bottom, whatever height the window is, and a gap would leave
+			// them drifting up with the mark.
+			ui.Spacer(c)
+
+			// The strip's footer, under a hairline: what changes the window,
+			// then the fleet's state under it. The mark names the app; these
+			// are everything the app itself can be told to do.
+			ui.Box(c).FillWidth().Height(1).Background(col.hairline)
+			ui.Box(c).Height(8)
 
 			// 外观 says what the click will do, and shows the side it will bring:
 			// a moon while the app is light, a sun while it is dark.
@@ -66,31 +77,31 @@ func (w *window) activityRail(c *ui.Context, mode string) {
 			if t.Dark {
 				appearance = iconSun
 			}
-			if iconButton(c, appearance, themeActionLabel(mode, t.Dark)).Clicked() {
+			if iconButton(c, appearance, themeActionLabel(mode, t.Dark), activityButtonSize).Clicked() {
 				w.setTheme(flipTheme(mode, t.Dark))
 			}
-			if iconButton(c, iconSettings, "设置").Clicked() {
+			if iconButton(c, iconSettings, "设置", activityButtonSize).Clicked() {
 				w.openSettings()
 			}
 
-			ui.Spacer(c)
+			ui.Box(c).Height(4)
 			w.fleetDot(c)
 		})
 }
 
 // iconButton is a square control in the strip: a wash under the pointer, and the
 // caption kept as its label so it has a name on screen and in a test.
-func iconButton(c *ui.Context, icon *ui.SVG, caption string) ui.Element {
+func iconButton(c *ui.Context, icon *ui.SVG, caption string, size float32) ui.Element {
 	t := c.Theme()
 	el := ui.Box(c).
-		Size(34, 34).Radius(t.Radius).
+		Size(size, size).Radius(t.Radius).
 		AlignItems(ui.Center).Justify(ui.Center).
 		Label(caption).Tooltip(caption)
 	if el.Hovered() {
 		el.Background(t.SurfaceHover)
 	}
 	el.Children(func() {
-		ui.Icon(c, icon).FontSize(19).TextColor(shellColorsFor(t).icon)
+		ui.Icon(c, icon).FontSize(size * 0.55).TextColor(shellColorsFor(t).icon)
 	})
 	return el
 }
@@ -129,18 +140,16 @@ func (w *window) serviceLine() string {
 	return w.serviceLabel()
 }
 
-// header names the shell on screen and holds the two things a shell needs: one
-// more of them, and an end to this one. The service address sits under the name,
-// where a window would put a subtitle.
+// header names the shell on screen, with the service's address under the name,
+// where a window would put a subtitle. The controls a shell needs live in the
+// column beside it, on the panel they act on.
 func (w *window) header(c *ui.Context, labels []string) {
 	t := c.Theme()
 	col := shellColorsFor(t)
 
 	name := "term-fleet"
-	if id := w.activeID(); id != "" {
-		if tb := w.tabs[id]; tb != nil {
-			name = tb.label()
-		}
+	if tb := w.activeTab(); tb != nil && tb.id != "" {
+		name = tb.label()
 	}
 
 	ui.Row(c).
@@ -153,35 +162,7 @@ func (w *window) header(c *ui.Context, labels []string) {
 				ui.Text(c, name).FontSize(14).FontWeight(600)
 				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(t.TextMuted)
 			})
-			ui.Spacer(c)
-			if iconButton(c, iconClose, "关闭标签页").Clicked() {
-				if id := w.activeID(); id != "" {
-					go w.kill(id)
-				}
-			}
-			if primaryButton(c, iconPlus, "新建标签页").Clicked() {
-				go w.create()
-			}
 		})
-}
-
-// primaryButton is the one filled control in the window.
-func primaryButton(c *ui.Context, icon *ui.SVG, caption string) ui.Element {
-	t := c.Theme()
-	el := ui.ButtonBase(c).
-		Height(32).PaddingX(12).Radius(t.Radius).
-		AlignItems(ui.Center).Justify(ui.Center).
-		Label(caption).Background(t.Accent).
-		Children(func() {
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Icon(c, icon).FontSize(15).TextColor(t.AccentText)
-				ui.Text(c, caption).FontSize(13).TextColor(t.AccentText)
-			})
-		})
-	if el.Hovered() {
-		el.Background(t.AccentHover)
-	}
-	return el
 }
 
 // body is the shell itself, or, with nothing open, a short invitation. The empty
@@ -191,11 +172,41 @@ func (w *window) body(c *ui.Context, labels []string) {
 		w.emptyState(c)
 		return
 	}
-	if id := w.activeID(); id != "" {
-		if tb := w.tabs[id]; tb != nil {
-			terminal.View(c, tb.term).Fill().AutoFocus()
-		}
+	tb := w.activeTab()
+	if tb == nil || tb.term == nil {
+		return
 	}
+
+	holder := tb.holder()
+
+	pane := ui.Box(c).Fill().Children(func() {
+		terminal.View(c, tb.term).Fill().AutoFocus()
+	})
+	if holder == "" {
+		return // this window holds the lease: nothing to say, nothing to draw
+	}
+
+	// The fade is an animation, so a desktop asking for less motion gets the
+	// glow at once rather than slowly; the breathing stands still for the same
+	// reason, which is the preference the glow can read.
+	strength := pane.Animate("lease", 1, glowFade)
+	leaseGlow(c, float64(strength), c.Preferences().ReduceMotion)
+
+	// The popover hangs from a marker at the top of the pane, so it floats over
+	// the terminal's first rows: a panel hung from the pane itself would have
+	// no room below it and flip above the window.
+	marker := ui.Box(c).Height(2)
+	leasePopover(c, marker, &w.leaseOpen, holder, tb.machine != machineLocal, func() {
+		w.reclaim(tb)
+	})
+}
+
+// reclaim asks for the lease of a shell another client holds. This machine's own
+// shell is claimed outright — the hub honours the machine's window without a
+// confirmation, because it is the machine's shell; another machine's is stolen,
+// and the holder is told.
+func (w *window) reclaim(tb *tab) {
+	tb.conn.claiming(tb.machine != machineLocal)
 }
 
 func (w *window) emptyState(c *ui.Context) {

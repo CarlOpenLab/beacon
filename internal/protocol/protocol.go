@@ -51,6 +51,10 @@ const (
 	ErrNotController = "not_controller"
 	ErrBadSize       = "bad_size"
 	ErrUnauthorized  = "unauthorized"
+	// ErrLeaseHeld is what a claim gets when another client holds the lease
+	// and it has not lapsed. The holder is named in Message, and the claim
+	// may be repeated with Steal to take it anyway.
+	ErrLeaseHeld = "lease_held"
 )
 
 // Msg is one frame. Every field is optional; T decides which are meaningful.
@@ -89,6 +93,20 @@ type Msg struct {
 	// role
 	Role       string `json:"role,omitempty"`
 	Controller string `json:"controller,omitempty"`
+
+	// The lease. Epoch counts every change of who holds a session's lease: the
+	// role frame tells every client the epoch in force, and input, resize and
+	// close carry the epoch they were sent under. A frame whose epoch is not
+	// the current one belonged to a holder that has since been replaced, and
+	// the owner drops it, so input from a controller that was just revoked
+	// cannot land after the handoff.
+	Epoch uint64 `json:"epoch,omitempty"`
+
+	// claim. Steal takes the lease from a holder whose lease has not lapsed;
+	// without it such a claim is refused with ErrLeaseHeld. The machine the
+	// PTY runs on never needs it: its own window's claim is always honoured,
+	// because it is the machine's shell.
+	Steal bool `json:"steal,omitempty"`
 
 	// error
 	Code    string `json:"code,omitempty"`

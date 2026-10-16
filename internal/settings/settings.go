@@ -42,6 +42,12 @@ type Settings struct {
 	RelayCA string `json:"relayCA,omitempty"`
 	// RelayOn asks the shell to keep a link to RelayURL while it runs.
 	RelayOn bool `json:"relayOn,omitempty"`
+	// ClientToken is the relay's client token: what a client — a browser, a
+	// phone, or this window reaching another machine's shells — presents as its
+	// first frame. It is not this machine's device credential; it is the fleet's
+	// shared client secret, kept here so the window can drive other machines
+	// without a browser in the middle. Empty means "no client link".
+	ClientToken string `json:"clientToken,omitempty"`
 
 	// ServerOff turns off the local HTTP service that serves the browser
 	// client. False — the value a first run and a missing key both give — keeps

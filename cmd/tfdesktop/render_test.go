@@ -10,7 +10,9 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
 // The previews are how the shell is looked at: a test can assert that a label is
@@ -42,14 +44,31 @@ func TestRenderShellPreviews(t *testing.T) {
 		name  string
 		mode  string
 		shell bool
+		taken bool
+		fleet bool
 	}{
-		{"shell-dark", themeDark, true},
-		{"shell-light", themeLight, true},
-		{"empty-dark", themeDark, false},
-		{"empty-light", themeLight, false},
+		{"shell-dark", themeDark, true, false, false},
+		{"shell-light", themeLight, true, false, false},
+		{"empty-dark", themeDark, false, false, false},
+		{"empty-light", themeLight, false, false, false},
+		// A shell another client holds: the glow around the terminal, the
+		// popover under it, and the mark on its row.
+		{"taken-dark", themeDark, true, true, false},
+		{"taken-light", themeLight, true, true, false},
+		// A fleet: this machine, the relay, and another machine with a shell
+		// running on it.
+		{"fleet-dark", themeDark, true, false, true},
+		{"fleet-light", themeLight, true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := previewWindow(t, tc.mode, tc.shell)
+			if tc.taken {
+				w.tabs[1].setLease(protocol.RoleViewer, "c9", 4)
+				w.leaseOpen = true
+			}
+			if tc.fleet {
+				previewFleet(w)
+			}
 			tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, previewWidth, previewHeight)
 			out := filepath.Join(dir, tc.name+".png")
 			file, err := os.Create(out)
@@ -65,8 +84,62 @@ func TestRenderShellPreviews(t *testing.T) {
 	}
 }
 
+// TestRenderSettingsPreviews writes a picture of every pane of the settings
+// window, in both appearances, into the directory named by TF_RENDER. The panes
+// are forms: their labels line up with each other, and that is something only a
+// picture shows.
+func TestRenderSettingsPreviews(t *testing.T) {
+	dir := os.Getenv("TF_RENDER")
+	if dir == "" {
+		t.Skip("set TF_RENDER=<dir> to write the settings previews")
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		mode  string
+		pane  int
+		label string
+	}{
+		{"settings-dark-terminal", themeDark, paneTerminal, "终端"},
+		{"settings-dark-relay", themeDark, paneRelay, "远程"},
+		{"settings-dark-server", themeDark, paneServer, "服务"},
+		{"settings-dark-updates", themeDark, paneUpdates, "更新"},
+		{"settings-dark-appearance", themeDark, paneAppearance, "外观"},
+		{"settings-light-terminal", themeLight, paneTerminal, "终端"},
+		{"settings-light-relay", themeLight, paneRelay, "远程"},
+		{"settings-light-server", themeLight, paneServer, "服务"},
+		{"settings-light-updates", themeLight, paneUpdates, "更新"},
+		{"settings-light-appearance", themeLight, paneAppearance, "外观"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := settings.Open(t.TempDir())
+			if _, err := store.Update(func(s *settings.Settings) { s.Theme = tc.mode }); err != nil {
+				t.Fatal(err)
+			}
+			sw := newSettingsWindow(&window{}, store, newTestFleet(t))
+			sw.pane = tc.pane
+			tt := ui.NewTester(sw.view, 540, 440)
+			out := filepath.Join(dir, tc.name+".png")
+			file, err := os.Create(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer file.Close()
+			if err := png.Encode(file, tt.Image()); err != nil {
+				t.Fatal(err)
+			}
+			t.Logf("wrote %s", out)
+		})
+	}
+}
+
 // previewWindow is the window the previews draw: the appearance asked for, and,
-// when a shell is wanted, one shell with a screenful of text in it.
+// when a shell is wanted, one shell with a screenful of text in it. It has a
+// real fleet behind it, so the machines' panel shows the machine it is on
+// rather than a placeholder row.
 func previewWindow(t *testing.T, mode string, shell bool) *window {
 	t.Helper()
 	titles := []string{}
@@ -74,14 +147,36 @@ func previewWindow(t *testing.T, mode string, shell bool) *window {
 		titles = append(titles, "~/carl-github/term-fleet")
 	}
 	w, _ := newTestShellWindow(t, titles...)
+	w.fleet = newTestFleet(t)
 	if _, err := w.store.Update(func(s *settings.Settings) { s.Theme = mode }); err != nil {
 		t.Fatal(err)
 	}
 	if !shell {
 		return w
 	}
-	w.tabs["s1"].term = fedTerminal(t, previewScreen())
+	w.tabs[1].term = fedTerminal(t, previewScreen())
 	return w
+}
+
+// previewFleet gives the preview window a fleet: the relay's roster, with one
+// other machine online and a shell running on it, as the panel draws them.
+func previewFleet(w *window) {
+	w.roster = []tunnel.Machine{{
+		ID:     "mac-studio",
+		Name:   "mac-studio",
+		Host:   protocol.Host{Hostname: "mac-studio.local", Platform: "darwin", Arch: "arm64"},
+		Online: true,
+	}}
+	w.remoteSessions = map[string][]protocol.Summary{
+		"mac-studio": {{
+			SessionID: "s7",
+			Title:     "~/work/term-fleet",
+			Shell:     "/bin/zsh",
+			Cols:      120,
+			Rows:      40,
+			Alive:     true,
+		}},
+	}
 }
 
 // previewScreen is what the pane in the pictures is showing: a session's worth

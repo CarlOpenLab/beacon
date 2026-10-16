@@ -69,7 +69,59 @@ type Hub struct {
 type watch struct {
 	controller *client
 	viewers    []*client
-	lastInput  time.Time
+
+	// epoch counts every change of who holds the lease. Input, resize and
+	// close carry the epoch they were sent under; a frame whose epoch is not
+	// the current one belonged to a holder that has since been replaced and is
+	// dropped, so nothing lands after a handoff.
+	epoch uint64
+
+	// deadline is when the holder's lease lapses. Every input renews it, and
+	// the janitor releases the lease once it passes, so a controller whose
+	// network died cannot lock the machine out of its own shell.
+	deadline  time.Time
+	lastInput time.Time
+}
+
+// held reports whether the lease is held right now: a controller that exists
+// and whose deadline has not passed.
+func (w *watch) held(now time.Time) bool {
+	return w.controller != nil && now.Before(w.deadline)
+}
+
+// take moves the lease to c, whoever held it before. The epoch is bumped so
+// the previous holder's in-flight input dies with the handoff.
+func (w *watch) take(c *client, now time.Time, ttl time.Duration) (prev *client) {
+	prev = w.controller
+	if prev != nil && prev != c {
+		w.viewers = append(w.viewers, prev)
+	}
+	w.removeViewer(c)
+	w.controller = c
+	w.epoch++
+	w.lastInput, w.deadline = now, now.Add(ttl)
+	return prev
+}
+
+// drop releases the lease, whoever held it, and bumps the epoch so the
+// departing holder's frames stop landing.
+func (w *watch) drop(now time.Time) (prev *client) {
+	prev = w.controller
+	if prev != nil {
+		w.controller = nil
+		if !w.hasViewer(prev) {
+			w.viewers = append(w.viewers, prev)
+		}
+	}
+	w.epoch++
+	w.deadline = time.Time{}
+	return prev
+}
+
+// renew pushes the holder's deadline out on input it actually sent.
+func (w *watch) renew(now time.Time, ttl time.Duration) {
+	w.lastInput = now
+	w.deadline = now.Add(ttl)
 }
 
 func New(opts Options) *Hub {
@@ -108,33 +160,68 @@ func (h *Hub) Run(ctx context.Context) {
 	}
 }
 
+// Reap runs one pass of the janitor. Run drives it every minute; a test that
+// needs a lease to lapse now calls this rather than sleeping out the timeout.
+func (h *Hub) Reap() { h.reapIdleControllers() }
+
+// reapIdleControllers releases every lease whose deadline has passed. It is the
+// same janitor as before the lease existed, now keyed on the deadline the
+// holder's own input renews: a silent controller loses the shell rather than
+// locking everyone out of it.
 func (h *Hub) reapIdleControllers() {
 	type eviction struct {
-		c  *client
-		id string
+		c     *client
+		id    string
+		epoch uint64
 	}
 	var out []eviction
 
 	h.mu.Lock()
 	now := time.Now()
 	for id, w := range h.watches {
-		if w.controller == nil || now.Sub(w.lastInput) <= h.idle {
+		// Nothing to release without a holder, and nothing to release while the
+		// holder's lease is live: its own input is renewing it.
+		if w.controller == nil || w.held(now) {
 			continue
 		}
-		c := w.controller
-		w.controller = nil
-		w.viewers = append(w.viewers, c)
-		out = append(out, eviction{c: c, id: id})
+		c := w.drop(now)
+		out = append(out, eviction{c: c, id: id, epoch: w.epoch})
 	}
 	h.mu.Unlock()
 
-	if len(out) == 0 {
+	for _, e := range out {
+		e.c.send(roleMsg(e.id, protocol.RoleViewer, "", e.epoch))
+		h.broadcastRole(e.id)
+	}
+}
+
+// broadcastRole tells every client watching a session what the lease looks
+// like now and what it means for them, so a client that was not the one
+// demoted still learns it may claim.
+func (h *Hub) broadcastRole(id string) {
+	h.mu.Lock()
+	w := h.watches[id]
+	if w == nil {
+		h.mu.Unlock()
 		return
 	}
-	for _, e := range out {
-		e.c.send(roleMsg(e.id, protocol.RoleViewer, ""))
+	// Each watcher is told its own role: a viewer that is sent the
+	// controller's role would believe it holds a shell it cannot type into.
+	msgs := make([]struct {
+		c   *client
+		msg protocol.Msg
+	}, 0, len(w.viewers)+1)
+	for _, c := range w.attached() {
+		msgs = append(msgs, struct {
+			c   *client
+			msg protocol.Msg
+		}{c, roleMsg(id, w.roleOf(c), w.controllerID(), w.epoch)})
 	}
-	h.broadcastSessions()
+	h.mu.Unlock()
+
+	for _, m := range msgs {
+		m.c.send(m.msg)
+	}
 }
 
 // ServeHTTP upgrades the request and serves one client for its lifetime.
@@ -168,9 +255,19 @@ func (h *Hub) ServeTransport(tp Transport) {
 	h.serve(tp)
 }
 
-func (h *Hub) serve(tp Transport) {
-	c := h.newClient(tp)
+// ServeLocal attaches the machine's own client — the desktop window's — over an
+// in-process transport. It is an ordinary client in every way (the same frames,
+// the same arbitration) with one difference recorded: it is the owner, so
+// taking a shell back from a remote controller needs no confirmation.
+func (h *Hub) ServeLocal(tp Transport) {
+	h.serveClient(h.ownerClient(tp))
+}
 
+func (h *Hub) serve(tp Transport) {
+	h.serveClient(h.newClient(tp))
+}
+
+func (h *Hub) serveClient(c *client) {
 	h.mu.Lock()
 	h.clients[c] = struct{}{}
 	h.mu.Unlock()
@@ -218,15 +315,15 @@ func (h *Hub) handle(c *client, m protocol.Msg) {
 	case protocol.CTDetach:
 		h.handleDetach(c, m.SessionID)
 	case protocol.CTInput:
-		h.handleInput(c, m.SessionID, m.Data)
+		h.handleInput(c, m.SessionID, m.Data, m.Epoch)
 	case protocol.CTResize:
-		h.handleResize(c, m.SessionID, m.Cols, m.Rows)
+		h.handleResize(c, m.SessionID, m.Cols, m.Rows, m.Epoch)
 	case protocol.CTClaim:
-		h.handleClaim(c, m.SessionID)
+		h.handleClaim(c, m.SessionID, m.Steal)
 	case protocol.CTRelease:
 		h.handleRelease(c, m.SessionID)
 	case protocol.CTClose:
-		h.handleClose(c, m.SessionID)
+		h.handleClose(c, m.SessionID, m.Epoch)
 	case "":
 		c.fail(protocol.ErrProtocol, "frame has no type field", "")
 	default:
@@ -235,11 +332,15 @@ func (h *Hub) handle(c *client, m protocol.Msg) {
 }
 
 func (h *Hub) handleCreate(c *client, m protocol.Msg) {
+	// The session is made quietly and announced in order: the client that asked
+	// for it is told which shell it got before the session list puts that shell
+	// in front of everyone else, so its pending tab becomes the tab watching it
+	// rather than a second tab for the same shell.
 	id := m.SessionID
 	if id == "" {
 		id = h.newSessionID()
 	}
-	s, err := h.Create(id, m.Cols, m.Rows, m.Cwd, m.Shell)
+	s, err := h.start(id, m.Cols, m.Rows, m.Cwd, m.Shell)
 	if err != nil {
 		c.fail(protocol.ErrBadRequest, err.Error(), id)
 		return
@@ -275,14 +376,16 @@ func (h *Hub) attach(c *client, s *session.Session, cursor int64) {
 	}
 
 	promoted := false
+	now := time.Now()
 	switch {
 	case w.controller == c:
-		w.lastInput = time.Now()
+		w.renew(now, h.idle)
 	case w.hasViewer(c):
 		// Already watching; only the cursor moves.
-	case w.controller == nil:
-		w.controller = c
-		w.lastInput = time.Now()
+	case !w.held(now):
+		// Unclaimed, or the holder's lease has lapsed: the first watcher takes
+		// it, as the machine's own window does when it opens a shell.
+		w.take(c, now, h.idle)
 		promoted = true
 	default:
 		w.viewers = append(w.viewers, c)
@@ -309,7 +412,7 @@ func (h *Hub) attach(c *client, s *session.Session, cursor int64) {
 			Resync:    truncated,
 		})
 	}
-	role := roleMsg(s.ID, w.roleOf(c), w.controllerID())
+	role := roleMsg(s.ID, w.roleOf(c), w.controllerID(), w.epoch)
 	var peers []*client
 	if promoted {
 		peers = w.others(c)
@@ -318,45 +421,60 @@ func (h *Hub) attach(c *client, s *session.Session, cursor int64) {
 
 	c.send(role)
 	for _, p := range peers {
-		p.send(roleMsg(s.ID, protocol.RoleViewer, c.id))
+		p.send(roleMsg(s.ID, protocol.RoleViewer, c.id, w.epoch))
 	}
 	h.broadcastSessions()
 }
 
 func (h *Hub) handleDetach(c *client, id string) {
 	h.mu.Lock()
-	if w := h.watches[id]; w != nil {
-		if w.controller == c {
-			w.controller = nil
+	w := h.watches[id]
+	freed := w != nil && w.controller == c
+	if w != nil {
+		if freed {
+			// A client that stops watching cannot hold the lease: it is
+			// released, and everyone still watching is told, as they are when
+			// the holder's connection drops.
+			w.drop(time.Now())
 		}
 		w.removeViewer(c)
 	}
 	h.mu.Unlock()
 	// The session itself is untouched: that is the whole point of detach.
+	if freed {
+		h.broadcastRole(id)
+	}
 	h.broadcastSessions()
 }
 
-func (h *Hub) handleInput(c *client, id string, data []byte) {
+func (h *Hub) handleInput(c *client, id string, data []byte, epoch uint64) {
 	s, ok := h.mgr.Get(id)
 	if !ok {
 		c.fail(protocol.ErrNoSession, "no live session named "+id, id)
 		return
 	}
-	if !h.requireControl(c, id) {
-		return
-	}
-	if err := s.Write(data); err != nil {
-		c.fail(protocol.ErrNoSession, err.Error(), id)
+	switch h.controlFor(c, id, epoch) {
+	case controlHeld:
+		if err := s.Write(data); err != nil {
+			c.fail(protocol.ErrNoSession, err.Error(), id)
+		}
+	case controlLost:
+		// Answered loudly: the client is a viewer and can be offered the lease.
+		c.fail(protocol.ErrNotController,
+			"another client controls "+id+"; claim it first", id)
+	case controlStale:
+		// Dropped in silence. This client held the lease a moment ago and has
+		// already been told it lost it; its frame belonged to the handoff.
 	}
 }
 
-func (h *Hub) handleResize(c *client, id string, cols, rows int) {
+func (h *Hub) handleResize(c *client, id string, cols, rows int, epoch uint64) {
 	s, ok := h.mgr.Get(id)
 	if !ok {
 		c.fail(protocol.ErrNoSession, "no live session named "+id, id)
 		return
 	}
-	if !h.requireControl(c, id) {
+	if h.controlFor(c, id, epoch) != controlHeld {
 		return
 	}
 	if err := s.Resize(cols, rows); err != nil {
@@ -364,25 +482,58 @@ func (h *Hub) handleResize(c *client, id string, cols, rows int) {
 	}
 }
 
-// requireControl reports whether c may act on the session, answering the
-// caller with a not_controller error when it may not. Input from a viewer is
-// rejected loudly rather than dropped, so a client can offer "take control".
-func (h *Hub) requireControl(c *client, id string) bool {
+// control is what a frame bearing an epoch is entitled to.
+type control int
+
+const (
+	controlHeld  control = iota // the sender holds the lease, at this epoch
+	controlLost                 // the sender does not hold the lease at all
+	controlStale                // the sender held it, at an epoch now past
+)
+
+// controlFor decides what a frame from c may do, renewing the lease when it
+// may act. Input from a viewer is answered loudly rather than dropped, so a
+// client can offer "take control"; input from a holder that has just been
+// replaced is dropped, because the role frame already told it so.
+//
+// A frame carrying no epoch is from a client that does not speak the lease at
+// all: it is checked against the controller alone, exactly as every client was
+// before the lease existed. Epochs start at 1, so a zero is never a current
+// one and the two cannot be confused.
+func (h *Hub) controlFor(c *client, id string, epoch uint64) control {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	w := h.watches[id]
-	ok := w != nil && w.controller == c
-	if ok {
-		w.lastInput = time.Now()
+	if w == nil || w.controller != c {
+		return controlLost
 	}
-	h.mu.Unlock()
-	if !ok {
-		c.fail(protocol.ErrNotController,
-			"another client controls "+id+"; claim it first", id)
+	if epoch != 0 && epoch != w.epoch {
+		return controlStale
 	}
-	return ok
+	w.renew(time.Now(), h.idle)
+	return controlHeld
 }
 
-func (h *Hub) handleClaim(c *client, id string) {
+// requireControl reports whether c may act on the session at the given epoch,
+// answering the caller with a not_controller error when it may not. Input from
+// a viewer is rejected loudly rather than dropped, so a client can offer "take
+// control".
+func (h *Hub) requireControl(c *client, id string, epoch uint64) bool {
+	if h.controlFor(c, id, epoch) == controlHeld {
+		return true
+	}
+	c.fail(protocol.ErrNotController,
+		"another client controls "+id+"; claim it first", id)
+	return false
+}
+
+// handleClaim takes the lease. A claim for a lease nobody holds, or one whose
+// deadline has passed, is honoured at once. A claim against a live holder is
+// refused with ErrLeaseHeld unless it carries Steal — taking a shell from
+// under someone is a thing a person asks for, not something a stray click
+// does. The machine the PTY runs on is the exception its own window needs: its
+// claim is always honoured, because it is the machine's shell.
+func (h *Hub) handleClaim(c *client, id string, steal bool) {
 	if _, ok := h.mgr.Get(id); !ok {
 		c.fail(protocol.ErrNoSession, "no live session named "+id, id)
 		return
@@ -394,43 +545,52 @@ func (h *Hub) handleClaim(c *client, id string) {
 		w = &watch{}
 		h.watches[id] = w
 	}
-	prev := w.controller
-	if prev != c {
-		if prev != nil {
-			w.viewers = append(w.viewers, prev)
-		}
-		w.removeViewer(c)
-		w.controller = c
+	now := time.Now()
+	var prev *client
+	switch {
+	case w.controller == c:
+		// Already mine: a claim is a renewal, and the epoch does not move.
+		w.renew(now, h.idle)
+	case !w.held(now) || steal || c.owner:
+		prev = w.take(c, now, h.idle)
+	default:
+		holder := w.controllerID()
+		until := w.deadline.Format("15:04:05")
+		h.mu.Unlock()
+		c.fail(protocol.ErrLeaseHeld,
+			holder+" holds this shell until "+until+"; steal it to take it anyway", id)
+		return
 	}
-	w.lastInput = time.Now()
+	epoch := w.epoch
 	h.mu.Unlock()
 
 	if prev != nil && prev != c {
-		prev.send(roleMsg(id, protocol.RoleViewer, c.id))
+		prev.send(roleMsg(id, protocol.RoleViewer, c.id, epoch))
 	}
-	c.send(roleMsg(id, protocol.RoleController, c.id))
+	c.send(roleMsg(id, protocol.RoleController, c.id, epoch))
+	h.broadcastRole(id)
 	h.broadcastSessions()
 }
 
 func (h *Hub) handleRelease(c *client, id string) {
 	h.mu.Lock()
 	w := h.watches[id]
-	wasController := w != nil && w.controller == c
-	if wasController {
-		w.controller = nil
-		if !w.hasViewer(c) {
-			w.viewers = append(w.viewers, c)
-		}
+	var prev *client
+	epoch := uint64(0)
+	if w != nil && w.controller == c {
+		prev = w.drop(time.Now())
+		epoch = w.epoch
 	}
 	h.mu.Unlock()
 
-	if wasController {
-		c.send(roleMsg(id, protocol.RoleViewer, ""))
+	if prev != nil {
+		prev.send(roleMsg(id, protocol.RoleViewer, "", epoch))
+		h.broadcastRole(id)
 		h.broadcastSessions()
 	}
 }
 
-func (h *Hub) handleClose(c *client, id string) {
+func (h *Hub) handleClose(c *client, id string, epoch uint64) {
 	s, ok := h.mgr.Get(id)
 	if !ok {
 		c.fail(protocol.ErrNoSession, "no live session named "+id, id)
@@ -438,7 +598,7 @@ func (h *Hub) handleClose(c *client, id string) {
 	}
 	// Closing kills the process for everyone, so it belongs to whoever holds
 	// control. A client that only wants to stop looking sends detach.
-	if !h.requireControl(c, id) {
+	if !h.requireControl(c, id, epoch) {
 		return
 	}
 	_ = s.Close()
@@ -510,28 +670,35 @@ func (h *Hub) onSessionExit(s *session.Session) {
 }
 
 // removeClient detaches a departing client from every session it was watching.
-// None of those sessions are closed.
+// None of those sessions are closed. A departing controller's lease is
+// released and the epoch bumped, so the clients still watching learn in the
+// same frame that the shell is free to claim.
 func (h *Hub) removeClient(c *client) {
 	h.mu.Lock()
 	delete(h.clients, c)
-	touched := 0
-	for _, w := range h.watches {
+	type freed struct {
+		id    string
+		epoch uint64
+	}
+	var freedList []freed
+	for id, w := range h.watches {
 		hadController := w.controller == c
 		wasViewer := w.hasViewer(c)
 		if hadController {
-			w.controller = nil
+			w.drop(time.Now())
+			freedList = append(freedList, freed{id: id, epoch: w.epoch})
 		}
 		if wasViewer {
 			w.removeViewer(c)
-		}
-		if hadController || wasViewer {
-			touched++
 		}
 	}
 	h.mu.Unlock()
 
 	c.close("connection closed")
-	if touched > 0 {
+	for _, f := range freedList {
+		h.broadcastRole(f.id)
+	}
+	if len(freedList) > 0 {
 		h.broadcastSessions()
 	}
 }
@@ -638,11 +805,12 @@ func (w *watch) controllerID() string {
 	return w.controller.id
 }
 
-func roleMsg(id, role, controller string) protocol.Msg {
+func roleMsg(id, role, controller string, epoch uint64) protocol.Msg {
 	return protocol.Msg{
 		T:          protocol.STRole,
 		SessionID:  id,
 		Role:       role,
 		Controller: controller,
+		Epoch:      epoch,
 	}
 }

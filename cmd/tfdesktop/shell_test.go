@@ -37,9 +37,40 @@ func TestTheStripSwitchesTheAppearanceAndOpensSettings(t *testing.T) {
 	}
 }
 
-// The header answers "which shell is this", which is its label, and offers the
-// two things a shell needs: one more, and an end to this one.
-func TestHeaderNamesTheShellAndOffersItsControls(t *testing.T) {
+// The strip's controls belong at the bottom, under the column of shells: the
+// mark heads the strip, and what changes the window itself ends it. A control
+// left beside the shells is one the user has to hunt for, and the empty middle
+// of a top-loaded strip reads as a control that was forgotten.
+func TestTheStripKeepsItsControlsAtTheBottom(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	tt := drawNav(t, w)
+
+	settings, ok := tt.Find("设置")
+	if !ok {
+		t.Fatalf("the strip has no settings entry")
+	}
+	appearance, ok := tt.Find("切换到暗黑")
+	if !ok {
+		t.Fatalf("the strip has no appearance entry")
+	}
+	shell, ok := tt.Find("one")
+	if !ok {
+		t.Fatalf("the column lists no shell to place the strip against")
+	}
+	if settings.Y <= shell.Y {
+		t.Fatalf("设置 sits at y=%v, not below the shells at y=%v", settings.Y, shell.Y)
+	}
+	if appearance.Y <= shell.Y {
+		t.Fatalf("the appearance switch sits at y=%v, not below the shells at y=%v", appearance.Y, shell.Y)
+	}
+	if settings.Y <= appearance.Y {
+		t.Fatalf("设置 (y=%v) sits above the appearance switch (y=%v); the controls should read appearance, then settings", settings.Y, appearance.Y)
+	}
+}
+
+// The header answers "which shell is this" and nothing else: the controls a
+// shell needs moved to the column, on the panel they act on.
+func TestHeaderNamesTheShellOnScreen(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	tt := ui.NewTester(func(c *ui.Context) {
 		w.header(c, []string{"one"})
@@ -48,10 +79,8 @@ func TestHeaderNamesTheShellAndOffersItsControls(t *testing.T) {
 	if !tt.HasText("one") {
 		t.Fatalf("the header does not name the shell; it shows %v", tt.Texts())
 	}
-	for _, want := range []string{"新建标签页", "关闭标签页"} {
-		if _, ok := tt.Find(want); !ok {
-			t.Fatalf("the header has no %q control", want)
-		}
+	if !tt.HasText(w.serviceLine()) {
+		t.Fatalf("the header does not name the service; it shows %v", tt.Texts())
 	}
 }
 

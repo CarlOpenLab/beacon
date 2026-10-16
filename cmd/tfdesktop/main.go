@@ -66,6 +66,13 @@ func main() {
 	if err := f.SetRelay(saved.RelayURL, saved.DeviceID, saved.DeviceSecret, saved.RelayCA, saved.RelayOn); err != nil {
 		log.Printf("tfdesktop: relay: %v", err)
 	}
+	// The window's own client link to the relay: the roster of other machines,
+	// and the streams that reach their shells. It is separate from the member
+	// link above and needs the fleet's client token, not this machine's
+	// credential.
+	if err := f.SetRelayClient(saved.RelayURL, saved.ClientToken, saved.RelayCA); err != nil {
+		log.Printf("tfdesktop: relay client: %v", err)
+	}
 
 	if !f.ClientPresent() {
 		log.Printf("tfdesktop: no built client; run `pnpm --dir web run build` to serve one")
@@ -97,7 +104,7 @@ func main() {
 			Height:          760,
 			MinWidth:        720,
 			MinHeight:       420,
-			BackgroundColor: "#0b0e14",
+			BackgroundColor: windowGround(saved.Theme),
 			StateKey:        "main",
 			Content:         ui.View(app.view),
 		})
@@ -109,8 +116,9 @@ func main() {
 		// After the window exists and the loop is up: the updater item asks the
 		// plugin, and the menu's 设置… item reopens this window.
 		installMenu(app)
-		go app.watch(win)
-		// Open with one shell, as a terminal app does.
+		// Open with one shell, as a terminal app does. What the hub says about
+		// it — and about every other shell on this machine — arrives on the
+		// window's own link, so there is no polling loop to run.
 		go app.create()
 	})
 

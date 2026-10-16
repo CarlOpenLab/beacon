@@ -19,6 +19,20 @@ import (
 // a fresh one. An id that names a live session returns that session instead of
 // starting a second shell under the same name.
 func (h *Hub) Create(id string, cols, rows int, cwd, shell string) (*session.Session, error) {
+	s, err := h.start(id, cols, rows, cwd, shell)
+	if err != nil {
+		return nil, err
+	}
+	h.broadcastSessions()
+	return s, nil
+}
+
+// start makes the session without telling anyone about it. A caller that speaks
+// the client protocol announces the session itself, in the order its client
+// expects: the client that asked for it hears first, so its tab is the tab
+// watching the shell before the session list puts the shell in front of
+// everyone else.
+func (h *Hub) start(id string, cols, rows int, cwd, shell string) (*session.Session, error) {
 	if id == "" {
 		id = h.newSessionID()
 	}
@@ -29,7 +43,6 @@ func (h *Hub) Create(id string, cols, rows int, cwd, shell string) (*session.Ses
 	if !reused {
 		go h.watchSession(s)
 	}
-	h.broadcastSessions()
 	return s, nil
 }
 

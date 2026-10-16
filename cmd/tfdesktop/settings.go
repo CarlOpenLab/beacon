@@ -111,6 +111,7 @@ type settingsWindow struct {
 	ca      string
 	relayOn bool
 	server  bool
+	token   string
 
 	// caNote is the one line under the CA field: which certificate is pinned,
 	// or why the last attempt failed. It is state, not a transient message,
@@ -148,6 +149,7 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 		ca:      cur.RelayCA,
 		relayOn: cur.RelayOn,
 		server:  !cur.ServerOff,
+		token:   cur.ClientToken,
 	}
 	if s.size <= 0 {
 		s.size = settings.DefaultFontSize
@@ -219,6 +221,7 @@ func (s *settingsWindow) draft() settings.Settings {
 	cur.RelayCA = strings.TrimSpace(s.ca)
 	cur.RelayOn = s.relayOn
 	cur.ServerOff = !s.server
+	cur.ClientToken = strings.TrimSpace(s.token)
 	return cur
 }
 
@@ -254,101 +257,127 @@ func caNoteFor(path string) string {
 
 func (s *settingsWindow) view(c *ui.Context) {
 	applyTheme(c, s.store.Get().Theme)
+	t := c.Theme()
+	// 应用 exists for the fields that commit on it, so it is offered exactly
+	// when there is something to apply: a permanently enabled button trains
+	// the user to ignore it, and the pending marker is what says otherwise.
+	dirty := s.dirty()
 	ui.Column(c).Fill().Children(func() {
 		ui.Toolbar(c, func() {
 			ui.Text(c, "设置")
 			ui.Spacer(c)
-			if s.dirty() {
-				ui.Text(c, "● 有未保存的改动").TextColor(c.Theme().Warning)
-			}
-			var apply ui.Element
-			if s.dirty() {
-				apply = ui.PrimaryButton(c, "应用")
-			} else {
-				apply = ui.Button(c, "应用")
-			}
-			if apply.Clicked() {
-				s.commit()
+			if dirty {
+				ui.Text(c, "● 有未保存的改动").TextColor(t.Warning)
 			}
 			if ui.Button(c, "恢复默认").Clicked() {
 				s.restoreDefaults()
 			}
+			if dirty && ui.PrimaryButton(c, "应用").Clicked() {
+				s.commit()
+			}
 		})
 		ui.Tabs(c, &s.pane, "终端", "远程", "服务", "更新", "外观")
-		ui.Column(c).Fill().Padding(16).Gap(10).Children(func() {
-			switch s.pane {
-			case paneTerminal:
-				s.terminalPane(c)
-			case paneRelay:
-				s.relayPane(c)
-			case paneServer:
-				s.serverPane(c)
-			case paneAppearance:
-				s.appearancePane(c)
-			default:
-				s.updatesPane(c)
-			}
+		// The pane is the whole window, so it scrolls rather than clips: a short
+		// window must not hide the 接入 switch under the fold.
+		ui.Scroll(c).Fill().Children(func() {
+			ui.Column(c).Fill().Padding(18).Gap(14).Children(func() {
+				switch s.pane {
+				case paneTerminal:
+					s.terminalPane(c)
+				case paneRelay:
+					s.relayPane(c)
+				case paneServer:
+					s.serverPane(c)
+				case paneAppearance:
+					s.appearancePane(c)
+				default:
+					s.updatesPane(c)
+				}
+			})
 		})
 		if s.status != "" {
 			ui.Divider(c)
-			line := ui.Text(c, s.status)
+			line := ui.Text(c, s.status).FontSize(11)
 			if s.statusErr {
-				line.TextColor(c.Theme().Danger)
+				line.TextColor(t.Danger)
 			} else {
-				line.TextColor(c.Theme().Success)
+				line.TextColor(t.Success)
 			}
 		}
 	})
 }
 
 func (s *settingsWindow) terminalPane(c *ui.Context) {
-	ui.Field(c, "字体", func() {
-		// Suggestions only, and no commit on change: this field takes free text,
-		// so committing per keystroke would rewrite the settings and rebuild
-		// the relay link on every character. Text fields save on 应用.
-		ui.Autocomplete(c, &s.family, s.familyChoices())
+	t := c.Theme()
+	ui.Form(c, func() {
+		ui.Field(c, "字体", func() {
+			// Suggestions only, and no commit on change: this field takes free text,
+			// so committing per keystroke would rewrite the settings and rebuild
+			// the relay link on every character. Text fields save on 应用.
+			ui.Autocomplete(c, &s.family, s.familyChoices()).Fill()
+		})
+		ui.Field(c, "字号", func() {
+			// A stepper stretched across the window reads as a text field; a
+			// number is a short thing and gets a short box.
+			ui.NumberInput(c, &s.size, 8, 32, 1).Width(110).AlignSelf(ui.Start).
+				OnChange(func() { s.commit() })
+		})
 	})
-	ui.Field(c, "字号", func() {
-		ui.NumberInput(c, &s.size, 8, 32, 1).OnChange(func() { s.commit() })
-	})
-	ui.Text(c, "字体和字号同时用于这个窗口里已经打开的终端。")
+	ui.Text(c, "字体和字号同时用于这个窗口里已经打开的终端。").FontSize(11).TextColor(t.TextMuted)
 }
 
 func (s *settingsWindow) relayPane(c *ui.Context) {
-	ui.Field(c, "公网地址", func() {
-		ui.TextInput(c, &s.relay).Placeholder("wss://relay.example/relay/agent").Fill()
-	})
-	ui.Field(c, "设备 ID", func() {
-		ui.TextInput(c, &s.device).Placeholder("mac-mini").Fill()
-	})
-	ui.Field(c, "设备密钥", func() {
-		ui.TextInput(c, &s.secret).Password().Fill()
-	})
-	ui.Field(c, "CA 证书", func() {
-		ui.Column(c).Gap(6).Children(func() {
-			ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
-			ui.Row(c).Gap(8).Children(func() {
-				if ui.Button(c, "从服务器获取").Clicked() {
-					s.fetchCA()
-				}
-				if ui.Button(c, "选择文件…").Clicked() {
-					s.pickCA()
-				}
-				if s.ca != "" && ui.Button(c, "清除").Clicked() {
-					s.ca = ""
-					s.commit()
-				}
+	t := c.Theme()
+	ui.Form(c, func() {
+		ui.Field(c, "公网地址", func() {
+			ui.TextInput(c, &s.relay).Placeholder("wss://relay.example/relay/agent").Fill()
+		})
+		ui.Field(c, "设备 ID", func() {
+			ui.TextInput(c, &s.device).Placeholder("mac-mini").Fill()
+		})
+		ui.Field(c, "设备密钥", func() {
+			ui.TextInput(c, &s.secret).Password().Fill()
+		})
+		ui.Field(c, "CA 证书", func() {
+			ui.Column(c).Gap(6).Children(func() {
+				ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
+				ui.Row(c).Gap(8).Children(func() {
+					if ui.Button(c, "从服务器获取").Clicked() {
+						s.fetchCA()
+					}
+					if ui.Button(c, "选择文件…").Clicked() {
+						s.pickCA()
+					}
+					if s.ca != "" && ui.Button(c, "清除").Clicked() {
+						s.ca = ""
+						s.commit()
+					}
+				})
+				ui.Text(c, s.caNote).FontSize(11).TextColor(t.TextMuted)
 			})
-			ui.Text(c, s.caNote)
+		})
+		ui.Field(c, "接入", func() {
+			// AlignSelf(Start): the field's control column stretches, and a
+			// stretched switch would sit at the far end of the row, away from
+			// the label it belongs to.
+			ui.Switch(c, &s.relayOn).AlignSelf(ui.Start).OnChange(func() { s.commit() })
 		})
 	})
-	ui.Field(c, "接入", func() {
-		ui.Switch(c, &s.relayOn).OnChange(func() { s.commit() })
-	})
+	// The link's own colour: green while it is up, amber while it is not, so
+	// the state is readable without parsing the sentence. An unused relay has
+	// nothing to report — the agent's state is reset when the link is dropped,
+	// and "connecting" about a link nobody asked for would be a lie.
 	if s.relayOn {
-		ui.Text(c, s.relayStatusLine())
+		if line := s.relayStatusLine(); line != "" {
+			color := t.Warning
+			if s.fleet != nil && s.fleet.RelayState().Connected {
+				color = t.Success
+			}
+			ui.Text(c, line).FontSize(11).TextColor(color)
+		}
 	}
-	ui.Text(c, "地址形如 wss://relay.example/relay/agent。中继用自签或私有 CA 证书时，点「从服务器获取」直接把它取回来并固定，或点「选择文件…」指定已经下载好的 PEM。填完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。")
+	ui.Text(c, "地址形如 wss://relay.example/relay/agent。中继用自签或私有 CA 证书时，点「从服务器获取」直接把它取回来并固定，或点「选择文件…」指定已经下载好的 PEM。填完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。").
+		FontSize(11).TextColor(t.TextMuted)
 }
 
 // relayStatusLine says what the link is actually doing. Without it, a wrong
@@ -453,13 +482,18 @@ func (s *settingsWindow) setNote(note string) {
 }
 
 func (s *settingsWindow) serverPane(c *ui.Context) {
-	ui.Field(c, "本机服务", func() {
-		ui.Switch(c, &s.server).OnChange(func() { s.commit() })
+	t := c.Theme()
+	ui.Form(c, func() {
+		ui.Field(c, "本机服务", func() {
+			ui.Switch(c, &s.server).AlignSelf(ui.Start).OnChange(func() { s.commit() })
+		})
 	})
 	if url := s.fleet.BaseURL(); url != "" {
-		ui.Text(c, "这台机器上的浏览器可以打开 "+url+"，看到的是窗口里同一批会话。")
+		ui.Text(c, "这台机器上的浏览器可以打开 "+url+"，看到的是窗口里同一批会话。").
+			FontSize(11).TextColor(t.TextMuted)
 	} else {
-		ui.Text(c, "本机服务已关闭：不再为浏览器开端口。窗口照常可用，正在跑的终端也不会停。")
+		ui.Text(c, "本机服务已关闭：不再为浏览器开端口。窗口照常可用，正在跑的终端也不会停。").
+			FontSize(11).TextColor(t.TextMuted)
 	}
 }
 
@@ -480,6 +514,13 @@ func (s *settingsWindow) commit() {
 	s.desk.reletter(termFont(stored))
 	if err := s.fleet.SetRelay(stored.RelayURL, stored.DeviceID, stored.DeviceSecret, stored.RelayCA, stored.RelayOn); err != nil {
 		s.fail("远程渠道没接上：" + err.Error())
+		return
+	}
+	// The client link is a second connection with a second credential: the
+	// member one is how this machine joins the fleet, and this one is what lets
+	// the window drive the other machines' shells.
+	if err := s.fleet.SetRelayClient(stored.RelayURL, stored.ClientToken, stored.RelayCA); err != nil {
+		s.fail("客户端链接没接上：" + err.Error())
 		return
 	}
 	if err := s.fleet.SetServer(!stored.ServerOff); err != nil {
@@ -508,6 +549,9 @@ func (s *settingsWindow) summary(stored settings.Settings) string {
 	if stored.RelayOn && stored.RelayURL != "" {
 		parts = append(parts, "已接入 "+stored.RelayURL)
 	}
+	if stored.ClientToken != "" {
+		parts = append(parts, "可接管其他机器")
+	}
 	return strings.Join(parts, " · ")
 }
 
@@ -521,6 +565,7 @@ func (s *settingsWindow) restoreDefaults() {
 	s.caNote = caNoteFor("")
 	s.relayOn = false
 	s.server = true
+	s.token = ""
 	s.commit()
 }
 
@@ -530,12 +575,16 @@ func (s *settingsWindow) restoreDefaults() {
 // mode; the choice applies as soon as it is made, like the switch on the
 // service pane, so there is nothing to save.
 func (s *settingsWindow) appearancePane(c *ui.Context) {
+	t := c.Theme()
 	mode := s.store.Get().Theme
-	ui.Field(c, "界面外观", func() {
-		s.themeSel = themeIndex(mode)
-		if ui.Segmented(c, &s.themeSel, themeChoices[0].label, themeChoices[1].label, themeChoices[2].label).Changed() {
-			s.desk.setTheme(themeChoices[s.themeSel].id)
-		}
+	ui.Form(c, func() {
+		ui.Field(c, "界面外观", func() {
+			s.themeSel = themeIndex(mode)
+			if ui.Segmented(c, &s.themeSel, themeChoices[0].label, themeChoices[1].label, themeChoices[2].label).Changed() {
+				s.desk.setTheme(themeChoices[s.themeSel].id)
+			}
+		})
 	})
-	ui.Text(c, "当前是「"+themeName(mode)+"」。跟随系统会跟着系统的浅色/深色设置走；另外两项是固定选择，切换立即生效。")
+	ui.Text(c, "当前是「"+themeName(mode)+"」。跟随系统会跟着系统的浅色/深色设置走；另外两项是固定选择，切换立即生效。").
+		FontSize(11).TextColor(t.TextMuted)
 }

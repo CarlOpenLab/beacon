@@ -34,7 +34,14 @@ func newTestHub(t *testing.T) *httptest.Server {
 type conn struct {
 	t    *testing.T
 	conn *websocket.Conn
+
+	// seen is everything this client has been sent as output, accumulated
+	// across waits, so a test can assert that a frame did NOT land.
+	seen strings.Builder
 }
+
+// saw is the output this client has been sent so far.
+func (c *conn) saw() string { return c.seen.String() }
 
 func dialTest(t *testing.T, ts *httptest.Server) *conn {
 	t.Helper()
@@ -106,6 +113,7 @@ func (c *conn) waitOutput(needle string) int64 {
 		m := c.recv()
 		if m.T == protocol.STOutput {
 			got.Write(m.Data)
+			c.seen.Write(m.Data)
 			if strings.Contains(got.String(), needle) {
 				return m.Cursor
 			}
@@ -192,8 +200,19 @@ func TestViewerCannotInputAndClaimPreempts(t *testing.T) {
 		t.Fatalf("viewer input error code is %q, want %q", e.Code, protocol.ErrNotController)
 	}
 
-	// Claiming takes control away from A, and A is told.
+	// A plain claim against a holder whose lease is live is refused, naming the
+	// holder: taking a shell from under someone is asked for, not assumed.
 	b.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1"})
+	held := b.waitFor("lease held", func(m protocol.Msg) bool { return m.T == protocol.STError })
+	if held.Code != protocol.ErrLeaseHeld {
+		t.Fatalf("claim against a live lease got %q, want %q", held.Code, protocol.ErrLeaseHeld)
+	}
+	if held.Message == "" {
+		t.Fatal("the refusal does not name the holder")
+	}
+
+	// Stealing takes control away from A, and A is told.
+	b.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1", Steal: true})
 	b.waitFor("role controller", func(m protocol.Msg) bool {
 		return m.T == protocol.STRole && m.Role == protocol.RoleController
 	})
@@ -201,17 +220,25 @@ func TestViewerCannotInputAndClaimPreempts(t *testing.T) {
 		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
 	})
 
-	a.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1", Data: []byte("echo NOPE\n")})
-	e2 := a.waitFor("a denied", func(m protocol.Msg) bool { return m.T == protocol.STError })
-	if e2.Code != protocol.ErrNotController {
-		t.Fatalf("demoted client error code is %q, want %q", e2.Code, protocol.ErrNotController)
-	}
-
+	// A's input now carries an epoch that is past: it is dropped rather than
+	// answered, because the role frame already told A it lost the shell. A
+	// frame at the current epoch from B lands.
+	epoch := b.waitFor("role with epoch", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController && m.Epoch > 0
+	}).Epoch
+	a.send(protocol.Msg{
+		T: protocol.CTInput, SessionID: "s1", Epoch: epoch - 1,
+		Data: []byte("printf 'FROM_A\\n' 1\n"),
+	})
 	b.send(protocol.Msg{
-		T: protocol.CTInput, SessionID: "s1",
+		T: protocol.CTInput, SessionID: "s1", Epoch: epoch,
 		Data: []byte("printf 'FROM_B\\n' 1\n"),
 	})
 	b.waitOutput("FROM_B")
+	// Nothing from A's stale frame may have landed: it would be on the screen.
+	if strings.Contains(b.saw(), "FROM_A") {
+		t.Fatal("input from the demoted holder landed after the handoff")
+	}
 }
 
 // printfMarker prints want without the typed command containing it. The PTY
@@ -305,4 +332,223 @@ func TestResizeRejectsZero(t *testing.T) {
 	if got := list.Sessions[0]; got.Cols != 100 || got.Rows != 30 {
 		t.Fatalf("reported size is %dx%d, want 100x30", got.Cols, got.Rows)
 	}
+}
+
+// ---- the lease ------------------------------------------------------------
+
+// newLeaseHub is a hub whose lease lapses in idle, so expiry can be observed
+// without waiting out the real timeout.
+func newLeaseHub(t *testing.T, idle time.Duration) *hub.Hub {
+	t.Helper()
+	return hub.New(hub.Options{
+		Host:        protocol.Host{Hostname: "test", Platform: "test", Arch: "test"},
+		IdleTimeout: idle,
+	})
+}
+
+// serveHub puts a hub behind a test server, as newTestHub does with the default
+// options.
+func serveHub(t *testing.T, h *hub.Hub) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// pipeConn drives the window's end of an in-process pipe with the same helpers
+// a socket client has.
+type pipeConn struct {
+	t    *testing.T
+	pipe *hub.Pipe
+	seen strings.Builder
+}
+
+func newPipeConn(t *testing.T, p *hub.Pipe) *pipeConn {
+	t.Helper()
+	return &pipeConn{t: t, pipe: p}
+}
+
+func (c *pipeConn) send(m protocol.Msg) {
+	c.t.Helper()
+	b, err := json.Marshal(m)
+	if err != nil {
+		c.t.Fatalf("marshal: %v", err)
+	}
+	if err := c.pipe.Send(b); err != nil {
+		c.t.Fatalf("send: %v", err)
+	}
+}
+
+func (c *pipeConn) recv() protocol.Msg {
+	c.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	b, err := c.pipe.Recv(ctx)
+	if err != nil {
+		c.t.Fatalf("recv: %v", err)
+	}
+	var m protocol.Msg
+	if err := json.Unmarshal(b, &m); err != nil {
+		c.t.Fatalf("unmarshal: %v", err)
+	}
+	return m
+}
+
+func (c *pipeConn) waitFor(what string, pred func(protocol.Msg) bool) protocol.Msg {
+	c.t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if m := c.recv(); pred(m) {
+			return m
+		}
+	}
+	c.t.Fatalf("timeout waiting for %s", what)
+	return protocol.Msg{}
+}
+
+func (c *pipeConn) waitOutput(needle string) {
+	c.t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	var got strings.Builder
+	for time.Now().Before(deadline) {
+		m := c.recv()
+		if m.T == protocol.STOutput {
+			got.Write(m.Data)
+			c.seen.Write(m.Data)
+			if strings.Contains(got.String(), needle) {
+				return
+			}
+		}
+	}
+	c.t.Fatalf("timeout waiting for %q in output; saw %q", needle, got.String())
+}
+
+// The machine's own client takes its shell back from a live remote holder with
+// no confirmation and no waiting for the lease to lapse: it is the machine's
+// shell, and the person sitting at it is never locked out of it.
+func TestOwnerClaimIsAlwaysHonoured(t *testing.T) {
+	h := newLeaseHub(t, time.Hour)
+	pipe := hub.NewPipe()
+	defer pipe.Close()
+	go h.ServeLocal(pipe.Local())
+
+	owner := newPipeConn(t, pipe)
+	remote := dialTest(t, serveHub(t, h))
+	remote.create("s1")
+	remote.waitFor("role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+
+	// The owner attaches as a viewer and claims. A remote client's claim
+	// against this holder would be refused; the owner's is not.
+	owner.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	owner.waitFor("attached", func(m protocol.Msg) bool { return m.T == protocol.STAttached })
+	owner.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1"})
+	role := owner.waitFor("owner controls", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	if role.Epoch == 0 {
+		t.Fatal("the role frame carries no epoch")
+	}
+	remote.waitFor("demoted", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
+	})
+
+	// And the owner's input lands at that epoch.
+	owner.send(protocol.Msg{
+		T: protocol.CTInput, SessionID: "s1", Epoch: role.Epoch,
+		Data: []byte("printf 'OWNED\\n' 1\n"),
+	})
+	owner.waitOutput("OWNED")
+}
+
+// A lease nobody renews lapses, and the shell is free for anyone to claim: a
+// controller whose network died cannot hold a shell forever.
+func TestLeaseExpiresAndTheShellIsFree(t *testing.T) {
+	h := newLeaseHub(t, 120*time.Millisecond)
+	ts := serveHub(t, h)
+
+	a := dialTest(t, ts)
+	a.create("s1")
+	a.waitFor("role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+
+	// A viewer arrives while the lease is live, and its plain claim is refused.
+	b := dialTest(t, ts)
+	b.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	b.waitFor("attached", func(m protocol.Msg) bool { return m.T == protocol.STAttached })
+	b.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1"})
+	if e := b.waitFor("held", func(m protocol.Msg) bool { return m.T == protocol.STError }); e.Code != protocol.ErrLeaseHeld {
+		t.Fatalf("claim got %q, want %q", e.Code, protocol.ErrLeaseHeld)
+	}
+
+	// The lease lapses, the janitor releases it, and the same claim is
+	// honoured without a steal.
+	time.Sleep(150 * time.Millisecond)
+	h.Reap()
+	b.waitFor("told the lease is free", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer && m.Controller == ""
+	})
+	b.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1"})
+	role := b.waitFor("controller after expiry", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	if role.Epoch < 2 {
+		t.Fatalf("epoch after a handoff is %d, want it to have moved", role.Epoch)
+	}
+	b.send(protocol.Msg{
+		T: protocol.CTInput, SessionID: "s1", Epoch: role.Epoch,
+		Data: []byte("printf 'AFTER\\n' 1\n"),
+	})
+	b.waitOutput("AFTER")
+}
+
+// The janitor releases a lapsed lease and leaves a live one alone. The live
+// case is the one that matters: a janitor that dropped held leases would hand
+// every shell to whoever asked next, lease or no lease.
+func TestJanitorLeavesALiveLeaseAlone(t *testing.T) {
+	h := newLeaseHub(t, time.Hour)
+	ts := serveHub(t, h)
+
+	a := dialTest(t, ts)
+	a.create("s1")
+	a.waitFor("role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+
+	h.Reap()
+	// Still the controller, and no role frame saying otherwise arrived.
+	a.send(protocol.Msg{T: protocol.CTList, ReqID: "after-reap"})
+	list := a.waitFor("list", func(m protocol.Msg) bool {
+		return m.T == protocol.STSessions && m.ReqID == "after-reap"
+	})
+	if len(list.Sessions) != 1 || list.Sessions[0].Controller == "" {
+		t.Fatalf("the live lease was dropped: %+v", list.Sessions)
+	}
+
+	// A session nobody holds — its holder detached, leaving a watcher behind — is
+	// not something the janitor has to release, and it must not panic on it
+	// either. The watcher left behind is told the lease is free, as it is when
+	// a holder's connection drops.
+	watcher := dialTest(t, ts)
+	watcher.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	watcher.waitFor("attached", func(m protocol.Msg) bool { return m.T == protocol.STAttached })
+	a.send(protocol.Msg{T: protocol.CTDetach, SessionID: "s1"})
+	watcher.waitFor("told the lease is free", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer && m.Controller == ""
+	})
+	h.Reap()
+
+	// A lapsed one goes.
+	h2 := newLeaseHub(t, time.Millisecond)
+	ts2 := serveHub(t, h2)
+	b := dialTest(t, ts2)
+	b.create("s1")
+	b.waitFor("role", func(m protocol.Msg) bool { return m.T == protocol.STRole })
+	time.Sleep(20 * time.Millisecond)
+	h2.Reap()
+	b.waitFor("told it lost the shell", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer && m.Controller == ""
+	})
 }

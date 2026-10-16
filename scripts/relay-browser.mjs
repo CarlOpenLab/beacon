@@ -95,6 +95,16 @@ class Page {
     page.targetId = target.id
     await page.cdp('Runtime.enable')
     await page.cdp('Page.enable')
+    // Installed before navigation so the app's own code sees it: taking a shell
+    // from a live holder is confirmed, and a modal dialog would otherwise block
+    // the page. What it asked is recorded, so a check can assert the question
+    // named the holder.
+    await page.cdp('Page.addScriptToEvaluateOnNewDocument', {
+      source: `
+        window.__confirmed = [];
+        window.confirm = (message) => { window.__confirmed.push(String(message)); return true; };
+      `,
+    })
     if (mobile) {
       // Both halves matter: the metrics produce the narrow layout, the media
       // feature produces `(pointer: coarse)`, which is what decides whether the
@@ -387,7 +397,9 @@ try {
   await sleep(900)
   check('a touch key is ignored while the phone is read-only', !(await phone.rows()).includes('~'))
 
-  // Taking over from the phone must work, and must demote the desktop.
+  // Taking over from the phone must work, and must demote the desktop. It asks
+  // first — taking a shell from under someone is a thing a person asks for — so
+  // the dialog is answered here and what it asked is checked below.
   await phone.evaluate(`
     (() => {
       const b = [...document.querySelectorAll('.tf-banner button')].find((x) => x.textContent === '接管')
@@ -395,6 +407,9 @@ try {
       return Boolean(b)
     })()
   `)
+  await waitFor('the steal to be confirmed', async () => (await phone.evaluate(`window.__confirmed ?? []`)).length > 0)
+  const asked = await phone.evaluate(`window.__confirmed ?? []`)
+  check('接管前会确认，并说明从谁手里接管', asked.length === 1 && /c\d/.test(asked[0]), JSON.stringify(asked))
   await waitFor('the phone to hold control', async () => {
     const s = await phone.evaluate(`document.querySelector('.tf-status')?.textContent ?? ''`)
     return s.includes('控制中')
