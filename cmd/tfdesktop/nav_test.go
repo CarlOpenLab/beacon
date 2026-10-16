@@ -23,9 +23,10 @@ func newTestShellWindow(t *testing.T, titles ...string) (*window, string) {
 	return w, dir
 }
 
-// drawRail draws the rail the way the window's view draws it: the appearance
-// comes from the store and the labels from the shells that are open.
-func drawRail(t *testing.T, w *window) *ui.Tester {
+// drawNav draws the window's navigation the way its view draws it: the strip of
+// controls, and the column of shells beside it. The appearance comes from the
+// store and the labels from the shells that are open.
+func drawNav(t *testing.T, w *window) *ui.Tester {
 	t.Helper()
 	return ui.NewTester(func(c *ui.Context) {
 		mode := w.store.Get().Theme
@@ -36,18 +37,22 @@ func drawRail(t *testing.T, w *window) *ui.Tester {
 				labels = append(labels, tb.label())
 			}
 		}
+		w.activityRail(c, mode)
 		w.sidebar(c, labels, mode)
-	}, railWidth, 420)
+	}, activityWidth+sidebarWidth, 420)
 }
 
 func TestSidebarListsTheOpenShellsAndPicksOne(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one", "two")
-	tt := drawRail(t, w)
+	tt := drawNav(t, w)
 
-	for _, want := range []string{"one", "two", "设置"} {
+	for _, want := range []string{"one", "two"} {
 		if !tt.HasText(want) {
-			t.Fatalf("the rail does not show %q; it shows %v", want, tt.Texts())
+			t.Fatalf("the column does not show %q; it shows %v", want, tt.Texts())
 		}
+	}
+	if _, ok := tt.Find("设置"); !ok {
+		t.Fatalf("the strip has no settings entry")
 	}
 
 	if err := tt.Click("two"); err != nil {
@@ -66,11 +71,11 @@ func TestSidebarListsTheOpenShellsAndPicksOne(t *testing.T) {
 
 func TestSidebarAppearanceSwitchesTheThemeAndSavesIt(t *testing.T) {
 	w, dir := newTestShellWindow(t)
-	tt := drawRail(t, w)
+	tt := drawNav(t, w)
 	tt.SetDark(false) // the system is showing its light appearance
 
 	light := tt.Image().RGBAAt(2, 2)
-	if !tt.HasText("切换到暗黑") {
+	if _, ok := tt.Find("切换到暗黑"); !ok {
 		t.Fatalf("a light shell should offer the dark switch; it shows %v", tt.Texts())
 	}
 	if err := tt.Click("切换到暗黑"); err != nil {
@@ -89,7 +94,7 @@ func TestSidebarAppearanceSwitchesTheThemeAndSavesIt(t *testing.T) {
 	if dark := tt.Image().RGBAAt(2, 2); dark == light {
 		t.Fatalf("the frame kept the old appearance: %v", dark)
 	}
-	if !tt.HasText("切换到白天") {
+	if _, ok := tt.Find("切换到白天"); !ok {
 		t.Fatalf("a dark shell should offer the light switch; it shows %v", tt.Texts())
 	}
 	if err := tt.Click("切换到白天"); err != nil {

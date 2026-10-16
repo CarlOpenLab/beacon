@@ -97,29 +97,13 @@ func (w *window) view(c *ui.Context) {
 	mode := w.store.Get().Theme
 	applyTheme(c, mode)
 
-	ui.Row(c).Fill().Children(func() {
+	ui.Row(c).Fill().Background(c.Theme().Background).Children(func() {
+		w.activityRail(c, mode)
 		w.sidebar(c, labels, mode)
 		ui.Column(c).Fill().Children(func() {
-			ui.Toolbar(c, func() {
-				if ui.Button(c, "新建标签页").Clicked() {
-					go w.create()
-				}
-				if len(labels) > 0 {
-					if ui.Button(c, "关闭标签页").Clicked() {
-						go w.kill(w.activeID())
-					}
-				}
-				ui.Spacer(c)
-				ui.Text(c, w.serviceLabel())
-			})
-
-			if len(labels) == 0 {
-				ui.Text(c, "还没有终端，先在左侧点「新建标签页」。")
-				return
-			}
-			if tb := w.tabs[w.order[w.selected]]; tb != nil {
-				terminal.View(c, tb.term).Fill().AutoFocus()
-			}
+			w.header(c, labels)
+			w.body(c, labels)
+			w.statusBar(c)
 		})
 	})
 }
@@ -238,6 +222,9 @@ func (w *window) mount(s protocol.Summary) (*tab, error) {
 		// The font saved in settings, so a tab opened after a change — or on a
 		// later run — is lettered the same as the ones already on screen.
 		Font: w.font,
+		// The shell's own colours, so the pane belongs to the window around it.
+		Theme:     terminalTheme(false),
+		DarkTheme: terminalTheme(true),
 	})
 	if err != nil {
 		_ = tb.conn.Close()

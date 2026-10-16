@@ -60,9 +60,9 @@ func themeName(mode string) string {
 func themeFor(mode string) *ui.Theme {
 	switch normalizeTheme(mode) {
 	case themeLight:
-		return ui.LightTheme()
+		return lightTheme()
 	case themeDark:
-		return ui.DarkTheme()
+		return darkTheme()
 	}
 	return nil
 }

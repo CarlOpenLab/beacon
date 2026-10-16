@@ -12,6 +12,13 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
   keeps the sheet's dark tile, the README logo and the web favicon keep the white
   tile with dark ink. `resources/logo.svg` and `web/public/favicon.svg` are gone
   in favour of `favicon.png`.
+- The desktop window has a palette of its own — the navy ground, the violet for
+  what is chosen and the green for what is live — instead of the ui's default
+  greys, and the terminal is themed in the same palette rather than its own.
+- The window is now a 56px strip (the mark, `切换到白天/暗黑`, `设置`, and the
+  service's state at the bottom), a header naming the shell on screen with
+  `新建标签页` / `关闭标签页`, and a bottom line naming the service and the build.
+  The column is left to the shells alone.
 - `docs/takeover.md`: taking over a shell on another machine — one writer with an
   epoch'd lease, the glow and 拿回控制权 popover, and input under latency.
 

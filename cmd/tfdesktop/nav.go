@@ -6,65 +6,86 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// The rail's selection is an id rather than a tab index: shells come and go
-// underneath it, and the appearance and settings entries are ids as well, so
-// one string carries the whole selection.
+// The rail's selection is the id of the shell on screen, prefixed so that one
+// field can carry what the column of shells asked for.
 const (
 	railTabPrefix = "tab:"
-	railTheme     = "action:appearance"
-	railSettings  = "action:settings"
 
-	// railWidth leaves room for a shell title and the appearance entry.
-	railWidth = 200
+	// sidebarWidth fits a shell's label and where it is working.
+	sidebarWidth = 216
 )
 
-// sidebar draws the navigation rail: the shells this window has open, the
-// appearance switch and the way into the settings window. It is rebuilt from
-// the window's own state on every frame, so a shell that appears — started
-// here, or taken over from another machine later — shows up as soon as its tab
-// does.
+// sidebar draws the column of shells, the one place a shell is chosen. It is
+// rebuilt from the window's own state on every frame, so a shell that appears —
+// started here, or taken over from another machine later — shows up as soon as
+// its tab does.
 func (w *window) sidebar(c *ui.Context, labels []string, mode string) {
-	// Seed the selection with the shell that is on screen. A click lands in the
-	// same field while the rail is being drawn, which is why the field is window
-	// state and not a local: railAction below reads it back in the same frame.
-	w.rail = ""
-	if id := w.activeID(); id != "" {
-		w.rail = railTabPrefix + id
+	t := c.Theme()
+	col := shellColorsFor(t)
+
+	// The column draws with the window's selection field and that field is never
+	// seeded here: the click that changes the selection is written into the very
+	// pointer the column was registered with, so overwriting it before the click
+	// is read back would swallow the click. When the field names a shell that is
+	// still open it *is* the window's idea of the shell on screen.
+	if w.indexOfTab(strings.TrimPrefix(w.rail, railTabPrefix)) < 0 {
+		w.rail = ""
+		if id := w.activeID(); id != "" {
+			w.rail = railTabPrefix + id
+		}
 	}
 
 	rail := ui.Sidebar(c, &w.rail, func() {
-		if len(labels) > 0 {
-			ui.SidebarSection(c, "会话", nil, func() {
-				for i, id := range w.order {
-					ui.SidebarItem(c, railTabPrefix+id, nil, labels[i])
+		ui.SidebarSection(c, "会话", nil, func() {
+			if len(labels) == 0 {
+				ui.Text(c, "还没有终端").FontSize(12).TextColor(t.TextMuted)
+				return
+			}
+			shown := 0
+			for _, id := range w.order {
+				if w.tabs[id] == nil {
+					continue
 				}
-			})
-		}
-		ui.SidebarSection(c, "外观", nil, func() {
-			ui.SidebarItem(c, railTheme, nil, themeActionLabel(mode, c.Theme().Dark))
+				label := id
+				if shown < len(labels) {
+					label = labels[shown]
+				}
+				shown++
+				ui.SidebarItem(c, railTabPrefix+id, iconTerminal, label)
+			}
 		})
-		ui.SidebarSection(c, "应用", nil, func() {
-			ui.SidebarItem(c, railSettings, nil, "设置")
-		})
-	}).Width(railWidth)
+	}).
+		Width(sidebarWidth).FillHeight().
+		Background(col.pane).
+		BorderWidth(0, 1, 0, 0).BorderColor(col.hairline)
 
-	if rail.Changed() {
+	switch {
+	case rail.Changed():
 		w.railAction(c, mode)
+	case w.rail != w.selectionID():
+		// The shell on screen changed somewhere else — one was opened or closed, or
+		// a shell was taken over — so the column follows it on the next frame.
+		w.rail = w.selectionID()
 	}
 }
 
-// railAction runs what the rail just asked for. It only runs on the frame that
-// changed the selection, which is also the frame the click set w.rail.
+// selectionID is the column's id for the shell on screen, or "" for none.
+func (w *window) selectionID() string {
+	if id := w.activeID(); id != "" {
+		return railTabPrefix + id
+	}
+	return ""
+}
+
+// railAction runs what the column asked for. A click was written into the
+// selection field while the column was being drawn, and the column reports it in
+// the same frame, so the choice takes effect at once.
 func (w *window) railAction(c *ui.Context, mode string) {
-	switch {
-	case w.rail == railSettings:
-		go w.openSettings()
-	case w.rail == railTheme:
-		w.setTheme(flipTheme(mode, c.Theme().Dark))
-	case strings.HasPrefix(w.rail, railTabPrefix):
-		if i := w.indexOfTab(strings.TrimPrefix(w.rail, railTabPrefix)); i >= 0 {
-			w.selected = i
-		}
+	if !strings.HasPrefix(w.rail, railTabPrefix) {
+		return
+	}
+	if i := w.indexOfTab(strings.TrimPrefix(w.rail, railTabPrefix)); i >= 0 {
+		w.selected = i
 	}
 }
 
