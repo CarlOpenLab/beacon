@@ -1,6 +1,7 @@
 package main
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/egoist/mygo"
@@ -27,4 +28,46 @@ func TestAppMenuAsksForTheUpdaterItemWithoutThePlugin(t *testing.T) {
 	if asked != 1 {
 		t.Errorf("appMenu asked for the 检查更新… item %d times, want 1", asked)
 	}
+}
+
+// appMenu is only worth having if something installs it: on macOS the bar mygo
+// draws by default has no room for 检查更新…, and the app called appMenu from
+// nowhere. This fails if that wiring is dropped again.
+func TestInstallMenuPutsTheUpdaterItemOnTheBar(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("mygo draws a menu bar on macOS only")
+	}
+
+	old := updaterMenuItem
+	t.Cleanup(func() { updaterMenuItem = old })
+	updaterMenuItem = func() *mygo.MenuItem {
+		return &mygo.MenuItem{Label: "检查更新…"}
+	}
+
+	installMenu(&window{})
+
+	m := mygo.App.Menu()
+	if m == nil {
+		t.Fatal("installMenu left the app without a menu")
+	}
+	if !menuHasLabel(m.Items(), "检查更新…") {
+		t.Errorf("installed menu bar has no 检查更新… item: %v", labelsOf(m.Items()))
+	}
+}
+
+func menuHasLabel(items []*mygo.MenuItem, label string) bool {
+	for _, it := range items {
+		if it.Label == label || menuHasLabel(it.Submenu, label) {
+			return true
+		}
+	}
+	return false
+}
+
+func labelsOf(items []*mygo.MenuItem) []string {
+	var out []string
+	for _, it := range items {
+		out = append(out, it.Label)
+	}
+	return out
 }

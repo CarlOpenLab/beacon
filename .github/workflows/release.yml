@@ -153,7 +153,9 @@ jobs:
       # universal only: the DMG is named "<name> <version>.dmg" without the arch,
       # so building arm64 and amd64 side by side would produce colliding assets.
       - name: Build the app bundle and disk image
-        run: go tool mygo build -platform darwin/universal
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: go tool mygo build -platform darwin/universal -upload
 
       - name: Upload
         env:
@@ -237,7 +239,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y nsis
 
       - name: Build the installer and the portable executable
-        run: go tool mygo build -platform windows/amd64
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: go tool mygo build -platform windows/amd64 -upload
 
       - name: Upload
         env:

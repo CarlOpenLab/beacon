@@ -106,6 +106,9 @@ func main() {
 			mygo.App.Quit()
 		})
 		app.win = win
+		// After the window exists and the loop is up: the updater item asks the
+		// plugin, and the menu's 设置… item reopens this window.
+		installMenu(app)
 		go app.watch(win)
 		// Open with one shell, as a terminal app does.
 		go app.create()

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"runtime"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
 )
@@ -19,6 +21,13 @@ var updaterMenuItem = func() *mygo.MenuItem { return updater.MenuItem() }
 //
 // Elsewhere the 更新 pane's 检查更新… button is the way in, and no menu bar
 // appears that was not there before.
+func installMenu(w *window) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	mygo.App.SetMenu(appMenu(w))
+}
+
 func appMenu(w *window) *mygo.Menu {
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Label: "term-fleet", Submenu: []*mygo.MenuItem{
