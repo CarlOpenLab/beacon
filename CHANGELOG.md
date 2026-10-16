@@ -2,6 +2,57 @@
 
 Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
+`## <version>`.
+
+## 0.4.2
+
+**Desktop app**
+
+- Fixed the window mixing up shells from different machines: frames were routed
+  to a tab by session id alone, and session ids are counted per machine — every
+  machine has an `s1`. A window driving another machine at the same time as it
+  held shells of its own could hand one shell's role frame, exit or close to the
+  other shell's tab, which moved the lease marks, the glow and the tab itself.
+  Frames are matched by the session object now, and a test drives two desktops
+  against each other to hold that.
+- The glow around a shell another client is driving is MyGo's shader now: the
+  ring from `examples/chat-glow`, compiled for the renderer in front of the
+  window and interpreted on the CPU where there is none. The stroked-ring
+  approximation it replaces is gone, so the previews show the window as it is
+  rather than an impression of it. (`github.com/egoist/mygo` v0.4.8 → v0.5.5.)
+- The 机器 panel no longer lists this machine twice. The roster is keyed by the
+  device id a machine was enrolled under and the window knows itself by hostname,
+  so a machine on a relay showed up as 本机 and again as another machine with its
+  own shells — which offered to open its own shells over the relay.
+- 服务 → 允许被控制 is the machine's answer to "who may drive my shells". Being
+  enrolled with a relay is the consent, so the switch starts on; off, other
+  clients — a browser, a phone, another machine — watch and nothing more: no
+  lease, no new shells, and a holder that is not this machine's window loses the
+  shell in the frame the switch moves. The machine's own window is never
+  refused. `tfd` gets the same switch as `-allow-control=false`, and a claim that
+  is refused says `control_off` rather than being dropped: the browser client
+  shows why and keeps its offer to take control, so a machine that turns it back
+  on needs no reload.
+- 设置 → 远程 has the 客户端令牌 field that the 0.4.0 notes already promised: the
+  token had nowhere to be typed, so the window's second link — the one that makes
+  the 机器 panel list anything but this machine — could never come up, and the
+  panel told people to fill in a control that was not on the form at all. The
+  field names itself after the browser's 访问令牌 prompt, its own line says
+  whether the link is up or still waiting for 应用, and the panel stops promising
+  machines that cannot appear.
+- A machine the window cannot reach says why. `openTab` used to fall back to the
+  local hub and attach a remote session id to it, which opened a tab that showed
+  nothing and explained nothing; it now declines the tab, and the panel carries
+  the reason under the machines.
+- A shell another client takes over says so at the moment it happens: the panel
+  that names the holder and offers 拿回控制权 opens by itself, and so does the one
+  a person gets by typing into a shell that is not theirs — the hub already
+  answers a refused keystroke loudly, and now the window says it where the typing
+  went instead of only in the log. The header carries the same offer, and the
+  机器 panel counts the shells on this machine that other clients are driving, so
+  "why is my keyboard not working?" has an answer that does not depend on
+  noticing a glow on the pane's edge.
+
 ## 0.4.1
 
 - Fixed three data races the Linux race detector found in the code that reaches
