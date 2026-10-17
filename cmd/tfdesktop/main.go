@@ -43,7 +43,7 @@ func main() {
 	shell := flag.String("shell", "",
 		"shell to run in new tabs (default: the login shell)")
 	cwd := flag.String("cwd", "",
-		"working directory for new tabs (default: the process working directory)")
+		"working directory for new tabs (default: this machine's home directory)")
 	flag.Parse()
 
 	// Ctrl-C in a terminal, or the signal a service manager sends, shuts the

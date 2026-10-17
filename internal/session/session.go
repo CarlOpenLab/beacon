@@ -57,18 +57,21 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 		rows = 24
 	}
 	path, args := shellCommand(shell)
+	dir := startDir(cwd)
 	spec := ptySpec{
 		path: path,
 		args: args,
 		env:  append(os.Environ(), "TERM=xterm-256color"),
-		dir:  cwd,
+		dir:  dir,
 	}
 	pty, err := startPTY(spec, cols, rows)
 	if err != nil {
 		return nil, fmt.Errorf("start pty: %w", err)
 	}
-	if cwd == "" {
-		cwd, _ = os.Getwd()
+	if dir == "" {
+		// No home directory to open in: the shell landed wherever this process
+		// is, which is what the summary then reports.
+		dir, _ = os.Getwd()
 	}
 	s := &Session{
 		ID:        id,
@@ -79,7 +82,7 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 		pty:       pty,
 		cols:      cols,
 		rows:      rows,
-		cwd:       cwd,
+		cwd:       dir,
 		pid:       pty.PID(),
 		alive:     true,
 		shell:     path,
@@ -87,6 +90,23 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 	go s.pump()
 	go s.wait()
 	return s, nil
+}
+
+// startDir is where a new shell opens when the client did not say where: this
+// machine's home directory. The process's own working directory is not a place
+// anyone chose — the desktop app is started by the window server, where it is
+// the root of the filesystem — and a terminal that opens at / is a terminal to
+// leave again. A client that did say where keeps its answer, and a machine with
+// no home directory keeps the old behaviour.
+func startDir(cwd string) string {
+	if cwd != "" {
+		return cwd
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 
 // Changes is signalled whenever new output lands in the ring. Signals are
