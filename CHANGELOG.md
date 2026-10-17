@@ -4,6 +4,17 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.8
+
+**Desktop app**
+
+- Fixed a race on the relay client's roster callback. The window hands the fleet
+  link the place its roster goes, and the link's read loop reads it as frames
+  arrive: a window opening while the relay was already pushing a roster read and
+  wrote the same field from two goroutines. It is guarded now, both where it is
+  set and where it is called, so 设置 → 远程 → 应用 on a live link cannot race an
+  arriving roster frame.
+
 ## 0.4.7
 
 **Desktop app**
