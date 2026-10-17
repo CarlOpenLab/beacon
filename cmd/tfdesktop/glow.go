@@ -123,15 +123,19 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 			ui.Text(c, holder+" 正在控制这个终端").FontSize(13)
 			ui.Text(c, "你的输入不会送进 shell。").
 				FontSize(11).TextColor(t.TextMuted)
+			take := "拿回控制权"
 			if steal {
-				ui.Text(c, "拿回时会通知对方。").
+				// Another machine's shell: this window never had it, so it is
+				// taken rather than taken back, and the holder is told.
+				take = "接管"
+				ui.Text(c, "接管会通知对方，对方会变成只读。").
 					FontSize(11).TextColor(t.TextMuted)
 			}
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 				if ui.Button(c, "保持只读").Clicked() {
 					*open = false
 				}
-				if ui.PrimaryButton(c, "拿回控制权").Clicked() {
+				if ui.PrimaryButton(c, take).Clicked() {
 					reclaim()
 					*open = false
 				}

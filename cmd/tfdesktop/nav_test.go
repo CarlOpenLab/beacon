@@ -26,7 +26,7 @@ func newTestShellWindow(t *testing.T, titles ...string) (*window, string) {
 	}
 	for i, title := range titles {
 		id := fmt.Sprintf("s%d", i+1)
-		w.tabs[i+1] = &tab{id: id, title: title, ordinal: i + 1}
+		w.tabs[i+1] = &tab{id: id, machine: machineLocal, title: title, ordinal: i + 1}
 		w.order = append(w.order, i+1)
 	}
 	return w, dir
@@ -493,5 +493,45 @@ func TestSwitchingShellsWithTheKeyboard(t *testing.T) {
 	tt.Frame()
 	if w.activeTab() != w.tabs[3] {
 		t.Fatalf("⌘⇧[ from the first shell did not come round to the last")
+	}
+}
+
+// The 会话 panel lists the picked machine's shells and no others. A tab on
+// another machine used to be a row in this machine's list — it looked like one
+// of this machine's shells — and picking it moved the panels to that machine,
+// which reads as switching tabs landing somewhere else entirely.
+func TestTheSessionPanelListsOnlyThePickedMachinesShells(t *testing.T) {
+	w, _ := newTestShellWindow(t, "local one", "local two")
+	w.fleet = newTestFleet(t)
+	w.roster = []tunnel.Machine{{
+		ID: "other-box", Name: "other box", Online: true,
+		Host: protocol.Host{Platform: "linux", Arch: "amd64"},
+	}}
+	w.remoteSessions = map[string][]protocol.Summary{
+		"other-box": {{SessionID: "s7", Title: "on other box", Cols: 120, Rows: 40, Alive: true}},
+	}
+	remote := &tab{id: "s7", machine: "other-box", title: "on other box", ordinal: 3}
+	w.tabs[3] = remote
+	w.order = append(w.order, 3)
+
+	labels := func() []string {
+		var out []string
+		for _, e := range w.sessionEntries() {
+			out = append(out, e.label)
+		}
+		return out
+	}
+
+	// This machine picked: its own two shells, and not the one on the other
+	// machine, even though this window has a tab for it.
+	w.machineSel = machineLocal
+	if got := labels(); len(got) != 2 || got[0] != "local one" || got[1] != "local two" {
+		t.Fatalf("this machine's list = %v, want its own two shells", got)
+	}
+
+	// The other machine picked: its shell, and only it.
+	w.machineSel = "other-box"
+	if got := labels(); len(got) != 1 || got[0] != "on other box" {
+		t.Fatalf("the other machine's list = %v, want the shell it is running", got)
 	}
 }

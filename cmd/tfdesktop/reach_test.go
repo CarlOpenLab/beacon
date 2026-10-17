@@ -118,8 +118,9 @@ func TestWindowTakesOverAnotherMachinesShell(t *testing.T) {
 		return len(w.remoteSessions["member-2"]) == 1
 	})
 
-	// The window opens a tab on that shell. It arrives as a viewer — the shell
-	// is unclaimed, so the first watcher takes it — and its output shows.
+	// The window opens a tab on that shell, and drives it: reaching a machine is
+	// the consent, so the tab comes with the lease and the shell's own machine
+	// goes read-only.
 	l := w.remoteLink("member-2")
 	if l == nil {
 		t.Fatal("no link to the other machine")
@@ -286,8 +287,9 @@ func TestTakeoverAcrossMachines(t *testing.T) {
 		return m.T == protocol.STRole && m.Role == protocol.RoleController
 	})
 
-	// This window opens a tab on that shell. It arrives as a viewer, and the
-	// chrome says so: the holder is named, and this window does not hold.
+	// This window opens a tab on that shell, and the tab drives it: the lease
+	// comes with the tab, so the machine whose shell it is is the one that ends
+	// up read-only, with the glow and 拿回控制权 on its side.
 	w.lookAtMachine("member-2")
 	waitFor(t, "the other machine's session list", 20*time.Second, func() bool {
 		w.drain()
@@ -299,44 +301,43 @@ func TestTakeoverAcrossMachines(t *testing.T) {
 		return false
 	})
 	tb := w.openTab("member-2", shell)
-	waitFor(t, "the lease as a viewer", 20*time.Second, func() bool {
-		w.drain()
-		return tb.holder() != "" && !tb.held()
-	})
 
-	// A viewer's keys go nowhere: the conn takes them and drops them, so the
-	// shell never sees a keystroke it should not have.
-	tb.conn.Write([]byte("printf 'VIEWER_TYPED\\n' 1\n"))
-	time.Sleep(300 * time.Millisecond)
-	if strings.Contains(tb.term.Text(), "VIEWER_TYPED") {
-		t.Fatal("a viewer's keystrokes reached the shell")
-	}
-
-	// Stealing takes it, and the other machine's window is told it lost it.
-	tb.conn.claiming(true)
-	waitFor(t, "the lease after stealing", 20*time.Second, func() bool {
+	// The tab drives the shell: the lease comes with it, so the machine whose
+	// shell it is is told it is not the one typing any more.
+	waitFor(t, "the lease on the shell this window opened", 20*time.Second, func() bool {
 		w.drain()
 		return tb.held()
 	})
 	owner.waitFor("the owner is demoted", func(m protocol.Msg) bool {
 		return m.T == protocol.STRole && m.Role == protocol.RoleViewer && m.Controller != ""
 	})
-	tb.conn.Write([]byte("printf 'STOLEN_AND_TYPED\\n' 1\n"))
-	waitFor(t, "the shell echoing the new holder", 20*time.Second, func() bool {
+
+	// The keys of the window that holds the lease reach the shell — on another
+	// machine, under that machine's arbitration.
+	tb.conn.Write([]byte("printf 'DRIVEN_FROM_HERE\n' 1\n"))
+	waitFor(t, "the remote shell echoing its driver", 20*time.Second, func() bool {
 		w.drain()
-		return strings.Contains(tb.term.Text(), "STOLEN_AND_TYPED")
+		return strings.Contains(tb.term.Text(), "DRIVEN_FROM_HERE")
 	})
 
-	// And the machine whose shell it is takes it back, with no confirmation:
-	// the hub honours its own window's claim over anyone else's.
+	// The machine whose shell it is takes it back, with no confirmation: the hub
+	// honours its own window's claim over anyone else's. Taking a shell back ends
+	// the driver's connection to that machine — the tab goes, the link goes, the
+	// panels come home, and the window says who did it.
 	owner.send(protocol.Msg{T: protocol.CTClaim, SessionID: shell})
-	waitFor(t, "the owner has it back", 20*time.Second, func() bool {
+	waitFor(t, "the tab to go when the machine takes its shell back", 20*time.Second, func() bool {
 		w.drain()
-		return tb.holder() != "" && !tb.held()
+		return w.tabOf("member-2", shell) == nil
 	})
-	owner.waitFor("the owner holds it again", func(m protocol.Msg) bool {
-		return m.T == protocol.STRole && m.Role == protocol.RoleController
-	})
+	if _, open := w.remote["member-2"]; open {
+		t.Error("the link to the machine that took its shell back is still open")
+	}
+	if got := w.selectedMachine(); got != machineLocal {
+		t.Errorf("the panels are on %q after being disconnected, want this machine", got)
+	}
+	if notice := w.currentNotice(); !strings.Contains(notice, w.machineName("member-2")) {
+		t.Errorf("notice = %q, want it to name the machine that took its shell back", notice)
+	}
 }
 
 // Two desktops, one relay: the pair the report was about. Each machine is a
@@ -344,10 +345,10 @@ func TestTakeoverAcrossMachines(t *testing.T) {
 // up the way a person sets one up — the address and the client token on the 远程
 // pane, then 应用 — and each drives a shell on the other.
 //
-// The shell on a machine is its own window's to hold, so the far side arrives
-// read-only and takes it back with 拿回控制权: the same steal a browser asks for,
-// answered by the machine that owns the shell, which is what the glow and the
-// popover are for.
+// The window that opens a shell on another machine drives it — reaching a machine
+// is the consent — so the machine whose shell it is goes read-only behind the
+// glow and takes it back with 拿回控制权: the hub always honours the machine the
+// shell runs on, and taking it back ends the driver's connection to that machine.
 func TestTwoDesktopsDriveEachOther(t *testing.T) {
 	url, alphaID, alphaSecret, betaID, betaSecret := twoDeskRelay(t)
 	alpha, alphaDesk := deskFleet(t, url, alphaID, alphaSecret)
@@ -393,8 +394,9 @@ func TestTwoDesktopsDriveEachOther(t *testing.T) {
 			return tb != nil && tb.held()
 		})
 
-		// The other desktop picks that machine in the panel and opens the shell:
-		// read-only, because the shell is the far machine's own window's.
+		// The other desktop picks that machine in the panel and opens the shell.
+		// Opening it takes the lease, so what is left behind is a machine whose
+		// own window can only watch.
 		entry, ok := side.w.machineByID(side.target)
 		if !ok {
 			t.Fatalf("%s does not know %s", side.who, side.target)
@@ -412,9 +414,8 @@ func TestTwoDesktopsDriveEachOther(t *testing.T) {
 			t.Fatalf("%s: no tab for the shell on %s", side.who, side.target)
 		}
 
-		// 拿回控制权: the far machine is told in the same frame, and the glow and
-		// the popover that say "not yours right now" are what it gets.
-		side.w.reclaim(tb)
+		// The far machine is told in the same frame, and the glow and the popover
+		// that say "not yours right now" are what it gets.
 		waitFor(t, side.who+": the lease", 20*time.Second, func() bool {
 			side.w.drain()
 			return tb.held()

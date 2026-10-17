@@ -615,6 +615,19 @@ func (w *window) openTab(machine, sessionID string) *tab {
 	if sessionID != "" {
 		sess.bind(sessionID)
 		l.attach(sessionID, 0)
+		if machine != machineLocal {
+			// Reaching a machine is the consent — the relay handed this window a
+			// control token for it — and a tab here is opened to drive what it
+			// watches, so the lease comes with the tab. Without this the window
+			// arrived as a spectator of a shell it had just asked to work in: the
+			// machine's own window kept the lease, and this one sat read-only
+			// behind a glow that said someone else was typing.
+			//
+			// The machine whose shell it is goes read-only and says so — the
+			// glow, 正在被控制, and 拿回控制权, which the hub always honours for
+			// the machine the shell runs on.
+			l.claim(sessionID, true)
+		}
 	} else {
 		// The hub's answer names this session; until it arrives the link holds
 		// the tab's place.

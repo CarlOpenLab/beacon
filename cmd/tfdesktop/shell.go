@@ -179,7 +179,13 @@ func (w *window) header(c *ui.Context, labels []string) {
 					ui.Box(c).Size(8, 8).Radius(4).Background(t.Warning)
 					ui.Text(c, holder+" 正在控制").FontSize(11).TextColor(t.Warning)
 				})
-				if ui.Button(c, "拿回控制权").Clicked() {
+				// This machine's own shell is taken back; another machine's was
+				// never this window's to begin with, so it is taken over.
+				take := "拿回控制权"
+				if tb.machine != machineLocal {
+					take = "接管"
+				}
+				if ui.Button(c, take).Clicked() {
 					w.reclaim(tb)
 				}
 			})

@@ -147,7 +147,10 @@ func (w *window) sessionEntries() []sessionEntry {
 		out := make([]sessionEntry, 0, len(w.order))
 		for _, key := range w.order {
 			tb := w.tabs[key]
-			if tb == nil {
+			if tb == nil || tb.machine != machineLocal {
+				// A shell on another machine is a row of *that* machine's panel:
+				// listing it here would put a row that moves the panels to another
+				// machine in the middle of this machine's shells.
 				continue
 			}
 			tab := tb
