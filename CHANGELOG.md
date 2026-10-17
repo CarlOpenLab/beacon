@@ -4,6 +4,26 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.6
+
+**Desktop app**
+
+- The lease follows the shell on screen. A window that opened a shell on another
+  machine and then moved the screen on — to 本机, or to any other shell — used to
+  leave that machine showing 正在被控制 with a keyboard that no longer worked.
+  Switching away lets the lease go, the machine whose shell it is takes it back
+  the way it does when a holder's lease lapses, and coming back to that shell
+  drives it again without a click. The connection to that machine stays: it is
+  the lease that moves, not the link.
+- Picking a machine in the 机器 panel brings one of its shells on screen when this
+  window has one open there, so 切到本机 means the screen as well as the panels:
+  two panes and a pane that disagree about what is being worked on is one answer
+  too many.
+- The hub hands a lease nobody holds — released, let go by a detach, or simply
+  lapsed — to the machine's own window when it is watching. A shell of a machine's
+  is that machine's to type in, so a client that stops driving it cannot leave it
+  mute with nothing on screen to say why.
+
 ## 0.4.5
 
 **Desktop app**
