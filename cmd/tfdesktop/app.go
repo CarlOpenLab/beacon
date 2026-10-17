@@ -281,11 +281,13 @@ func (w *window) linkGone(reason string) {
 //
 // A shell of this machine's that nobody holds is claimed from here too: a holder
 // that lapsed, or a client that let go, must not leave this machine's own shell
-// mute. What it never does is take a shell from another client that holds it —
-// that is the button in the pane, 接管 or 拿回控制权 — which is also why the
-// taking happens on the way in rather than every frame: two windows looking at
-// the same shell would otherwise take it from each other for as long as both
-// looked.
+// mute. What it never takes is a shell of this machine's from another client that
+// holds it — that is 拿回控制权 in the pane, and it ends their session with this
+// machine's shell, so it stays a person's click. Another machine's shell it does
+// take, because reaching that machine is the consent, and the machine's own
+// window keeps the way back there. The taking happens on the way in rather than
+// every frame: two windows looking at the same shell would otherwise take it from
+// each other for as long as both looked.
 func (w *window) followLease() {
 	on := w.activeTab()
 
