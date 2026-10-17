@@ -138,7 +138,7 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 	// keeps reaching it when the settings window remakes that link.
 	f.onRoster = w.rosterArrived
 	if c := f.RelayClient(); c != nil {
-		c.OnRoster = w.rosterArrived
+		c.SetOnRoster(w.rosterArrived)
 		// The roster is pushed on presence changes, not to whoever subscribes: a
 		// window that opens after the relay has already said who is here has to be
 		// told, or the panel stays empty until the next machine comes or goes.

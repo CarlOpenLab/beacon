@@ -73,10 +73,13 @@ type Client struct {
 	token      string
 	httpClient *http.Client
 
-	// OnRoster is the roster as the relay pushes it, on every change.
-	OnRoster func([]tunnel.Machine)
-	// OnState is the client's own link changing state.
-	OnState func(State, string)
+	// onRoster is the roster as the relay pushes it, on every change, and
+	// onState is the link changing state. Both are read by the read loop, so
+	// they are read and written under mu: a window that changes where the roster
+	// goes — 设置 → 远程 → 应用 rebuilds the link — must not race a frame that is
+	// arriving at the same moment.
+	onRoster func([]tunnel.Machine)
+	onState  func(State, string)
 
 	mu        sync.Mutex
 	ws        *websocket.Conn
@@ -113,8 +116,8 @@ func Dial(ctx context.Context, url, token string, opts Options, hooks Hooks) (*C
 		url:        url,
 		token:      token,
 		httpClient: httpClient,
-		OnRoster:   hooks.OnRoster,
-		OnState:    hooks.OnState,
+		onRoster:   hooks.OnRoster,
+		onState:    hooks.OnState,
 		byMachine:  map[string]*Stream{},
 		byStream:   map[uint32]*Stream{},
 		backoff:    minBackoff,
@@ -330,9 +333,10 @@ func (c *Client) handle(f tunnel.Frame) {
 	case tunnel.TMachines:
 		c.mu.Lock()
 		c.machines = f.Machines
+		onRoster := c.onRoster
 		c.mu.Unlock()
-		if c.OnRoster != nil {
-			c.OnRoster(append([]tunnel.Machine(nil), f.Machines...))
+		if onRoster != nil {
+			onRoster(append([]tunnel.Machine(nil), f.Machines...))
 		}
 		c.flush()
 	case tunnel.TAccept:
@@ -424,9 +428,23 @@ func (c *Client) raw(f tunnel.Frame) bool {
 }
 
 func (c *Client) setState(s State, detail string) {
-	if c.OnState != nil {
-		c.OnState(s, detail)
+	c.mu.Lock()
+	on := c.onState
+	c.mu.Unlock()
+	if on != nil {
+		on(s, detail)
 	}
+}
+
+// SetOnRoster is where the roster goes from now on. It is safe to call while the
+// link is live, which is what the window does when it opens: the roster is
+// pushed on presence changes rather than to whoever subscribes, so a window that
+// opens after the relay has already said who is here has to be handed the list
+// as it stands.
+func (c *Client) SetOnRoster(fn func([]tunnel.Machine)) {
+	c.mu.Lock()
+	c.onRoster = fn
+	c.mu.Unlock()
 }
 
 func (c *Client) retry(detail string) {
