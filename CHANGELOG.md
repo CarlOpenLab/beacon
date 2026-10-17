@@ -4,6 +4,19 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.7
+
+**Desktop app**
+
+- A new terminal opens in this machine's home directory, not wherever the app
+  happened to be started. Started by the window server — Finder, the Windows
+  shell — that place is the root of the filesystem, so every new shell opened in
+  `/`: a directory nobody chose and everybody leaves again. `-cwd` still says
+  otherwise, a client that asks for a directory keeps what it asked for, and a
+  shell started on another machine opens in *that* machine's home, which is the
+  only home that means anything there. The same applies to terminals started from
+  a phone or a browser.
+
 ## 0.4.6
 
 **Desktop app**
