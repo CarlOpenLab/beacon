@@ -129,6 +129,26 @@ func (w *watch) drop(now time.Time) (prev *client) {
 	return prev
 }
 
+// giveAway hands a lease nobody holds to the machine's own window when it is
+// watching. A shell of this machine's is this machine's to type in, so a lease
+// that was let go — a client that stopped driving it, a holder whose connection
+// dropped, a lease that lapsed — comes home instead of leaving the shell of a
+// machine mute with nothing on screen to say why. Callers hold mu; it reports
+// whether the lease moved.
+func (w *watch) giveAway(now time.Time, ttl time.Duration) bool {
+	if w.controller != nil {
+		return false
+	}
+	for _, c := range w.viewers {
+		if !c.owner {
+			continue
+		}
+		w.take(c, now, ttl)
+		return true
+	}
+	return false
+}
+
 // renew pushes the holder's deadline out on input it actually sent.
 func (w *watch) renew(now time.Time, ttl time.Duration) {
 	w.lastInput = now
@@ -258,6 +278,7 @@ func (h *Hub) reapIdleControllers() {
 			continue
 		}
 		c := w.drop(now)
+		w.giveAway(now, h.idle)
 		out = append(out, eviction{c: c, id: id, epoch: w.epoch})
 	}
 	h.mu.Unlock()
@@ -518,8 +539,11 @@ func (h *Hub) handleDetach(c *client, id string) {
 		if freed {
 			// A client that stops watching cannot hold the lease: it is
 			// released, and everyone still watching is told, as they are when
-			// the holder's connection drops.
-			w.drop(time.Now())
+			// the holder's connection drops. The machine's own window takes it
+			// when it is watching, so the shell stays usable there.
+			now := time.Now()
+			w.drop(now)
+			w.giveAway(now, h.idle)
 		}
 		w.removeViewer(c)
 	}
@@ -666,16 +690,19 @@ func (h *Hub) handleClaim(c *client, id string, steal bool) {
 func (h *Hub) handleRelease(c *client, id string) {
 	h.mu.Lock()
 	w := h.watches[id]
-	var prev *client
-	epoch := uint64(0)
+	released := false
 	if w != nil && w.controller == c {
-		prev = w.drop(time.Now())
-		epoch = w.epoch
+		now := time.Now()
+		w.drop(now)
+		w.giveAway(now, h.idle)
+		released = true
 	}
 	h.mu.Unlock()
 
-	if prev != nil {
-		prev.send(roleMsg(id, protocol.RoleViewer, "", epoch))
+	if released {
+		// Everyone watching is told its own role, which is how a client that
+		// just let a shell go learns who has it now — usually the machine the
+		// shell runs on, whose window was only watching until then.
 		h.broadcastRole(id)
 		h.broadcastSessions()
 	}
@@ -776,7 +803,15 @@ func (h *Hub) removeClient(c *client) {
 		hadController := w.controller == c
 		wasViewer := w.hasViewer(c)
 		if hadController {
-			w.drop(time.Now())
+			now := time.Now()
+			w.drop(now)
+			w.giveAway(now, h.idle)
+
+			// The departing client is still in the viewer list, so it must come
+			// out before the role frames are built: a closed connection is not
+			// sent anything, and the machine's own window — which may have just
+			// been given the lease — must not be listed twice.
+			w.removeViewer(c)
 			freedList = append(freedList, freed{id: id, epoch: w.epoch})
 		}
 		if wasViewer {

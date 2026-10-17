@@ -128,6 +128,13 @@ func (c *termConn) claiming(steal bool) {
 	c.sess.link.claim(c.sess.id, steal)
 }
 
+// releasing gives the lease up without giving up the session: the shell keeps
+// running and this window keeps watching it, it just stops being the one that
+// types into it.
+func (c *termConn) releasing() {
+	c.sess.link.release(c.sess.id)
+}
+
 // holderName is who holds the lease, or "" when this window does.
 func (c *termConn) holderName() string { return c.sess.holder() }
 

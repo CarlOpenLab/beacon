@@ -580,3 +580,118 @@ func TestDesktopStartsATerminalOnTheOtherMachine(t *testing.T) {
 		return strings.Contains(tb.term.Text(), "FROM_ALPHA")
 	})
 }
+
+// The lease follows the shell on screen. A window that reached another machine
+// and is driving one of its shells lets go the moment the screen moves on — so
+// 切到本机 does not leave the far machine sitting behind 正在被控制 with a
+// keyboard that no longer works — and takes it again when the shell comes back
+// on screen. The connection to that machine is untouched: it is the lease that
+// moves, not the link.
+func TestTheLeaseFollowsTheShellOnScreen(t *testing.T) {
+	url, alphaID, alphaSecret, betaID, betaSecret := twoDeskRelay(t)
+	alpha, alphaDesk := deskFleet(t, url, alphaID, alphaSecret)
+	beta, betaDesk := deskFleet(t, url, betaID, betaSecret)
+
+	waitFor(t, "the roster to name the other machine", 20*time.Second, func() bool {
+		alphaDesk.drain()
+		for _, m := range alphaDesk.roster {
+			if m.ID == betaID && m.Online {
+				return true
+			}
+		}
+		return false
+	})
+
+	// A shell of this machine's own, so 切到本机 has something to go back to.
+	own, err := alpha.Hub().Create("", 80, 24, "", "/bin/sh")
+	if err != nil {
+		t.Fatalf("shell on this machine: %v", err)
+	}
+	var ownTab *tab
+	waitFor(t, "this machine's own window to hold its shell", 20*time.Second, func() bool {
+		alphaDesk.drain()
+		ownTab = alphaDesk.tabOf(machineLocal, own.ID)
+		return ownTab != nil && ownTab.held()
+	})
+
+	// A shell on the other machine, held by that machine's own window.
+	far, err := beta.Hub().Create("", 80, 24, "", "/bin/sh")
+	if err != nil {
+		t.Fatalf("shell on the far machine: %v", err)
+	}
+	var farTab *tab
+	waitFor(t, "the far machine's window to hold its shell", 20*time.Second, func() bool {
+		betaDesk.drain()
+		farTab = betaDesk.tabOf(machineLocal, far.ID)
+		return farTab != nil && farTab.held()
+	})
+
+	// This window reaches that machine and opens the shell: it drives it, so the
+	// far machine's own window is left read-only and told so.
+	entry, ok := alphaDesk.machineByID(betaID)
+	if !ok {
+		t.Fatal("the roster does not hold the other machine")
+	}
+	alphaDesk.selectMachine(entry)
+	waitFor(t, "the far machine's session list", 20*time.Second, func() bool {
+		alphaDesk.drain()
+		return len(alphaDesk.remoteSessions[betaID]) == 1
+	})
+	mine := alphaDesk.openTab(betaID, far.ID)
+	if mine == nil {
+		t.Fatal("no tab for the far machine's shell")
+	}
+	waitFor(t, "the lease on the far shell", 20*time.Second, func() bool {
+		alphaDesk.drain()
+		return mine.held()
+	})
+	waitFor(t, "the far machine to be told it lost its shell", 20*time.Second, func() bool {
+		betaDesk.drain()
+		return farTab != nil && !farTab.held() && farTab.holder() != ""
+	})
+
+	// 切到本机: the click a person makes on this machine's row in the panel. The
+	// screen follows it, and the far shell is let go — the far machine takes its
+	// own shell back, so 正在被控制 ends there without anyone clicking anything.
+	local, ok := alphaDesk.machineByID(machineLocal)
+	if !ok {
+		t.Fatal("the window does not know this machine")
+	}
+	alphaDesk.selectMachine(local)
+	alphaDesk.frame(t)
+	waitFor(t, "the far machine to have its shell back", 20*time.Second, func() bool {
+		alphaDesk.drain()
+		betaDesk.drain()
+		return farTab.held() && !mine.held()
+	})
+
+	// The connection to that machine is still there: this is a lease moving, not
+	// a link being dropped, and nothing on screen says otherwise.
+	if alphaDesk.remote[betaID] == nil {
+		t.Fatal("the link to the far machine was dropped when the lease moved")
+	}
+	if notice := alphaDesk.currentNotice(); strings.Contains(notice, alphaDesk.machineName(betaID)) {
+		t.Errorf("notice = %q, want nothing about the far machine taking anything back", notice)
+	}
+
+	// And going back to that shell drives it again, without a click.
+	alphaDesk.selectTab(mine)
+	alphaDesk.frame(t)
+	waitFor(t, "the lease on the far shell again", 20*time.Second, func() bool {
+		alphaDesk.drain()
+		return mine.held()
+	})
+	waitFor(t, "the far machine read-only again", 20*time.Second, func() bool {
+		betaDesk.drain()
+		return !farTab.held() && farTab.holder() != ""
+	})
+}
+
+// frame draws one frame of the window, the way the app's own loop does. The
+// lease follows the screen from there, and only from there: a window that never
+// draws is a window with nothing on screen.
+func (w *window) frame(t *testing.T) {
+	t.Helper()
+	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
+	tt.Frame()
+}

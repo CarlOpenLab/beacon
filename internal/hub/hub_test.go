@@ -658,3 +658,41 @@ func TestHubStartsWithControlOff(t *testing.T) {
 		t.Fatalf("create on a machine that allows no control got %q, want %q", refused.Code, protocol.ErrControlOff)
 	}
 }
+
+// A lease that is let go goes home. The machine's own window is the shell's home,
+// so a client that stops driving a shell — the desktop does exactly this when the
+// screen moves to another shell, and the browser when a pane closes — does not
+// leave the machine's own shell mute with nothing on screen to say why.
+func TestAReleasedLeaseGoesHomeToTheMachine(t *testing.T) {
+	h := newLeaseHub(t, time.Hour)
+	pipe := hub.NewPipe()
+	defer pipe.Close()
+	go h.ServeLocal(pipe.Local())
+
+	owner := newPipeConn(t, pipe)
+	remote := dialTest(t, serveHub(t, h))
+	remote.create("s1")
+	owner.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	owner.waitFor("attached", func(m protocol.Msg) bool { return m.T == protocol.STAttached })
+	owner.waitFor("a viewer while the client drives", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer && m.Controller != ""
+	})
+
+	remote.send(protocol.Msg{T: protocol.CTRelease, SessionID: "s1"})
+
+	// The machine takes its shell back without claiming it, and the client that
+	// let go is told who has it now.
+	role := owner.waitFor("the machine has its shell back", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	remote.waitFor("told the machine has it", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer && m.Controller != ""
+	})
+
+	// And what the machine types lands, at the epoch it was given.
+	owner.send(protocol.Msg{
+		T: protocol.CTInput, SessionID: "s1", Epoch: role.Epoch,
+		Data: []byte("printf 'HOME\n' 1\n"),
+	})
+	owner.waitOutput("HOME")
+}

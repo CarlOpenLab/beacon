@@ -227,6 +227,18 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 	}
 }
 
+// newestTabOn is the most recently opened shell this window is watching on a
+// machine, or nil when it has none there.
+func (w *window) newestTabOn(machine string) *tab {
+	for i := len(w.order) - 1; i >= 0; i-- {
+		tb := w.tabs[w.order[i]]
+		if tb != nil && tb.machine == machine {
+			return tb
+		}
+	}
+	return nil
+}
+
 // selectTab puts a tab on screen, and with it the machine the panels are about:
 // the 机器 and 会话 panels follow the shell a person is looking at, so switching
 // to a shell on another machine moves them there rather than leaving them on a

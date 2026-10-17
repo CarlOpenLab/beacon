@@ -86,6 +86,11 @@ type window struct {
 	notice   string
 	noticeAt time.Time
 
+	// arranged is the tab whose lease the window has already settled while it is
+	// the shell on screen, so the settling happens on the way in and not every
+	// frame (see followLease).
+	arranged *tab
+
 	// sidebarSplit is the height of the shells' panel in the column, which the
 	// line between it and the machines' panel drags. A negative value means the
 	// line has not been dragged: the shells then take whatever the machines do
@@ -263,6 +268,62 @@ func (w *window) linkGone(reason string) {
 	})
 }
 
+// followLease is what the window does about the shell on screen, and about the
+// ones that are not.
+//
+// A window drives what it is showing. Opening a tab on another machine takes
+// that shell's lease (see openTab), and this keeps the rule true as the screen
+// moves: a shell on another machine that leaves the screen is let go, so 切到本机
+// does not leave the far machine behind 正在被控制 with a keyboard that no longer
+// works — the hub hands a lease nobody holds to the machine the shell runs on,
+// which is how that machine's window gets its keyboard back — and the shell that
+// comes on screen is taken, so coming back to it drives it again without a click.
+//
+// A shell of this machine's that nobody holds is claimed from here too: a holder
+// that lapsed, or a client that let go, must not leave this machine's own shell
+// mute. What it never does is take a shell from another client that holds it —
+// that is the button in the pane, 接管 or 拿回控制权 — which is also why the
+// taking happens on the way in rather than every frame: two windows looking at
+// the same shell would otherwise take it from each other for as long as both
+// looked.
+func (w *window) followLease() {
+	on := w.activeTab()
+
+	// A shell on another machine that this window is not showing is not one it
+	// drives. Derived from the shells and the screen rather than remembered, so
+	// no sequence of clicks can leave a shell held with nobody looking at it.
+	for _, tb := range w.tabs {
+		if tb == nil || tb == on || tb.machine == machineLocal || !tb.held() {
+			continue
+		}
+		tb.letGoLease()
+	}
+
+	if on == nil || on.conn == nil || on == w.arranged {
+		return
+	}
+	// The shell on screen has changed: settle its lease once. A claim the hub
+	// refuses — a machine that allows no other client to control it — is answered
+	// on screen, and is not retried every frame.
+	w.arranged = on
+	if on.held() {
+		return
+	}
+	if on.machine == machineLocal && on.holder() != "" {
+		// This machine's own shell, held by another client: taking it back ends
+		// that client's session with this machine's shell, so it stays a person's
+		// click — 拿回控制权 in the pane — and never a side effect of looking at it.
+		return
+	}
+	// Another machine's shell on screen is one this window drives: reaching that
+	// machine is the consent. The machine's own window is left read-only with the
+	// way back — 拿回控制权, which the hub always honours — and letting this
+	// happen on the way in rather than every frame is what keeps two windows
+	// looking at the same shell from taking it from each other for as long as
+	// both looked.
+	on.conn.claiming(on.machine != machineLocal)
+}
+
 // view draws the window: a toolbar, a tab per shell, and the shell the user is
 // looking at — drawn by mygo's own terminal, not a webview.
 func (w *window) view(c *ui.Context) {
@@ -278,6 +339,7 @@ func (w *window) view(c *ui.Context) {
 	if w.selected < 0 {
 		w.selected = 0
 	}
+	w.followLease()
 
 	// The appearance is a saved preference, and the ui reads the theme once per
 	// frame, so every frame of every window asks for it.
@@ -375,6 +437,14 @@ func (w *window) selectedMachine() string {
 // that is a thing a person says yes to once rather than something a click does
 // behind their back.
 func (w *window) selectMachine(m tunnel.Machine) {
+	// Picking a machine shows one of its shells, when this window has one: the
+	// panes and the screen are the same subject, and 切到本机 that left the other
+	// machine's terminal on screen — still being driven, still showing 正在被控制
+	// over there — would be two answers to "what am I working on". The newest
+	// shell this window has open there is the one.
+	if tb := w.newestTabOn(m.ID); tb != nil {
+		w.selectTab(tb)
+	}
 	if m.ID == machineLocal {
 		w.machineSel, w.linkNote = machineLocal, ""
 		w.invalidate()
@@ -787,6 +857,11 @@ func (h tabHandlers) Role(role, controller string, epoch uint64) {
 			return
 		}
 		held := tb.held()
+		if tb.takeLetGo() {
+			// The window let this go a frame ago: the role frame answering it is
+			// not a machine taking the shell back.
+			held = false
+		}
 		tb.setLease(role, controller, epoch)
 		switch {
 		case !held || tb.held():
@@ -929,6 +1004,11 @@ type tab struct {
 	role       string
 	controller string
 	epoch      uint64
+
+	// letGo is set while the window is giving the lease up on purpose, so the
+	// role frame that answers its own release is not mistaken for a machine
+	// taking the shell back — which would end the window's connection to it.
+	letGo bool
 }
 
 // bind gives the tab its session id, once the hub has named it. Until then the
@@ -942,6 +1022,16 @@ func (t *tab) bind(id string) {
 
 // held reports whether this window may type into the shell: it holds the lease.
 // The glow and the popover are drawn from the same answer.
+// takeLetGo reports whether the window is waiting for the lease's release to come
+// back, and stops waiting for it.
+func (t *tab) takeLetGo() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	was := t.letGo
+	t.letGo = false
+	return was
+}
+
 func (t *tab) held() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -956,6 +1046,23 @@ func (t *tab) holder() string {
 		return ""
 	}
 	return t.controller
+}
+
+// letGoLease gives up the lease of a shell this window is no longer showing. The
+// hub hands an unclaimed shell to the machine it runs on, which is how that
+// machine's window gets its keyboard back.
+func (t *tab) letGoLease() {
+	if t.conn == nil {
+		return
+	}
+	t.mu.Lock()
+	if t.letGo {
+		t.mu.Unlock()
+		return
+	}
+	t.letGo = true
+	t.mu.Unlock()
+	t.conn.releasing()
 }
 
 // setLease records a role frame.
