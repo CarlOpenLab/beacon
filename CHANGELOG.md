@@ -4,6 +4,24 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.5
+
+**Desktop app**
+
+- Control belongs to the window that reached the machine. Opening a shell another
+  machine was running left this window read-only — a spectator of a shell it had
+  just asked to work in — with the glow and 拿回控制权 drawn on the *controlling*
+  machine while the machine being driven kept the keyboard. A tab on another
+  machine now takes the lease as it opens: this window types, and the machine
+  whose shell it is goes read-only behind the glow, saying who is typing into it.
+  拿回控制权 there is still one click, and the hub always honours it.
+- 会话 lists the picked machine's shells and nothing else. A tab on another
+  machine used to be a row in this machine's list — it looked like one of this
+  machine's shells — and picking it moved the panels to that machine, so
+  switching tabs landed somewhere else entirely.
+- The panel under the glow offers 接管 on a shell of another machine's rather than
+  拿回控制权, which is what taking one is when the lease was never this window's.
+
 ## 0.4.4
 
 **Desktop app**
