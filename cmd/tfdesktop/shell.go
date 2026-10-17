@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -19,6 +20,11 @@ const activityWidth = 56
 
 // activityButtonSize is the square of the strip's controls.
 const activityButtonSize = 34
+
+// tabBarHeight is the row of tabs under the header. The browser client's strip
+// is 40px; this window's tabs carry the same job, and the same height keeps the
+// two reading as one design.
+const tabBarHeight = 40
 
 //go:embed assets/mark.png
 var markPNG []byte
@@ -143,6 +149,10 @@ func (w *window) serviceLine() string {
 // header names the shell on screen, with the service's address under the name,
 // where a window would put a subtitle. The controls a shell needs live in the
 // column beside it, on the panel they act on.
+//
+// The band is 44px, the height the browser client's header is: the shell's name
+// and where it can be reached are the same two facts there, in the same order,
+// at the same size.
 func (w *window) header(c *ui.Context, labels []string) {
 	t := c.Theme()
 	col := shellColorsFor(t)
@@ -154,13 +164,13 @@ func (w *window) header(c *ui.Context, labels []string) {
 	}
 
 	ui.Row(c).
-		Height(52).PaddingX(14).Gap(10).
+		Height(headerHeight).PaddingX(14).Gap(10).
 		AlignItems(ui.Center).
 		Background(col.pane).
 		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
 		Children(func() {
 			ui.Column(c).Gap(1).Children(func() {
-				ui.Text(c, name).FontSize(14).FontWeight(600)
+				ui.Text(c, name).FontSize(13).FontWeight(600)
 				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(t.TextMuted)
 			})
 			// A shell someone else is driving says so here, with the way back: the
@@ -236,32 +246,64 @@ func (w *window) reclaim(tb *tab) {
 	tb.conn.claiming(tb.machine != machineLocal)
 }
 
+// emptyState is the window with nothing open. The browser client's empty state
+// says the same thing and offers the same two ways out; this one says it in a
+// native window's terms, and the tile in the middle is the app's own mark.
 func (w *window) emptyState(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).
 		Fill().AlignItems(ui.Center).Justify(ui.Center).Gap(10).
 		Children(func() {
-			markTile(c, 56)
-			ui.Text(c, "还没有终端").FontSize(15)
-			ui.Text(c, "点「新建标签页」在本机开一个，或从另一台机器接管一个。").
-				FontSize(12).TextColor(t.TextMuted)
+			markTile(c, 44)
+			ui.Text(c, "还没有打开的终端").FontSize(15)
+			ui.Text(c, w.emptyLine()).FontSize(12).TextColor(t.TextMuted)
 		})
 }
 
-// statusBar is the quiet line along the bottom: where the service can be reached,
-// and which build this is.
+// emptyLine is what the empty window says about the machine it would open a
+// shell on, so the sentence is true rather than generic.
+func (w *window) emptyLine() string {
+	machine := w.selectedMachine()
+	if w.fleet == nil {
+		return "本机服务已关闭。"
+	}
+	if machine != machineLocal {
+		return w.machineName(machine) + " 上还没有会话。新建一个，或在别的客户端上开一个再来看。"
+	}
+	if n := len(w.sessionEntries()); n > 0 {
+		return "左侧有 " + strconv.Itoa(n) + " 个会话。选一个，或直接新建一个终端。"
+	}
+	return "本机开一个新终端，或从另一台机器接管一个。"
+}
+
+// statusBar is the quiet line along the bottom: where the service can be
+// reached, and which build this is.
+//
+// The connection is a chip — a dot in a rounded wash — the way the browser
+// client states it, so "is anything attached to this machine" reads the same in
+// both. The rest of the line is the same facts in the same order.
 func (w *window) statusBar(c *ui.Context) {
 	t := c.Theme()
 	col := shellColorsFor(t)
 
 	ui.Row(c).
-		Height(28).PaddingX(14).Gap(8).
+		Height(statusHeight).PaddingX(14).Gap(8).
 		AlignItems(ui.Center).
 		Background(col.pane).
 		BorderWidth(1, 0, 0, 0).BorderColor(col.hairline).
 		Children(func() {
-			ui.Box(c).Size(8, 8).Radius(4).Background(w.fleetColor(t))
-			ui.Text(c, w.serviceLine()).FontSize(11).TextColor(t.TextMuted)
+			// The chip's wash is the state's own colour at low strength: teal
+			// while a client is attached, amber while the service is listening
+			// for one, quiet while there is no service at all.
+			state := w.fleetColor(t)
+			chip := ui.Row(c).Gap(6).AlignItems(ui.Center).
+				PaddingX(9).Radius(9.5).Height(19).
+				Background(state.Alpha(0.10)).
+				BorderWidth(1).BorderColor(state.Alpha(0.38))
+			chip.Children(func() {
+				ui.Box(c).Size(6, 6).Radius(3).Background(state)
+				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(state)
+			})
 			// The window's own news, when there is any: a machine that took its
 			// shell back is something the person here has to be told, and the line
 			// the fleet already lives on is where they look.

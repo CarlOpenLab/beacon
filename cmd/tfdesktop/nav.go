@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 
@@ -199,23 +200,37 @@ func (w *window) sessionEntries() []sessionEntry {
 // on this machine or another one. The row on screen carries the accent bar the
 // picked machine carries, so "which shell am I typing into" is answered the same
 // way in both panels — and a shell another client holds says so on its row.
+// sessionRow is one shell in the 会话 panel, drawn the same way whether it runs
+// on this machine or another one.
+//
+// The row carries a badge naming its state — 控制中 / 只读 — rather than a bare
+// dot and a holder's name in the corner: the browser client's rows read that
+// way, and a badge says the same thing without needing the colour to be
+// distinguishable. The meta line keeps only the terminal size, which is the one
+// number that tells two look-alike shells apart; the rest is in the tooltip.
 func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 	t := c.Theme()
 
-	row := ui.Column(c).Gap(1).Padding(5, 8).Radius(t.Radius)
+	row := ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius)
 	if e.active {
 		row.Background(t.SurfacePressed).BorderWidth(0, 0, 0, 2).BorderColor(t.Accent)
 	} else if row.Hovered() {
 		row.Background(t.SurfaceHover)
 	}
-	row.Tooltip(w.machineName(e.machine) + " · " + e.session)
+	row.Tooltip(w.sessionTooltip(e))
 	row.Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(6, 6).Radius(3).
+			ui.Box(c).Size(7, 7).Radius(3.5).
 				Background(w.leaseColor(t, e.machine, e.session, e.holder))
-			ui.Text(c, e.label).FontSize(11)
+			ui.Text(c, e.label).FontSize(12)
+			if badge, color, ok := w.leaseBadge(t, e); ok {
+				badgeChip(c, badge, color)
+			}
+			// The holder's name is the one thing the badge cannot say: 只读 says
+			// someone else is typing, not who. So it stays, in the state's own
+			// colour, after the badge rather than instead of it.
 			if e.holder != "" {
-				leaseTabMark(c, e.holder)
+				ui.Text(c, e.holder).FontSize(10).TextColor(t.Warning)
 			}
 		})
 		if e.meta != "" {
@@ -225,6 +240,56 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 	if row.Clicked() {
 		e.pick()
 	}
+}
+
+// leaseBadge is the row's state in words: what this window holds, what someone
+// else holds, or nothing at all when the shell is unclaimed. The colour is the
+// same one the dot beside it already uses, so the two never disagree.
+func (w *window) leaseBadge(t *ui.Theme, e sessionEntry) (string, ui.Color, bool) {
+	if tb := w.tabOf(e.machine, e.session); tb != nil {
+		if !tb.alive {
+			return "已退出", shellColorsFor(t).quiet, true
+		}
+		if tb.held() {
+			return "控制中", t.Success, true
+		}
+		if e.holder != "" {
+			return "只读", t.Warning, true
+		}
+		return "", t.Success, false
+	}
+	if e.holder != "" {
+		return "只读", t.Warning, true
+	}
+	return "", t.Success, false
+}
+
+// sessionTooltip is the row's full story, the numbers the row itself has no room
+// for: the session id, where it runs, its size, and who holds it.
+func (w *window) sessionTooltip(e sessionEntry) string {
+	lines := []string{w.machineName(e.machine), e.session}
+	if e.meta != "" {
+		lines = append(lines, e.meta)
+	}
+	if e.holder != "" {
+		lines = append(lines, "控制端 "+e.holder)
+	} else {
+		lines = append(lines, "当前无人控制")
+	}
+	return strings.Join(lines, "\n")
+}
+
+// badgeChip is a state in a small rounded wash: the browser client's badge, on
+// the ui's terms. The wash is the state's colour at a tenth, with a border a
+// third of the way up, so the chip is legible without shouting.
+func badgeChip(c *ui.Context, text string, color ui.Color) {
+	chip := ui.Row(c).Gap(4).AlignItems(ui.Center).
+		PaddingX(6).Height(16).Radius(4).
+		Background(color.Alpha(0.10)).
+		BorderWidth(1).BorderColor(color.Alpha(0.35))
+	chip.Children(func() {
+		ui.Text(c, text).FontSize(10).TextColor(color)
+	})
 }
 
 // newestTabOn is the most recently opened shell this window is watching on a

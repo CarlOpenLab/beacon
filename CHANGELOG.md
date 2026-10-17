@@ -4,6 +4,43 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.9
+
+**One design, two clients**
+
+The browser client and the desktop app are drawn from the same palette now. A
+shell in a tab and a shell in the native window say the same things in the same
+words, with the same colours, at the same sizes: one accent for what is chosen
+or in control, amber for read-only, red for gone, grey for exited.
+
+- The desktop app's palette moves off its violet onto the teal the browser
+  client uses, and its terminal takes the same sixteen ANSI colours, so a shell
+  belongs to the window around it rather than looking like a program that
+  wandered in. The header band is 44px and the status line 30px, the heights the
+  browser client uses, and the status line states the connection as a chip — a
+  dot in a wash — the way the browser does.
+- A shell in the sidebar carries its state as a badge — 控制中, 只读, 已退出 —
+  with the holder's name beside it, and the row's tooltip carries the numbers
+  the row has no room for. The empty window says what the machine it would open
+  a shell on is doing, rather than showing an empty rectangle.
+- The browser client is redrawn on the same system: a cold near-black ground
+  with hairlines instead of borders, a sidebar whose rows are one badge and one
+  number, tabs whose underline is their state, and a right-hand session
+  inspector holding what the daemon said about the shell on screen. A dark and a
+  light appearance are both complete, and the choice is remembered per device.
+- The composer gained a strip of the commands this tab has sent — real history,
+  newest first, one tap back into the box — and says on the same line what the
+  Enter key will do. The relay's connect screen names the app, says why it is
+  asking, and reports an empty token next to the field instead of doing nothing.
+- The phone layout is a drawer and a bigger key bar rather than a second design,
+  with touch targets at 44px and the terminal kept whole.
+
+**Fixed**
+
+- The browser client's empty state kept a stale line about a previous machine
+  after the roster changed, and said nothing at all once the machine had
+  sessions to show.
+
 ## 0.4.8
 
 **Desktop app**

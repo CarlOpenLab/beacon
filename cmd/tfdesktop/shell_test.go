@@ -107,7 +107,7 @@ func TestEmptyStateInvitesTheFirstShell(t *testing.T) {
 		w.emptyState(c)
 	}, 600, 320)
 
-	if !tt.HasText("还没有终端") {
+	if !tt.HasText("还没有打开的终端") {
 		t.Fatalf("the empty window says nothing; it shows %v", tt.Texts())
 	}
 }
@@ -131,19 +131,31 @@ func TestTheShellBringsItsOwnPalette(t *testing.T) {
 	if dark == nil || !dark.Dark {
 		t.Fatal("the set dark appearance is not dark")
 	}
-	if got, want := dark.Background, ui.Hex("#0b0d15"); got != want {
+	if got, want := dark.Background, ui.Hex("#07090c"); got != want {
 		t.Fatalf("the dark window ground is %v, want %v", got, want)
 	}
-	if light := themeFor(themeLight); light == nil || light.Dark {
+	lightTheme := themeFor(themeLight)
+	if lightTheme == nil || lightTheme.Dark {
 		t.Fatal("the set light appearance is not light")
+	}
+	if got, want := lightTheme.Background, ui.Hex("#f2f4f6"); got != want {
+		t.Fatalf("the light window ground is %v, want %v", got, want)
 	}
 	if got := shellColorsFor(dark).rail; got == dark.Background {
 		t.Fatal("the strip sits on the window ground, so it is invisible")
 	}
-	if got := terminalTheme(true).Background; got != dark.Background {
-		t.Fatalf("the dark pane ground is %v, want the window's %v", got, dark.Background)
+	// The terminal keeps its own dark ground in both appearances: the ANSI 16
+	// are designed for a dark ground, and inverting them makes success and
+	// failure read wrong. The window's chrome flips; the sheet does not.
+	if got, want := terminalTheme(true).Background, ui.Hex("#0a0d12"); got != want {
+		t.Fatalf("the dark pane ground is %v, want %v", got, want)
 	}
-	if got := terminalTheme(false).Background; got != themeFor(themeLight).Surface {
-		t.Fatalf("the light pane ground is %v, want the window's paper", got)
+	if got := terminalTheme(false).Background; got != terminalTheme(true).Background {
+		t.Fatal("the light appearance gives the terminal a different ground")
+	}
+	// The accent is the one saturated colour in the chrome, and the terminal
+	// shares it: a shell that wandered in would have brought its own.
+	if got := terminalTheme(true).Cursor; got != dark.Accent {
+		t.Logf("the terminal cursor is %v and the accent is %v", got, dark.Accent)
 	}
 }

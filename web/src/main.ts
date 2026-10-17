@@ -14,6 +14,24 @@ interface ServerConfig {
 
 const TOKEN_KEY = 'termfleet.relay.token'
 const URL_KEY = 'termfleet.relay.url'
+const THEME_KEY = 'termfleet.theme'
+
+/**
+ * The palette lives on <html data-theme>, so both stylesheets key off one
+ * attribute and a switch is a single flip. Applied before the app mounts to
+ * avoid a flash of the wrong theme; the browser client is the only place this
+ * runs, since the desktop shell is a native window.
+ */
+function applyTheme(): void {
+  document.documentElement.dataset.theme = stored(THEME_KEY) === 'light' ? 'light' : 'dark'
+}
+
+/** Flip theme and remember it. Called from the status bar's control. */
+function toggleTheme(): void {
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'
+  document.documentElement.dataset.theme = next
+  store(THEME_KEY, next)
+}
 
 async function fetchConfig(): Promise<ServerConfig> {
   try {
@@ -56,6 +74,8 @@ async function boot(): Promise<void> {
   const container = document.getElementById('app')
   if (!container) return
 
+  applyTheme()
+
   const cfg = await fetchConfig()
 
   if (cfg.mode === 'direct') {
@@ -63,7 +83,7 @@ async function boot(): Promise<void> {
     // the LAN; without it the page talks to whatever daemon served it.
     const explicit = new URLSearchParams(location.search).get('host')
     const ws = explicit ? defaultDaemonURL() : absoluteWS(cfg.ws)
-    new App(container, { mode: 'direct', ws }).start()
+    new App(container, { mode: 'direct', ws, onToggleTheme: toggleTheme }).start()
     return
   }
 
@@ -82,6 +102,7 @@ async function boot(): Promise<void> {
       store(TOKEN_KEY, token)
       store(URL_KEY, url)
     },
+    onToggleTheme: toggleTheme,
   })
   app.start()
 }

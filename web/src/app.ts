@@ -59,6 +59,8 @@ export interface AppOptions {
   /** Relay only. */
   token?: string
   onToken?: (token: string) => void
+  /** Flips <html data-theme> and remembers the choice. */
+  onToggleTheme?: () => void
 }
 
 const MOD_LABEL = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'
@@ -121,7 +123,6 @@ export class App {
 
   private root: HTMLElement
   private fleetList!: HTMLElement
-  private fleetCount!: HTMLElement
   private tabStrip!: HTMLElement
   private panes!: HTMLElement
   private composer!: HTMLTextAreaElement
@@ -134,6 +135,13 @@ export class App {
   private banner!: HTMLElement
   private connectBox?: HTMLElement
   private sideToggle!: HTMLButtonElement
+  private hero?: HTMLElement
+  private histBar!: HTMLElement
+  private histLabel!: HTMLElement
+  private histList!: HTMLElement
+  private inspectRole!: HTMLElement
+  private inspectFields!: HTMLElement
+  private inspectToggle?: HTMLButtonElement
 
   private observer?: ResizeObserver
   private fitTimer?: number
@@ -160,6 +168,7 @@ export class App {
     this.relay?.connect()
     this.renderFleet()
     this.renderStatus()
+    this.renderHero()
   }
 
   /** Reconnect after the user supplies or corrects a token. */
@@ -201,6 +210,7 @@ export class App {
     }
     this.renderFleet()
     this.renderStatus()
+    this.renderHero()
   }
 
   private onRoster(roster: TunnelMachine[]): void {
@@ -231,6 +241,7 @@ export class App {
     }
     this.renderFleet()
     this.renderStatus()
+    this.renderHero()
   }
 
   private addMachine(id: string, connector: Connector, label?: string, online?: boolean): MachineView {
@@ -294,6 +305,7 @@ export class App {
         if (!mv) return
         mv.sessions = list
         this.renderFleet()
+        this.renderHero()
         // Reflect host-side truth: an exit we missed, or someone else's control.
         for (const tab of this.tabs) {
           if (tab.machineId !== machineId || !tab.sessionId) continue
@@ -304,6 +316,7 @@ export class App {
         }
         this.renderTabs()
         this.renderBanner()
+        this.renderInspect()
         this.syncComposer()
       },
       created: (sessionId) => {
@@ -349,6 +362,7 @@ export class App {
         this.renderTabs()
         this.renderBanner()
         this.renderStatus()
+        this.renderInspect()
         this.syncComposer()
         if (role === ROLE.controller) this.composer.focus()
         else if (controller) {
@@ -363,6 +377,7 @@ export class App {
         tab.bundle.term.write(`\r\n\x1b[2m[进程已退出，退出码 ${code}]\x1b[0m\r\n`)
         this.renderTabs()
         this.renderBanner()
+        this.renderInspect()
         this.syncComposer()
       },
       closed: (sessionId) => {
@@ -377,6 +392,7 @@ export class App {
             tab.role = ROLE.viewer
             this.renderBanner()
             this.renderTabs()
+            this.renderInspect()
             this.syncComposer()
           }
           return
@@ -405,6 +421,7 @@ export class App {
           this.toast(message, 'warn')
           this.renderBanner()
           this.renderTabs()
+          this.renderInspect()
           this.syncComposer()
           return
         }
@@ -418,6 +435,9 @@ export class App {
     if (mv) mv.online = false
     this.renderTabs()
     this.renderBanner()
+    this.renderInspect()
+    this.renderHistory()
+    this.renderHero()
     this.syncComposer()
   }
 
@@ -457,16 +477,17 @@ export class App {
     brand.append(this.sideToggle, el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
     this.banner = el('div', 'tf-banner')
     const actions = el('div', 'tf-header-actions')
-    const newBtn = el('button', 'tf-btn tf-btn-primary', `新建终端  ${MOD_LABEL}T`)
+    const newBtn = el('button', 'tf-btn tf-btn-primary', `新建终端`)
+    newBtn.append(el('kbd', undefined, `${MOD_LABEL}T`))
     newBtn.onclick = () => this.newTab()
-    actions.append(newBtn)
+    actions.append(newBtn, this.buildInspectToggle())
     header.append(brand, this.banner, actions)
 
     const body = el('div', 'tf-body')
 
     const aside = el('aside', 'tf-side')
     const sideHead = el('div', 'tf-side-head')
-    sideHead.append(el('span', undefined, '主机会话'), (this.fleetCount = el('span', 'tf-count', '0')))
+    sideHead.append(el('span', undefined, '主机会话'), el('span', 'tf-count', '0'))
     this.fleetList = el('div', 'tf-side-list')
     aside.append(sideHead, this.fleetList)
     // Tapping outside the drawer closes it on a phone.
@@ -479,16 +500,41 @@ export class App {
     const main = el('main', 'tf-main')
     this.tabStrip = el('div', 'tf-tabs')
     this.panes = el('div', 'tf-panes')
+    this.buildHero()
+    this.histBar = el('div', 'tf-hist')
+    this.histBar.hidden = true
+    this.histLabel = el('span', 'tf-hist-label', '历史')
+    this.histList = el('div', 'tf-hist-list')
+    this.histBar.append(this.histLabel, this.histList)
     this.keyHost = el('div', 'tf-keyhost')
-    main.append(this.tabStrip, this.panes, this.buildComposer(), this.keyHost)
+    main.append(this.tabStrip, this.panes, this.histBar, this.buildComposer(), this.keyHost)
 
-    body.append(aside, main)
+    body.append(aside, main, this.buildInspectPanel())
 
     const footer = el('footer', 'tf-status')
     this.statusConn = el('span', 'tf-chip')
     this.statusHost = el('span', 'tf-status-item')
     this.statusSession = el('span', 'tf-status-item')
     footer.append(this.statusConn, this.statusHost, this.statusSession)
+
+    // Theme is a per-device preference, so it lives at the far end of the
+    // status bar where nothing else competes for attention.
+    if (this.opts.onToggleTheme) {
+      const themeBtn = el('button', 'tf-chip tf-chip-theme') as HTMLButtonElement
+      themeBtn.type = 'button'
+      const sync = () => {
+        const light = document.documentElement.dataset.theme === 'light'
+        themeBtn.textContent = light ? '深色' : '浅色'
+        themeBtn.title = light ? '切换到深色' : '切换到浅色'
+      }
+      themeBtn.onclick = () => {
+        this.opts.onToggleTheme?.()
+        sync()
+        this.scheduleFit()
+      }
+      sync()
+      footer.append(themeBtn)
+    }
 
     this.toastBox = el('div', 'tf-toasts')
     this.root.append(header, body, footer, this.toastBox)
@@ -501,9 +547,110 @@ export class App {
     this.observer.observe(this.panes)
   }
 
+  /** Header affordance for the session inspector (desktop only). */
+  private buildInspectToggle(): HTMLElement {
+    const btn = el('button', 'tf-btn tf-btn-icon tf-btn-ghost', '⌄') as HTMLButtonElement
+    btn.title = '会话检视栏'
+    btn.setAttribute('aria-label', '切换会话检视栏')
+    btn.onclick = () => {
+      const panel = this.root.querySelector<HTMLElement>('.tf-inspect')
+      if (!panel) return
+      panel.hidden = !panel.hidden
+      btn.textContent = panel.hidden ? '›' : '⌄'
+      this.scheduleFit()
+    }
+    this.inspectToggle = btn
+    return btn
+  }
+
+  /**
+   * The right-hand inspector: what the daemon told us about the session in
+   * front of us, in one place. Every field here is real data — nothing is
+   * derived or invented.
+   */
+  private buildInspectPanel(): HTMLElement {
+    const panel = el('aside', 'tf-inspect')
+    const head = el('div', 'tf-inspect-head')
+    head.append(el('h2', undefined, '会话检视'))
+    const body = el('div', 'tf-inspect-body')
+    this.inspectRole = el('div', 'tf-inspect-role')
+    this.inspectFields = el('dl', 'tf-inspect-kv')
+    body.append(this.inspectRole, this.inspectFields)
+    panel.append(head, body)
+    return panel
+  }
+
+  private renderInspect(): void {
+    if (!this.inspectFields) return
+    const panel = this.root.querySelector<HTMLElement>('.tf-inspect')
+    const tab = this.current()
+    const mv = tab ? this.machine(tab.machineId) : undefined
+    const s = tab?.sessionId
+      ? mv?.sessions.find((x) => x.sessionId === tab.sessionId)
+      : undefined
+
+    this.inspectFields.replaceChildren()
+    this.inspectRole.replaceChildren()
+
+    if (!tab || !mv) {
+      if (panel) panel.hidden = true
+      if (this.inspectToggle) this.inspectToggle.hidden = true
+      return
+    }
+    if (panel) panel.hidden = false
+    if (this.inspectToggle) this.inspectToggle.hidden = false
+
+    const role = tab.role === ROLE.controller ? '控制中' : tab.role === ROLE.viewer ? '只读' : '—'
+    this.inspectRole.className = `tf-inspect-role role-${
+      tab.role === ROLE.controller ? 'ctrl' : tab.role === ROLE.viewer ? 'view' : 'dead'
+    }`
+    this.inspectRole.textContent = role
+
+    const row = (k: string, v: string, tag?: string): void => {
+      const dt = el('dt', undefined, k)
+      const dd = el('dd')
+      dd.textContent = v
+      if (tag) dd.append(el('span', 'tag', tag))
+      this.inspectFields.append(dt, dd)
+    }
+
+    row('会话', tab.sessionId || '待创建')
+    row('cwd', s?.cwd ?? '—')
+    row('尺寸', `${tab.bundle.term.cols}×${tab.bundle.term.rows}`)
+    row('pid', s ? String(s.pid) : '—')
+    row('控制端', s?.controller ?? '—', s?.controller ? undefined : '本端')
+    row('机器', mv.label || mv.id)
+    if (this.multi) row('中继', this.opts.ws)
+  }
+
+  /** The composer's command history as tappable chips, newest first. */
+  private renderHistory(): void {
+    const tab = this.current()
+    this.histList.replaceChildren()
+    if (!tab || !tab.history.length) {
+      this.histBar.hidden = true
+      return
+    }
+    this.histBar.hidden = false
+    const shown = tab.history.slice(-12).reverse()
+    shown.forEach((cmd) => {
+      const chip = el('button', 'tf-hist-item')
+      chip.append(el('span', 'i', '❯'))
+      chip.append(el('span', undefined, cmd))
+      chip.title = '填入输入框'
+      chip.onclick = () => {
+        this.composer.value = cmd
+        this.growComposer()
+        this.composer.focus()
+      }
+      this.histList.append(chip)
+    })
+  }
+
   private renderFleet(): void {
     const total = [...this.machines.values()].reduce((n, mv) => n + mv.sessions.length, 0)
-    this.fleetCount.textContent = String(total)
+    const count = this.fleetList.previousElementSibling?.querySelector('.tf-count')
+    if (count) count.textContent = String(total)
     this.fleetList.replaceChildren()
 
     if (!this.multi) {
@@ -534,6 +681,7 @@ export class App {
         this.activeMachine = mv.id
         this.renderFleet()
         this.renderStatus()
+        this.renderHero()
       }
       this.fleetList.append(head)
       this.renderSessionsInto(this.fleetList, mv, true)
@@ -554,18 +702,45 @@ export class App {
       const open = this.tabs.some((t) => t.machineId === mv.id && t.sessionId === s.sessionId)
       if (open) row.classList.add('open')
       if (!s.alive) row.classList.add('dead')
+      // Role is a badge, not a word in the meta line: the dot and the badge
+      // say the same thing at a glance, and the meta line keeps only the
+      // numbers that actually change between look-alikes.
+      const mine = this.tabs.find(
+        (t) => t.machineId === mv.id && t.sessionId === s.sessionId && t.role === ROLE.controller,
+      )
+      if (mine) row.classList.add('owned')
+      else if (s.controller) row.classList.add('readonly')
 
       const line1 = el('div', 'tf-session-title')
       line1.append(
         el('span', 'tf-dot'),
         el('span', 'tf-session-name', s.title || basename(s.cwd) || s.sessionId),
       )
+      // The badge is the state; "结束" replaces it on hover.
+      const badge = el('span', 'tf-session-badge')
+      if (!s.alive) {
+        badge.classList.add('b-dead')
+        badge.textContent = '已退出'
+      } else if (mine) {
+        badge.classList.add('b-ctrl')
+        badge.textContent = '控制中'
+      } else if (s.controller) {
+        badge.classList.add('b-view')
+        badge.textContent = '只读'
+      }
 
-      const line2 = el('div', 'tf-session-meta')
-      const bits = [s.sessionId, `${s.cols}×${s.rows}`, `pid ${s.pid}`]
-      if (s.controller) bits.push(`控制中 ${s.controller}`)
-      if (!s.alive) bits.push('已退出')
-      line2.textContent = bits.join(' · ')
+      // Only what distinguishes two shells started in the same directory:
+      // the terminal size. The rest lives in the tooltip and the inspector.
+      const meta = el('div', 'tf-session-meta', `${s.cols}×${s.rows}`)
+      row.title = [
+        s.sessionId,
+        s.cwd,
+        `pid ${s.pid}`,
+        s.controller ? `控制端 ${s.controller}` : '当前无人控制',
+        !s.alive ? '已退出' : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
 
       if (s.alive) {
         const kill = el('button', 'tf-kill', '结束')
@@ -577,7 +752,7 @@ export class App {
         row.append(kill)
       }
 
-      row.append(line1, line2)
+      row.append(line1, meta, badge)
       row.onclick = () => this.attachOrFocus(mv.id, s.sessionId)
       host.append(row)
     }
@@ -728,8 +903,9 @@ export class App {
     if (this.connectBox) return
     const box = el('div', 'tf-connect')
     const card = el('div', 'tf-connect-card')
-    card.append(el('h1', undefined, '连接中继'))
-    card.append(el('p', 'tf-connect-note', reason))
+    const brand = el('div', 'tf-connect-brand')
+    brand.append(el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
+    card.append(brand, el('h1', undefined, '连接中继'), el('p', 'tf-connect-note', reason))
 
     const url = el('input', 'tf-input') as HTMLInputElement
     url.type = 'text'
@@ -742,13 +918,20 @@ export class App {
     token.placeholder = '访问令牌'
     token.autocomplete = 'current-password'
 
+    // An empty token is the one mistake a person makes here, so it gets said
+    // next to the field rather than by the button doing nothing.
+    const err = el('p', 'tf-connect-err', '请输入访问令牌')
+    err.hidden = true
+
     const submit = el('button', 'tf-btn tf-btn-primary', '连接')
     const go = () => {
       const t = token.value.trim()
       if (!t) {
+        err.hidden = false
         token.focus()
         return
       }
+      err.hidden = true
       this.opts = { ...this.opts, ws: url.value.trim() || this.opts.ws }
       this.retryWithToken(t)
     }
@@ -763,7 +946,7 @@ export class App {
     const form = el('div', 'tf-connect-form')
     form.append(el('label', 'tf-label', '中继地址'), url)
     form.append(el('label', 'tf-label', '访问令牌'), token)
-    form.append(submit)
+    form.append(err, submit)
     card.append(form)
     card.append(
       el(
@@ -806,6 +989,9 @@ export class App {
    */
   private buildComposer(): HTMLElement {
     const bar = el('div', 'tf-composer')
+    // The prompt glyph is the same shape as the shell's, so the composer reads
+    // as a continuation of the terminal rather than a form field.
+    const prompt = el('span', 'tf-prompt', '❯')
     const input = el('textarea', 'tf-composer-input') as HTMLTextAreaElement
     input.rows = 1
     input.placeholder = '输入命令，回车发送（Shift+回车换行）'
@@ -815,7 +1001,8 @@ export class App {
     // shell input; xterm sets the same attributes on its own textarea.
     input.setAttribute('autocapitalize', 'off')
     input.setAttribute('autocorrect', 'off')
-    const send = el('button', 'tf-btn tf-btn-primary tf-composer-send', '发送') as HTMLButtonElement
+    const send = el('button', 'tf-composer-send', '发送') as HTMLButtonElement
+    send.append(el('kbd', undefined, `${MOD_LABEL}↵`))
     send.type = 'button'
 
     input.addEventListener('input', () => {
@@ -838,7 +1025,7 @@ export class App {
     })
     send.onclick = () => this.submitComposer()
 
-    bar.append(input, send)
+    bar.append(prompt, input, send)
     this.composer = input
     this.sendBtn = send
     return bar
@@ -855,6 +1042,7 @@ export class App {
     tab.history.push(text)
     if (tab.history.length > 100) tab.history.shift()
     tab.histIdx = tab.history.length
+    this.renderHistory()
     this.machine(tab.machineId)?.fleet.input(tab.sessionId, `${text}\r`)
   }
 
@@ -972,6 +1160,8 @@ export class App {
     this.renderFleet()
     this.renderBanner()
     this.renderStatus()
+    this.renderInspect()
+    this.renderHistory()
     if (tab) {
       this.fitTab(tab)
       this.composer.value = tab.draft
@@ -1002,9 +1192,71 @@ export class App {
     this.renderFleet()
     this.renderBanner()
     this.renderStatus()
+    this.renderInspect()
+    this.renderHistory()
+    this.renderHero()
     this.syncComposer()
     const next = this.current()
     if (next) this.fitTab(next)
+  }
+
+  /**
+   * The no-tabs state. Not a dead end: it says what this machine is, and
+   * offers the two things worth doing next.
+   */
+  private buildHero(): void {
+    if (this.hero) return
+    const hero = el('div', 'tf-hero')
+    const mark = el('div', 'tf-hero-mark')
+    mark.innerHTML =
+      '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l4-10 4 10M5.5 13.5h5"/><path d="M14 7v10"/><path d="M14 17c1.8 0 3.4-1.2 3.4-3.2S15.8 10.6 14 10.6"/><path d="M17 10.6l2.4-1"/></svg>'
+    const title = el('h1', undefined, '还没有打开的终端')
+    const note = el('p')
+    note.textContent =
+      '在左侧选择一台机器上的会话，或直接新建一个终端。快捷键可以随时用，不用先记住。'
+    const acts = el('div', 'tf-hero-acts')
+    const newBtn = el('button', 'tf-btn tf-btn-primary', '新建终端')
+    newBtn.append(el('kbd', undefined, `${MOD_LABEL}T`))
+    newBtn.onclick = () => this.newTab()
+    const keysBtn = el('button', 'tf-btn tf-btn-ghost', '快捷键')
+    const keys = el('div', 'tf-hero-keys')
+    keys.hidden = true
+    keys.append(
+      el('div', undefined, '新建终端'),
+      el('div', undefined, `${MOD_LABEL}T`),
+      el('div', undefined, '关闭标签'),
+      el('div', undefined, `${MOD_LABEL}W`),
+      el('div', undefined, '切换标签'),
+      el('div', undefined, `${MOD_LABEL}Tab`),
+      el('div', undefined, '跳到第 N 个'),
+      el('div', undefined, `${MOD_LABEL}1…9`),
+    )
+    keysBtn.onclick = () => {
+      keys.hidden = !keys.hidden
+    }
+    acts.append(newBtn, keysBtn)
+    hero.append(mark, title, note, acts, keys)
+    this.panes.append(hero)
+    this.hero = hero
+    this.renderHero()
+  }
+
+  private renderHero(): void {
+    if (!this.hero) return
+    this.hero.hidden = this.tabs.length > 0
+    if (this.hero.hidden) return
+    const mv = this.machine(this.activeMachine) ?? [...this.machines.values()][0]
+    const note = this.hero.querySelector<HTMLElement>('p')
+    if (!note) return
+    if (!this.machines.size) {
+      note.textContent = '中继上还没有登记任何机器。在要分享的机器上运行 tfd，连到同一个中继即可。'
+    } else if (mv && !mv.online) {
+      note.textContent = `${mv.label} 当前离线，重连后这里的会话会自动回来。`
+    } else if (mv && !mv.sessions.length) {
+      note.textContent = `${mv.label} 上还没有会话。新建一个，或在别的客户端上开一个再来看。`
+    } else if (mv) {
+      note.textContent = `${mv.label} 上有 ${mv.sessions.length} 个会话。在左侧选一个，或直接新建一个终端。`
+    }
   }
 
   private killSession(mv: MachineView, session: Summary): void {

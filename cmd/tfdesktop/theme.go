@@ -123,12 +123,12 @@ func (w *window) setTheme(mode string) {
 func windowGround(mode string) string {
 	switch normalizeTheme(mode) {
 	case themeLight:
-		return "#f6f7fb"
+		return "#f2f4f6"
 	case themeDark:
-		return "#0b0d15"
+		return "#07090c"
 	}
 	if mygo.Theme.IsDark() {
-		return "#0b0d15"
+		return "#07090c"
 	}
-	return "#f6f7fb"
+	return "#f2f4f6"
 }
