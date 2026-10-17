@@ -20,6 +20,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
@@ -27,14 +28,18 @@ import (
 )
 
 func main() {
-	// Auto-update: the app checks its own release feed in the background and
-	// offers new versions with their release notes (install / remind me later /
-	// skip this version). The native plugin draws that window with mygo's own UI
-	// rather than a web page, which is what the rest of this app does too — no
-	// WebKitGTK, no WebView2 Runtime. Builds that were never signed for updates
-	// (a development build, or a .deb a package manager installed) say so
-	// instead of checking.
-	mygo.Use(native.Plugin)
+	// Auto-update: the app checks its own release feed and offers new versions
+	// with their release notes (install / remind me later / skip this version).
+	// The native plugin draws that window with mygo's own UI rather than a web
+	// page, which is what the rest of this app does too — no WebKitGTK, no
+	// WebView2 Runtime. Builds that were never signed for updates (a development
+	// build, or a .deb a package manager installed) say so instead of checking.
+	//
+	// The background check starts off: a terminal app that calls out to GitHub
+	// every time it opens is a surprise, both as a firewall prompt and as a
+	// privacy question. 设置 → 更新 turns it on, and 检查更新… in the menu works
+	// either way.
+	mygo.Use(native.New(updater.Options{DisableAutomaticChecks: true}))
 
 	addr := flag.String("addr", "127.0.0.1:0",
 		"loopback address for the daemon under the window; port 0 picks a free one")
@@ -54,14 +59,25 @@ func main() {
 	store := settings.Open(settings.Dir())
 	saved := store.Get()
 
+	// startupErr is why the local service did not come up, if it did not. The
+	// window shows it once, because a service that silently failed leaves a
+	// machine that looks joined but answers nothing.
+	var startupErr error
+
 	f := newFleet(ctx, log.Default())
 	f.addr = *addr
 	f.webDir = *webDir
 
 	// Apply what was saved before the window opens, so the first tab already
 	// has the right font and the machine is already on the relay it joined.
+	//
+	// A failure here is kept for the window to show, not just logged: on macOS
+	// the usual cause is the application firewall, and a person who finds the
+	// service silently off has no way to connect the two. The log stays, because
+	// it names the errno; the window states it in words.
 	if err := f.SetServer(!saved.ServerOff); err != nil {
 		log.Printf("tfdesktop: local service: %v", err)
+		startupErr = err
 	}
 	// Who may drive this machine's shells, applied before anything can reach it:
 	// a machine that was left read-only for other clients must not be reachable
@@ -99,6 +115,13 @@ func main() {
 	}()
 
 	app := newWindow(f, store, *shell, *cwd)
+	// If the service could not start — the usual cause on macOS is the
+	// application firewall — the window says so where it already says what the
+	// fleet is doing, rather than leaving a machine that looks joined and
+	// answers nothing.
+	if startupErr != nil {
+		app.setNotice("本机服务没能启动（" + startupErr.Error() + "）：浏览器和手机连不进来。窗口里的终端不受影响。")
+	}
 	// The link reports its own health from the agent's goroutine, so the pane
 	// that shows it has to be told to repaint.
 	f.onState = app.invalidateSettings

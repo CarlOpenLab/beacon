@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>term-fleet · UI 重设计（三个方向）</title>
+    <meta name="design_doc_mode" content="canvas" />
+
+    <script>
+      // Seed the canvas viewport once, to a "fit all three directions" view.
+      // design-canvas persists pan/zoom in localStorage under this key, so
+      // writing it before the canvas mounts is the only way to control where
+      // the page opens. After the first load the user's own view wins.
+      (function () {
+        var key = 'dc-viewport:' + location.pathname;
+        var seedKey = 'tf-ui-redesign:seed';
+        // Seed the canvas view once, so the page opens on the three artboards
+        // instead of at 100% zoom on the first one's top-left corner. A fixed
+        // transform rather than a computed "fit": the canvas persists pan/zoom
+        // in localStorage and restores it before first paint, and the viewport
+        // size is not reliably readable that early. 0.32 shows all three
+        // 1440x900 artboards on a ~1500px-wide window; the canvas's own wheel
+        // zoom (and the 重置视图 button) cover every other size.
+        try {
+          if (!localStorage.getItem(seedKey)) {
+            localStorage.setItem(key, JSON.stringify({ x: 48, y: 24, scale: 0.32 }));
+            localStorage.setItem(seedKey, '1');
+          }
+        } catch (e) {
+          /* private mode: the canvas just opens at 100% */
+        }
+      })();
+    </script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #f0eee9;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+          "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ---- control bar: shared across the three directions, deliberately
+             neutral so it does not hint at any one of them ---- */
+      .tfbar {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%);
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 14px;
+        max-width: calc(100vw - 24px);
+        padding: 8px 10px 8px 14px;
+        border-radius: 999px;
+        background: rgba(24, 26, 30, 0.94);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 10px 34px rgba(0, 0, 0, 0.28);
+        backdrop-filter: blur(12px);
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 12px;
+        line-height: 1;
+      }
+      .tfbar-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tfbar-label {
+        color: rgba(255, 255, 255, 0.45);
+        letter-spacing: 0.02em;
+      }
+      .tfbar-seg {
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+      }
+      .tfbar-seg button {
+        font: inherit;
+        color: rgba(255, 255, 255, 0.66);
+        background: transparent;
+        border: none;
+        border-radius: 999px;
+        padding: 5px 11px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.14s ease, color 0.14s ease;
+      }
+      .tfbar-seg button:hover {
+        color: #fff;
+        background: rgba(255, 255, 255, 0.08);
+      }
+      .tfbar-seg button.on {
+        color: #14161a;
+        background: #f2f0ec;
+        font-weight: 600;
+      }
+      .tfbar-sep {
+        width: 1px;
+        height: 18px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+      .tfbar-hint {
+        color: rgba(255, 255, 255, 0.38);
+        padding-right: 4px;
+        white-space: nowrap;
+      }
+      /* The bar is one line; on a narrow window the least useful parts go
+         first rather than letting the pill wrap into a stack. */
+      @media (max-width: 1180px) {
+        .tfbar-hint {
+          display: none;
+        }
+      }
+      @media (max-width: 940px) {
+        .tfbar {
+          gap: 8px;
+        }
+        .tfbar-label {
+          display: none;
+        }
+        .tfbar-seg button {
+          padding: 5px 8px;
+        }
+      }
+      .tfbar-btn {
+        font: inherit;
+        color: rgba(255, 255, 255, 0.66);
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+        padding: 5px 11px;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .tfbar-btn:hover {
+        color: #fff;
+        border-color: rgba(255, 255, 255, 0.3);
+      }
+
+      /* ---- notes card (section 2) ---- */
+      .notes {
+        max-width: 1180px;
+        padding: 28px 32px 32px;
+        border-radius: 10px;
+        background: #fbfaf8;
+        border: 1px solid rgba(60, 50, 40, 0.12);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        color: rgba(40, 32, 24, 0.86);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      .notes h3 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.2px;
+        color: rgba(30, 24, 18, 0.92);
+      }
+      .notes h3:not(:first-child) {
+        margin-top: 26px;
+      }
+      .notes p {
+        margin: 0 0 10px;
+        max-width: 78ch;
+      }
+      .notes ul {
+        margin: 0;
+        padding-left: 1.15em;
+        max-width: 78ch;
+      }
+      .notes li {
+        margin-bottom: 5px;
+      }
+      .notes table {
+        border-collapse: collapse;
+        margin-top: 6px;
+        font-size: 13px;
+      }
+      .notes th,
+      .notes td {
+        text-align: left;
+        vertical-align: top;
+        padding: 7px 14px 7px 0;
+        border-bottom: 1px solid rgba(60, 50, 40, 0.1);
+      }
+      .notes th {
+        font-weight: 600;
+        color: rgba(60, 50, 40, 0.6);
+        font-size: 12px;
+        letter-spacing: 0.02em;
+      }
+      .notes code {
+        font-family: "SF Mono", ui-monospace, Menlo, monospace;
+        font-size: 12px;
+        background: rgba(60, 50, 40, 0.06);
+        border-radius: 4px;
+        padding: 1px 5px;
+      }
+      .notes-dim {
+        color: rgba(60, 50, 40, 0.55);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+
+    <script
+      src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+      integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+      integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+      integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+      crossorigin="anonymous"
+    ></script>
+
+    <script type="text/babel" data-presets="react" src="design-canvas.jsx"></script>
+
+    <script type="text/babel" data-presets="react">
+      const { useState, useRef, useCallback } = React;
+
+      const DIRECTIONS = [
+        {
+          id: 'a',
+          label: 'A · Quiet Precision',
+          file: 'direction-a-quiet-precision.html',
+        },
+        { id: 'b', label: 'B · Command Deck', file: 'direction-b-command-deck.html' },
+        { id: 'c', label: 'C · Editor Native', file: 'direction-c-editor-native.html' },
+      ];
+
+      const SEED_KEY = 'dc-viewport:' + location.pathname;
+
+      function broadcast(state) {
+        const iframes = document.querySelectorAll('iframe[data-tf-proto]');
+        const msg = {
+          type: 'tf-set',
+          theme: state.theme,
+          screen: state.screen,
+          frame: state.frame,
+        };
+        iframes.forEach((f) => {
+          try {
+            f.contentWindow.postMessage(msg, '*');
+          } catch (e) {
+            /* the frame may not be ready yet; its onLoad re-broadcasts */
+          }
+        });
+      }
+
+      function TfBar({ state, set }) {
+        const Seg = ({ field, options }) => (
+          <div className="tfbar-seg">
+            {options.map((o) => (
+              <button
+                key={o.value}
+                className={state[field] === o.value ? 'on' : ''}
+                onClick={() => set({ [field]: o.value })}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        );
+
+        const bar = (
+          <div className="tfbar">
+            <span className="tfbar-label">三个方向同屏对比</span>
+            <div className="tfbar-sep" />
+            <div className="tfbar-group">
+              <span className="tfbar-label">主题</span>
+              <Seg
+                field="theme"
+                options={[
+                  { value: 'dark', label: '深色' },
+                  { value: 'light', label: '浅色' },
+                ]}
+              />
+            </div>
+            <div className="tfbar-group">
+              <span className="tfbar-label">屏幕</span>
+              <Seg
+                field="screen"
+                options={[
+                  { value: 'main', label: '主界面' },
+                  { value: 'empty', label: '空状态' },
+                  { value: 'connect', label: '连接中继' },
+                ]}
+              />
+            </div>
+            <div className="tfbar-group">
+              <span className="tfbar-label">视图</span>
+              <Seg
+                field="frame"
+                options={[
+                  { value: 'desktop', label: '桌面' },
+                  { value: 'phone', label: '手机' },
+                ]}
+              />
+            </div>
+            <div className="tfbar-sep" />
+            <button
+              className="tfbar-btn"
+              onClick={() => {
+                try {
+                  localStorage.removeItem(SEED_KEY);
+                  localStorage.removeItem('tf-ui-redesign:seed');
+                } catch (e) {}
+                location.reload();
+              }}
+            >
+              重置视图
+            </button>
+            <span className="tfbar-hint">滚轮缩放 · 拖拽平移 · 画板右上 ⤢ 全屏</span>
+          </div>
+        );
+        return ReactDOM.createPortal(bar, document.body);
+      }
+
+      function Notes() {
+        return (
+          <div className="notes">
+            <h3>这次改的是什么，怎么判断</h3>
+            <p>
+              三个方向都用<b>同一份产品事实</b>和<b>同一份假数据</b>
+              （终端里的命令、会话列表、状态栏文字逐字相同），只在布局策略、信息层级、控件形态、排版与色彩上分化。
+              所以可以直接对比：同一块屏幕，谁把信息排得更清楚、谁更像一个真正在用的终端 app。
+            </p>
+
+            <h3>我读到的现状（就是你看到的那份"偏丑"）</h3>
+            <ul>
+              <li>全站 1px 平涂边框 + 换背景色的 hover，没有任何层次；圆角 4/5/6/7/9/12px 混用，间距 7/9/11px 随手写。</li>
+              <li>主按钮是浑浊的蓝灰（<code>#2b3b63</code> 底 + <code>#3a4d7d</code> 边），既不像强调色也不像中性色。</li>
+              <li>侧栏第二行把 <code>s2 · 70×30 · pid 25745 · 控制中 c1</code> 全塞进 10.5px 灰字里，靠 <code>·</code> 分隔，扫读困难。</li>
+              <li>标签栏几乎没有存在感（透明底 + 2px 下划线），和终端区之间没有边界；空状态只是一句居中灰字浮在巨大黑区里。</li>
+              <li>输入区是"圆角输入框 + 灰色按钮"的网页表单长相；下面 14 个等权重灰方块当快捷键条，噪音大、没有分组。</li>
+              <li>全站零图标，全靠文字和 <code>·</code> 表达状态；13px 中文 + 默认字距，可读性一般。</li>
+            </ul>
+
+            <h3>三个方向的分化点</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>A · Quiet Precision</th>
+                  <th>B · Command Deck</th>
+                  <th>C · Editor Native</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th>主张</th>
+                  <td>键盘优先，克制到近乎冷淡</td>
+                  <td>命令即对象，一屏掌握全局</td>
+                  <td>会话即文件，机器即工作区</td>
+                </tr>
+                <tr>
+                  <th>层次靠</th>
+                  <td>发丝线 + 文字透明度</td>
+                  <td>色条与徽标的状态语义</td>
+                  <td>实底分区 + 薄玻璃浮层</td>
+                </tr>
+                <tr>
+                  <th>终端</th>
+                  <td>一张安静的纸，留白舒服</td>
+                  <td>命令块 + 状态条 + 耗时</td>
+                  <td>带高光的实底卡片</td>
+                </tr>
+                <tr>
+                  <th>输入区</th>
+                  <td>Raycast 式单行命令条</td>
+                  <td>多行 composer + 历史下拉</td>
+                  <td>底部大输入区 + ⌘K 面板</td>
+                </tr>
+                <tr>
+                  <th>新增结构</th>
+                  <td>键条折叠成胶囊</td>
+                  <td>右侧 280px 会话检视栏</td>
+                  <td>会话过滤框 + 命令面板</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h3>请你重点看这三件事</h3>
+            <ul>
+              <li><b>终端是不是主角</b>：三套里终端区的可见行数、行宽、行高、内边距差多少。</li>
+              <li><b>切标签时的四处一致性</b>：侧栏高亮、标签、状态栏、终端内容必须同时变化——随便切几下看有没有脱节。</li>
+              <li><b>浅色主题</b>：用下方控制条切到浅色，看哪一套的浅色是真的能用，而不只是把深色反过来。</li>
+            </ul>
+
+            <h3>已知取舍（写在明处的部分）</h3>
+            <ul>
+              <li>浅色主题下三套都倾向于让终端保留深色"纸面"——真实终端 app 的通行做法，也避免浅底等宽文字对比度不足。</li>
+              <li>C 的会话过滤框与 ⌘K 命令面板是<b>提议中的新能力</b>（当前实现没有），所以标成提议；B 的会话检视栏里的 RTT 是示意值。</li>
+              <li>原型里的终端内容是用 HTML 行渲染的，不是真的 xterm——只为了能精确控制排版；终端字号 12.5–13.5px、行高 1.4–1.5 是可落地区间（比现在 xterm 的 1.25 更松）。</li>
+              <li>窗口流量灯、菜单栏这类系统 chrome 没有画进来，只有桌面壳内部的那一层。</li>
+            </ul>
+
+            <h3>确认方向之后我会做什么</h3>
+            <ul>
+              <li>把它落成 <code>web/src/style.css</code> + <code>web/src/fleet.css</code> 的重写，以及 <code>app.ts</code> 里 DOM 结构的对应调整；<b>功能一个都不删</b>（只读/接管、粘滞键、历史、复制 chip、抽屉侧栏都保留）。</li>
+              <li>token 抽成 CSS 变量，深浅两套；改完跑 <code>pnpm run check</code>、<code>pnpm run build</code> 与 <code>scripts/acceptance.mjs</code>，并用同一个 daemon 前后对比截图。</li>
+              <li>如果你想要混合方案（例如 A 的克制配色 + B 的命令块），直接说，我按模块拼。</li>
+            </ul>
+
+            <p className="notes-dim">
+              备注：这些文件在 <code>designs/ui-redesign/</code>，目前没有被 <code>.gitignore</code> 忽略，也不在你已改动的 Go 测试文件里——要不要把它加进忽略或独立提交，你说了算。
+            </p>
+          </div>
+        );
+      }
+
+      function App() {
+        const [state, setState] = useState({
+          theme: 'dark',
+          screen: 'main',
+          frame: 'desktop',
+        });
+        const stateRef = useRef(state);
+        stateRef.current = state;
+
+        const set = useCallback((patch) => {
+          const next = { ...stateRef.current, ...patch };
+          stateRef.current = next;
+          setState(next);
+          broadcast(next);
+        }, []);
+
+        const proto = (file, label, id) => (
+          <iframe
+            data-tf-proto={id}
+            title={label}
+            src={file}
+            width={1440}
+            height={900}
+            loading="eager"
+            onLoad={() => broadcast(stateRef.current)}
+            style={{ display: 'block', width: 1440, height: 900, border: 'none' }}
+          />
+        );
+
+        return (
+          <>
+            <TfBar state={state} set={set} />
+            <DesignCanvas>
+              <DCSection
+                id="directions"
+                title="三个方向 · 同屏对比"
+                subtitle="1440×900 桌面基准，1:1 真实尺寸。控制条切换主题 / 屏幕 / 视图会同时作用在三个画板上。"
+                gap={64}
+              >
+                {DIRECTIONS.map((d) => (
+                  <DCArtboard
+                    key={d.id}
+                    id={d.id}
+                    label={d.label}
+                    width={1440}
+                    height={900}
+                  >
+                    {proto(d.file, d.label, d.id)}
+                  </DCArtboard>
+                ))}
+              </DCSection>
+
+              <DCSection
+                id="notes"
+                title="设计说明与判断"
+                subtitle="现状问题、三个方向的分化点、已知取舍、落地路径"
+              >
+                <Notes />
+              </DCSection>
+            </DesignCanvas>
+          </>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>

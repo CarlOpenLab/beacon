@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>inspect · term-fleet UI 重设计</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #4a4a4a;
+      }
+      #stage {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+      }
+      /* The target page is rendered at 1:1 and then offset + scaled, so a
+         screenshot is a true 1:1 crop of the real 1440x900 layout. */
+      #frame {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1440px;
+        height: 900px;
+        border: 0;
+        transform-origin: 0 0;
+        background: #0b0e14;
+      }
+      #hud {
+        position: fixed;
+        right: 8px;
+        bottom: 8px;
+        z-index: 9;
+        font: 11px/1.5 "SF Mono", ui-monospace, Menlo, monospace;
+        color: #e8e8e8;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 4px 8px;
+        border-radius: 6px;
+        max-width: 70%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage"><iframe id="frame" title="inspect"></iframe></div>
+    <div id="hud"></div>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const src = q.get('src') || 'direction-a-quiet-precision.html';
+      const zoom = q.get('zoom') || '0.55';
+      const x = q.get('x') || '0';
+      const y = q.get('y') || '0';
+      const pass = ['theme', 'screen', 'frame']
+        .filter((k) => q.get(k))
+        .map((k) => k + '=' + encodeURIComponent(q.get(k)))
+        .join('&');
+      const frame = document.getElementById('frame');
+      frame.src = pass ? src + '?' + pass : src;
+      frame.style.transform = `translate(${-x}px, ${-y}px) scale(${zoom})`;
+      document.getElementById('hud').textContent =
+        `src=${src} ${pass} zoom=${zoom} x=${x} y=${y}`;
+    </script>
+  </body>
+</html>

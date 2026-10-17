@@ -4,6 +4,52 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.10
+
+**Four separate acts, and the ones that were missing**
+
+A client watching a shell could take it over but never give it back, and the
+button that said 关闭标签页 ended the process instead. Both are fixed, and the
+four things a client can do to a shell are now four buttons on both clients.
+
+- **释放控制权 exists.** The release frame was in the protocol and no client
+  ever sent it. A client holding the lease is offered 释放 in the header and in
+  the banner; pressing it gives the lease up, leaves the process running and
+  leaves the tab watching it. The hub hands the lease to the machine the shell
+  runs on, so the shell is not left mute.
+- **The hub was throwing a release away.** `handleRelease` dropped the lease and
+  then asked `giveAway` to hand it to the machine's own window — which is the
+  client that had just released it, because `drop` had just added it to the
+  watchers. A release from the machine's own window was a no-op, and that
+  window is the one that releases most, since it holds its own shells by
+  default.
+- **The 会话 panel's × closed the tab and ended the shell.** It was wired to the
+  same act as 结束, so "close this tab" killed a process on a machine somewhere
+  — for every client watching it, not only the window that clicked. It closes
+  the tab now, and 结束 has its own button on the row of the shell it ends.
+- **A tab whose shell exited is no longer removed.** The tab is where the
+  shell's last output is read, so ending a session is not a reason to lose it.
+  The browser client already behaved this way; the desktop app's reconcile did
+  not.
+- **The desktop app catches up with the browser client's layout.** It gains the
+  tab strip, the command composer with its history bar, and the 280px session
+  inspector, and its sidebar and terminal take the same measurements the
+  browser client uses. Without a composer the window had no way to send Esc,
+  Tab, Ctrl or an arrow key at all, because a terminal is a display surface and
+  cannot produce them.
+- **The app icon is transparent.** `resources/icon.png` had an opaque dark plate
+  composited behind the logo, which is what put a dark square in the macOS Dock
+  and the Windows taskbar. Every icon is rendered from the one transparent
+  source now, and a test reads the pixels so it cannot come back.
+- **The release pipeline builds the frontend.** The `cli` job never ran
+  `build:web`, so every CLI artifact published so far shipped without the
+  browser client embedded — `tfd` answered the browser with nothing.
+- **The macOS firewall prompt is explained before it appears.** The 本机服务
+  switch says that the system asks once about incoming connections and that
+  clicking 允许 settles it for good. A service that failed to start is stated in
+  the status bar rather than only logged, and the background update check starts
+  off instead of calling out on every launch.
+
 ## 0.4.9
 
 **One design, two clients**

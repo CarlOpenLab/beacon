@@ -1,5 +1,9 @@
 /bin/
 /dist/
+
+# A stray binary from `go build ./cmd/tfdesktop` with no -o: it lands in the
+# repo root as ./tfdesktop.
+/tfdesktop
 node_modules/
 .DS_Store
 

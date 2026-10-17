@@ -297,7 +297,8 @@ func TestCloseRequiresControl(t *testing.T) {
 		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
 	})
 
-	// A viewer may stop watching, but may not kill everyone's session.
+	// A viewer may stop watching, but may not kill everyone's session. Claiming
+	// first is what the client does when its 结束 button is pressed.
 	b.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1"})
 	e := b.waitFor("close refused", func(m protocol.Msg) bool { return m.T == protocol.STError })
 	if e.Code != protocol.ErrNotController {
@@ -305,7 +306,64 @@ func TestCloseRequiresControl(t *testing.T) {
 	}
 
 	a.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1"})
-	a.waitFor("closed", func(m protocol.Msg) bool { return m.T == protocol.STClosed })
+	a.waitFor("exit", func(m protocol.Msg) bool { return m.T == protocol.STExit })
+}
+
+// Ending a session is not a reason to lose the tab that was showing it: the
+// client that asked gets the same exit frame as everyone else, so its final
+// output stays on screen. A close used to answer the killer alone with
+// STClosed, which the browser client read as "this tab is done" — so the one
+// who ended a shell was the only one who could not read its last line.
+func TestCloseTellsTheKillerTheSameExit(t *testing.T) {
+	ts := newTestHub(t)
+	a := dialTest(t, ts)
+	a.create("s1")
+	a.waitFor("role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	b := dialTest(t, ts)
+	b.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	b.waitFor("viewer role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
+	})
+
+	a.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1"})
+
+	// The killer hears the exit, not a private acknowledgement.
+	m := a.waitFor("exit", func(msg protocol.Msg) bool { return msg.T == protocol.STExit })
+	if m.SessionID != "s1" {
+		t.Fatalf("exit is for %q, want s1", m.SessionID)
+	}
+	// And so does the watcher.
+	b.waitFor("exit", func(msg protocol.Msg) bool { return msg.T == protocol.STExit })
+}
+
+// A client that only watches may still end the session it is looking at, by
+// claiming first: the 结束 button on a row is not a button that silently fails.
+func TestWatcherMayEndByClaimingFirst(t *testing.T) {
+	ts := newTestHub(t)
+	a := dialTest(t, ts)
+	a.create("s1")
+	a.waitFor("role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+
+	b := dialTest(t, ts)
+	b.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	b.waitFor("viewer role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
+	})
+
+	// Claim with steal, then close: the two frames a 结束 press sends.
+	b.send(protocol.Msg{T: protocol.CTClaim, SessionID: "s1", Steal: true})
+	b.waitFor("controller role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	b.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1"})
+	b.waitFor("exit", func(m protocol.Msg) bool { return m.T == protocol.STExit })
+
+	// The former controller is told the shell is gone too, not just that it lost
+	// the lease — otherwise its tab would sit there claiming a live shell.
 	a.waitFor("exit", func(m protocol.Msg) bool { return m.T == protocol.STExit })
 }
 
@@ -695,4 +753,56 @@ func TestAReleasedLeaseGoesHomeToTheMachine(t *testing.T) {
 		Data: []byte("printf 'HOME\n' 1\n"),
 	})
 	owner.waitOutput("HOME")
+}
+
+// A release from the machine's own window is honoured: the lease is let go and
+// stays let go.
+//
+// giveAway hands a lease nobody holds to the machine's own window when it is
+// watching, which is right for a lease that lapsed or a client that dropped. It
+// is wrong for the client that just released it on purpose: drop has already put
+// that client among the watchers, so handing the lease "home" handed it straight
+// back to the one that let it go — and a release did nothing at all for the
+// machine's own window, which is the client that releases most, because it holds
+// its own shells by default.
+func TestTheMachinesOwnWindowCanLetAShellGo(t *testing.T) {
+	h := newLeaseHub(t, time.Hour)
+	pipe := hub.NewPipe()
+	defer pipe.Close()
+	go h.ServeLocal(pipe.Local())
+
+	owner := newPipeConn(t, pipe)
+	owner.send(protocol.Msg{T: protocol.CTCreate, Cols: 80, Rows: 24, Shell: "/bin/sh"})
+	created := owner.waitFor("created", func(m protocol.Msg) bool { return m.T == protocol.STCreated })
+	shell := created.SessionID
+	owner.waitFor("the lease", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+
+	owner.send(protocol.Msg{T: protocol.CTRelease, SessionID: shell})
+
+	// The window is told it is a viewer, with nobody holding the shell: the
+	// release was honoured rather than answered by taking the lease back.
+	role := owner.waitFor("a viewer after letting go", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
+	})
+	if role.Controller != "" {
+		t.Fatalf("controller after the release = %q, want nobody", role.Controller)
+	}
+
+	// And the roster agrees: the shell has no controller now.
+	list := owner.waitFor("the roster", func(m protocol.Msg) bool { return m.T == protocol.STSessions })
+	for _, s := range list.Sessions {
+		if s.SessionID == shell && s.Controller != "" {
+			t.Fatalf("the roster still names %q as controller", s.Controller)
+		}
+	}
+
+	// And typing is refused: the window let the shell go and the hub says so
+	// rather than dropping the keys silently.
+	owner.send(protocol.Msg{T: protocol.CTInput, SessionID: shell, Data: []byte("x")})
+	err := owner.waitFor("input refused", func(m protocol.Msg) bool { return m.T == protocol.STError })
+	if err.Code != protocol.ErrNotController {
+		t.Fatalf("input after a release was answered %q, want %q", err.Code, protocol.ErrNotController)
+	}
 }

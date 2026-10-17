@@ -114,8 +114,13 @@ func (l *link) release(id string) {
 	l.sendMsg(protocol.Msg{T: protocol.CTRelease, SessionID: id})
 }
 
+// closeSession ends the session. The epoch is not sent: it only guards against a
+// frame from a holder who has since been replaced, and the hub checks that this
+// client is the controller anyway. Sending the epoch this link happens to
+// remember makes the close fail in the case it is most needed — right after a
+// claim, before the role frame that moves the epoch has landed.
 func (l *link) closeSession(id string) {
-	l.sendMsg(protocol.Msg{T: protocol.CTClose, SessionID: id, Epoch: l.epochOf(id)})
+	l.sendMsg(protocol.Msg{T: protocol.CTClose, SessionID: id})
 }
 
 // input types into a session, at the epoch this window last saw. A window that

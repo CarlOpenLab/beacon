@@ -694,7 +694,14 @@ func (h *Hub) handleRelease(c *client, id string) {
 	if w != nil && w.controller == c {
 		now := time.Now()
 		w.drop(now)
-		w.giveAway(now, h.idle)
+		// The lease goes home to the machine's own window, but not to the client
+		// that just let it go: giveAway looks for an owner among the watchers, and
+		// drop has just put this one there. Handing it straight back would make a
+		// release a no-op for the machine's own window — which is the client that
+		// releases most, since it is the one that holds its own shells by default.
+		if !c.owner {
+			w.giveAway(now, h.idle)
+		}
 		released = true
 	}
 	h.mu.Unlock()
@@ -720,7 +727,11 @@ func (h *Hub) handleClose(c *client, id string, epoch uint64) {
 		return
 	}
 	_ = s.Close()
-	c.send(protocol.Msg{T: protocol.STClosed, SessionID: id, Reason: "requested"})
+	// The exit that follows is what tells every watcher the shell is gone, and
+	// it reaches the killer too: ending a session is not a reason to lose the
+	// tab, because the tab is where its final output is read. A closed-by-us
+	// acknowledgement would only give the one client that asked a different
+	// story from the one everyone else gets.
 }
 
 // watchSession flushes output to watchers and finalises the session once its

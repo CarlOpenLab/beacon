@@ -46,6 +46,10 @@ type window struct {
 	tabs     map[int]*tab
 	selected int
 
+	// cmdBar is the command composer and its history: what this window has typed
+	// into the shell on screen, and the box it is typed into again.
+	cmdBar *commandBar
+
 	// local is the window's own client connection to this machine's hub. Every
 	// shell on this machine is watched through it, under the same lease a
 	// browser answers to.
@@ -125,6 +129,7 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 		tabs:         make(map[int]*tab),
 		sidebarSplit: -1,
 		nextKey:      1,
+		cmdBar:       newCommandBar(),
 	}
 	// The window is a client of its own hub from the moment it opens, so every
 	// shell it shows — including one a browser took over — arrives as frames
@@ -363,20 +368,26 @@ func (w *window) view(c *ui.Context) {
 		w.sidebar(c, mode)
 		ui.Column(c).Fill().Children(func() {
 			w.header(c, labels)
+			w.tabStrip(c, labels)
 			w.body(c, labels)
+			w.historyBar(c)
+			w.commandBarRow(c)
 			w.statusBar(c)
 		})
+		w.inspectPanel(c)
 		w.reachDialog(c)
 	})
 }
 
-// loseMachine is what happens when a machine takes its shells back from this
-// window: the tabs it had open there are closed, the link to that machine is
-// dropped, the panels return to this machine, and the window says who did it.
+// loseMachine is what happens when this window's link to a machine is gone for
+// good: the tabs it had open there are closed, the link is dropped, the panels
+// return to this machine, and the window says why.
 //
-// A connection that can no longer type is not worth leaving on screen pretending
-// otherwise, and the person at this keyboard needs to know why their shell
-// vanished — the machine they were driving took it back.
+// This is about the connection, not about who holds a shell. A shell being taken
+// back used to come through here too, which closed the stream and removed the
+// tab — and with them the 接管 button that would have taken the shell back. A
+// lease that moves hands now leaves the link and the tab alone; see tabHandlers.
+// What is left here is the machine actually being unreachable.
 func (w *window) loseMachine(machine string) {
 	name := w.machineName(machine)
 	var doomed []*tab
@@ -571,16 +582,58 @@ func (w *window) newTabOn(machine string) {
 }
 
 // kill ends the shell behind a tab — this machine's or another one's, through
-// the link to whichever machine it lives on. The tab itself goes when that hub
-// reports the session gone. A shell the window does not hold is refused by that
-// hub, the same as typing into it.
+// the link to whichever machine it lives on. The tab itself stays: the exit that
+// follows marks it, and its last output is what the tab is for at that point.
+//
+// Ending needs control, and a window that is only watching does not have it, so
+// it claims first — stealing when another client holds the lease. Both frames can
+// go out back to back because the close carries no epoch: the hub checks that
+// this client is the controller, rather than an epoch a claim has just moved.
+//
+// The claim here is a means to an end, not the 接管 a person asks for: the tab is
+// left alone either way, and closing it is the tab strip's own ×.
 func (w *window) kill(tb *tab) {
-	if tb == nil || tb.id == "" {
+	if tb == nil {
 		return
 	}
-	if l := w.linkFor(tb.machine); l != nil {
-		l.closeSession(tb.id)
+	w.killSessionOn(tb.machine, tb.id)
+}
+
+// killSessionOn ends a shell this window may only be watching: a row of the
+// panel, with no tab behind it. It is the same act as kill, addressed by machine
+// and session id rather than by a tab.
+func (w *window) killSessionOn(machine, sessionID string) {
+	if sessionID == "" {
+		return
 	}
+	l := w.linkFor(machine)
+	if l == nil {
+		return
+	}
+	if tb := w.tabOf(machine, sessionID); tb != nil && tb.held() {
+		l.closeSession(sessionID)
+		return
+	}
+	// Not holding it, or no tab at all: claim first. The steal is decided by who
+	// the hub last said holds the shell, which is the same answer the row shows.
+	steal := false
+	if tb := w.tabOf(machine, sessionID); tb != nil {
+		steal = tb.holder() != ""
+	} else {
+		steal = w.remoteHolder(machine, sessionID) != ""
+	}
+	l.claim(sessionID, steal)
+	l.closeSession(sessionID)
+}
+
+// remoteHolder is who the hub last said controls a shell on another machine.
+func (w *window) remoteHolder(machine, sessionID string) string {
+	for _, s := range w.remoteSessions[machine] {
+		if s.SessionID == sessionID {
+			return s.Controller
+		}
+	}
+	return ""
 }
 
 // reconcile brings the tabs in line with the sessions the hub reports. It runs
@@ -592,14 +645,25 @@ func (w *window) reconcile(live []protocol.Summary) {
 		present[s.SessionID] = true
 	}
 
-	// A shell that ended takes its tab with it.
+	// A shell that ended keeps its tab: the tab is where its last output is read,
+	// and taking it away here is what used to leave the client that ended a shell
+	// as the only one that could not see its final line. The tab is marked dead by
+	// the exit frame itself; this only has to not undo that.
+	//
+	// A tab is dropped when the session it names is no longer in the roster AND
+	// the window never saw it exit — a shell that was ended from somewhere this
+	// window had no link to, say. Those carry nothing worth keeping.
 	for key, tb := range w.tabs {
-		if tb.id == "" || present[tb.id] {
+		if tb.id == "" || present[tb.id] || tb.alive {
 			continue
 		}
-		tb.close()
-		delete(w.tabs, key)
-		w.order = dropKey(w.order, key)
+		if !tb.done {
+			// No exit frame and no session: this window lost track of it rather
+			// than watched it end.
+			tb.close()
+			delete(w.tabs, key)
+			w.order = dropKey(w.order, key)
+		}
 	}
 
 	// A shell that appeared gets one.
@@ -869,16 +933,18 @@ func (h tabHandlers) Role(role, controller string, epoch uint64) {
 		case !held || tb.held():
 			// Nothing changed hands: a viewer is still a viewer, or the lease is
 			// still ours.
-		case tb.machine != "" && tb.machine != machineLocal:
-			// A shell on another machine that this window was driving has been
-			// taken back — by that machine's own window, which is the only client
-			// that can do it without stealing. Per the machine's own rule, our
-			// connection to it is over: see loseMachine.
-			w.loseMachine(tb.machine)
 		default:
-			// A shell of this machine's, taken by someone else: it says so where
-			// the typing used to go. The glow and the tab's mark say which shell,
-			// and the popover is the only place that offers it back.
+			// A shell this window was driving has been taken back. The window
+			// keeps watching it and keeps its link to the machine: the glow says
+			// it is not typing right now, the popover explains who is, and the
+			// button in it takes the shell back.
+			//
+			// This used to be split — a shell of this machine's kept its link and
+			// opened the popover, while a shell on another machine's dropped the
+			// whole connection and removed the tab. That is the opposite of what
+			// the difference between them calls for: a remote shell is the one a
+			// person reached out to, so it is the one worth keeping, and tearing
+			// the relay stream down meant the 接管 button was never drawn at all.
 			w.leaseOpen = true
 		}
 		w.invalidate()
@@ -898,14 +964,13 @@ func (h tabHandlers) Exit(code int) {
 	})
 }
 
+// Closed is the hub's old acknowledgement that this client asked to end a
+// session. It no longer arrives: a close produces the same exit frame for every
+// watcher, including whoever asked, so the tab stays and shows its last output.
+// An older daemon still sends it, and removing the tab on it would take that
+// output away, so it is read as the exit it stands for.
 func (h tabHandlers) Closed() {
-	w := h.w
-	w.update(func() {
-		if tb := h.tab(); tb != nil {
-			w.removeTab(tb)
-		}
-		w.invalidate()
-	})
+	h.Exit(0)
 }
 
 func (h tabHandlers) Gone(reason string) {
@@ -1011,6 +1076,12 @@ type tab struct {
 	// role frame that answers its own release is not mistaken for a machine
 	// taking the shell back — which would end the window's connection to it.
 	letGo bool
+
+	// sent is what this window has typed into the shell, newest last. The
+	// history bar above the composer recalls it, the way the browser client's
+	// does; it is this window's own record, not the shell's, because a shell
+	// reached through the relay does not hand its history over.
+	sent []string
 }
 
 // bind gives the tab its session id, once the hub has named it. Until then the
@@ -1088,6 +1159,20 @@ func (t *tab) finish(code int) {
 	t.done = true
 	t.exit = code
 	t.mu.Unlock()
+}
+
+// size is the terminal's own columns and rows, as "80x24". It is the one number
+// that tells two shells started in the same directory apart, so it is what the
+// panel's row shows — the same row the browser client draws.
+func (t *tab) size() string {
+	t.mu.Lock()
+	term := t.term
+	t.mu.Unlock()
+	if term == nil {
+		return ""
+	}
+	cols, rows := term.Size()
+	return fmt.Sprintf("%dx%d", cols, rows)
 }
 
 func (t *tab) label() string {

@@ -186,7 +186,7 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 // had open there close, the link is dropped, the panels return to this machine,
 // and the window says who did it. Leaving a dead tab on screen would be a
 // connection that cannot type pretending to be one that can.
-func TestAMachineTakingItsShellBackEndsTheConnection(t *testing.T) {
+func TestAMachineTakingItsShellBackKeepsTheWayBack(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
 	tb := w.tabs[1]
@@ -197,6 +197,11 @@ func TestAMachineTakingItsShellBackEndsTheConnection(t *testing.T) {
 	w.remoteSessions = map[string][]protocol.Summary{
 		"other-box": {{SessionID: tb.id, Alive: true}},
 	}
+	// A link that exists and carries nothing, as one for a machine the window has
+	// looked at but not routed a stream to yet does.
+	stub := &relayLink{link: newLink(), machine: "other-box"}
+	stub.setSend(func(protocol.Msg) bool { return true })
+	w.remote["other-box"] = stub
 	w.machineSel = "other-box"
 	w.roster = []tunnel.Machine{{
 		ID: "other-box", Name: "other box", Online: true,
@@ -211,31 +216,39 @@ func TestAMachineTakingItsShellBackEndsTheConnection(t *testing.T) {
 	}
 
 	// The far machine's own window takes it back: the role frame says this
-	// window is a viewer and nobody else holds it either.
-	h.Role(protocol.RoleViewer, "", 4)
+	// window is a viewer and that machine is the one typing now.
+	h.Role(protocol.RoleViewer, "other-box", 4)
 	w.drain()
 
-	if len(w.tabs) != 0 {
-		t.Fatalf("%d tabs left after the machine took its shell back, want none", len(w.tabs))
+	// The window keeps watching the shell and keeps its link to the machine. A
+	// shell taken back is a lease that moved hands, not a machine that went away:
+	// the tab stays, the popover opens, and 接管 in it takes the shell back.
+	//
+	// This used to drop the relay stream and remove the tab instead, which left
+	// the 接管 button with nothing to be drawn on — a client that reached a
+	// machine's shell and lost it had no way back at all.
+	if len(w.tabs) != 1 {
+		t.Fatalf("%d tabs left after the machine took its shell back, want the one still watching it", len(w.tabs))
 	}
-	if _, ok := w.remote["other-box"]; ok {
-		t.Error("the link to the machine that took its shell back is still open")
+	if _, ok := w.remote["other-box"]; !ok {
+		t.Error("the link to the machine whose shell was taken back is gone")
 	}
-	if _, ok := w.remoteSessions["other-box"]; ok {
-		t.Error("the window still lists shells from a machine it is no longer connected to")
+	if _, ok := w.remoteSessions["other-box"]; !ok {
+		t.Error("the window forgot the shells of a machine it is still connected to")
 	}
-	if got := w.selectedMachine(); got != machineLocal {
-		t.Errorf("the panels are still on %q, want this machine", got)
+	if got := w.selectedMachine(); got != "other-box" {
+		t.Errorf("the panels are on %q, want to stay on the machine being watched", got)
 	}
-	// And it says who did it, on screen: a shell that vanishes without a word is
-	// the thing this rule exists to avoid.
-	if !strings.Contains(w.currentNotice(), "other box") {
-		t.Fatalf("notice = %q, want it to name the machine", w.currentNotice())
+	if !w.leaseOpen {
+		t.Error("the popover naming the new holder did not open")
 	}
+
+	// And the way back is on screen: the header says who is typing, and offers
+	// 接管 for a shell that was never this window's to begin with.
 	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
 	tt.Frame()
-	if !tt.HasText("拿回了控制权") {
-		t.Fatalf("the notice is not on screen; texts = %v", tt.Texts())
+	if !tt.HasText("接管") {
+		t.Fatalf("no 接管 button on screen; texts = %v", tt.Texts())
 	}
 }
 

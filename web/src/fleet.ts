@@ -346,7 +346,16 @@ export class Fleet {
     this.send({ t: CT.release, sessionId })
   }
 
+  /**
+   * End the session: kill the process on its machine, for every watcher.
+   *
+   * The epoch is deliberately not sent. It is only a guard against a frame from
+   * a holder who has since been replaced, and the hub checks `controller == c`
+   * anyway — which is the check that matters here. Sending the epoch a client
+   * happens to remember makes the close fail in exactly the case it is most
+   * needed: right after a claim, before the role frame that moves it has landed.
+   */
   closeSession(sessionId: string): void {
-    this.send({ t: CT.close, sessionId, epoch: this.epochs.get(sessionId) ?? 0 })
+    this.send({ t: CT.close, sessionId })
   }
 }

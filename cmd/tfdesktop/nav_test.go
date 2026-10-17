@@ -109,22 +109,75 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	// same path a shell started from a browser takes.
 	settleTabs(t, w, 1)
 
-	// ...and an end to the one on screen.
-	if err := tt.Click("关闭标签页"); err != nil {
-		t.Fatalf("Click(关闭标签页): %v", err)
+	// The row's 结束 is drawn from what the hub said, so the panel is redrawn
+	// before it is looked for: the tester's frame is a snapshot, not a live view.
+	tt.Frame()
+
+	// ...and an end to the one on screen. 结束 is its own button, on the row of
+	// the shell it ends — not the × that closes the tab, which used to be wired
+	// to the same act and so killed a process on a machine somewhere every time
+	// somebody meant to stop watching it.
+	if err := tt.Click("结束"); err != nil {
+		t.Fatalf("Click(结束): %v", err)
 	}
 	if got := waitSessions(f, 0); got != 0 {
 		t.Fatalf("the button left %d shells, want 0", got)
 	}
-	settleTabs(t, w, 0)
+	// The tab stays: the shell is gone, and the tab is where its last output is
+	// read. Closing it is a separate action, so it settles to one exited tab
+	// rather than to none.
+	settleTabs(t, w, 1)
+
+	// And the × that shares the panel's title row closes the tab without
+	// touching the process. The new shell is waited for by id rather than by
+	// count: the ended one is gone from the roster, so "1 live session" would be
+	// true before the new one started.
+	//
+	// The panel is redrawn before it is clicked: the tester holds a frame, not a
+	// live view, and a button drawn after the last Frame is not there to click.
+	tt.Frame()
+	if err := tt.Click("新建标签页"); err != nil {
+		t.Fatalf("Click(新建标签页): %v", err)
+	}
+	if got := waitSessions(f, 1); got != 1 {
+		t.Fatalf("the button left %d live shells, want 1", got)
+	}
+	// The newest session in the roster is the one just started: the ended one is
+	// no longer listed at all.
+	list := f.Hub().Sessions()
+	fresh := list[len(list)-1].SessionID
+	settleTabs(t, w, 2)
+	tt.Frame()
+	if err := tt.Click("关闭标签页"); err != nil {
+		t.Fatalf("Click(关闭标签页): %v", err)
+	}
+	if got := liveCount(f); got != 1 {
+		t.Fatalf("closing the tab left %d live shells, want the shell still running", got)
+	}
+	// And the shell really is still running: the roster still holds it.
+	if !hasLiveSession(f, fresh) {
+		t.Fatal("closing the tab ended the shell it was watching")
+	}
+	settleTabs(t, w, 1)
 }
 
-// waitSessions waits for the hub to hold n sessions: the panel's controls act
-// from their own goroutines, as the window's clicks do.
+// hasLiveSession reports whether the hub still holds a running session by id.
+func hasLiveSession(f *fleet, id string) bool {
+	for _, s := range f.Hub().Sessions() {
+		if s.SessionID == id && s.Alive {
+			return true
+		}
+	}
+	return false
+}
+
+// waitSessions waits until the hub holds n *live* sessions and returns that
+// count. Live, not total: an exited shell stays in the manager so its output can
+// still be read, so counting everything would never reach zero after an end.
 func waitSessions(f *fleet, n int) int {
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		got := len(f.Hub().Sessions())
+		got := liveCount(f)
 		if got == n || time.Now().After(deadline) {
 			return got
 		}
@@ -132,9 +185,24 @@ func waitSessions(f *fleet, n int) int {
 	}
 }
 
+// liveCount is how many of the hub's sessions are still running.
+func liveCount(f *fleet) int {
+	n := 0
+	for _, s := range f.Hub().Sessions() {
+		if s.Alive {
+			n++
+		}
+	}
+	return n
+}
+
 // settleTabs waits until the window's tabs name the sessions the hub holds:
 // what the links report is posted to the window's thread, and a test applies it
 // by draining.
+// settleTabs waits until the window holds n tabs, each named by the hub and
+// marked alive by its attached frame. Both, not just the name: the panel's 结束
+// button is drawn from `alive`, and a tab that has been named but not yet
+// attached is not a shell the panel will offer to end.
 func settleTabs(t *testing.T, w *window, n int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -142,7 +210,7 @@ func settleTabs(t *testing.T, w *window, n int) {
 		w.drain()
 		named := 0
 		for _, key := range w.order {
-			if w.tabs[key].id != "" {
+			if w.tabs[key].id != "" && w.tabs[key].alive {
 				named++
 			}
 		}
@@ -151,7 +219,7 @@ func settleTabs(t *testing.T, w *window, n int) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("tabs did not settle to %d named sessions: order=%v", n, w.order)
+	t.Fatalf("tabs did not settle to %d live sessions: order=%v", n, w.order)
 }
 
 // The machines' panel is the fleet's own view of itself: this machine, the relay

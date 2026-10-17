@@ -522,16 +522,22 @@ func (s *settingsWindow) setNote(note string) {
 func (s *settingsWindow) serverPane(c *ui.Context) {
 	t := c.Theme()
 	ui.Form(c, func() {
+		// The description says what turning this on asks the system for. macOS
+		// shows its application-firewall prompt the first time a listening
+		// socket appears, and it has no API for an app to pre-authorise itself:
+		// the only way through is the user clicking 允许 once, after which it
+		// never asks again. A person who meets that prompt cold reads it as the
+		// app doing something suspicious, so it is named here, before it happens.
 		ui.Field(c, "本机服务", func() {
 			ui.Switch(c, &s.server).AlignSelf(ui.Start).OnChange(func() { s.commit() })
-		})
+		}).Description("开启后本机会开一个只监听 127.0.0.1 的端口。macOS 第一次见到监听中的程序会问一次「是否允许接受传入连接」，点允许即可，之后不再问。")
 		// The machine's own shells, and who may type into them. It is here rather
 		// than on the remote pane because it is not about the relay: a browser on
 		// the LAN answers to it too. It applies on the click, like the switch
 		// above, because a switch that guards a machine should not wait for 应用.
 		ui.Field(c, "允许被控制", func() {
 			ui.Switch(c, &s.control).AlignSelf(ui.Start).OnChange(func() { s.commit() })
-		})
+		}).Description("关闭后别的客户端仍然能看，但不能接管。")
 	})
 	if url := s.fleet.BaseURL(); url != "" {
 		ui.Text(c, "这台机器上的浏览器可以打开 "+url+"，看到的是窗口里同一批会话。").

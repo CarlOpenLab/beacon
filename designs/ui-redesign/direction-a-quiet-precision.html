@@ -1,0 +1,1683 @@
+<!doctype html>
+<!--
+  term-fleet · 方向 A · Quiet Precision
+  主张：Linear / Raycast 的安静与精确 —— 键盘优先、近乎冷淡的克制、一眼看懂。
+
+  Token 表：
+    表面   --bg #0b0c0e / --bg-raised #121316 / --bg-sunken #08090a
+    发丝线 --line rgba(255,255,255,.08) / --line-soft .05 / --line-strong .14
+    文字   --fg 96% / --fg-70 70% / --fg-50 50%（三级透明度，不用第二强调色）
+    强调   --accent #7c84e0 低饱和靛蓝，只用于主按钮 / 激活 / 焦点
+    语义   --ok / --warn / --err 全部降饱和
+    终端纸 --term-bg #101114：深浅两主题下纸面都保持深色。
+           理由：终端 app 的"深色纸面"是内容本体，浅色壳 + 深纸面既是
+           xterm 默认观感，也避免浅色下 16 色终端配色全部重调后失真。
+    圆角   6 / 8 / 10 / 14 / 全圆；间距 4 的倍数；阴影只有三档且极轻。
+
+  与真实 app 的落地映射：
+    header 40px = 窗口拖拽区，可点元素集中在右侧一组（no-drag）；
+    标签栏 Linear 式紧凑填充标签，激活浮起一级，替代现状的 2px 下划线；
+    侧栏 260px 扁平单列，会话 meta 只留 70×31 + 角色，pid/sessionId/cwd 进 title 提示；
+    composer = Raycast 式单行命令条（提示符图标 + 输入 + ⌘↵ 运行）；
+    键条默认折叠为「按键」胶囊，点开浮出面板，Ctrl/Alt 粘滞；
+    状态栏 = 底部极细信息带，三段用分隔点。
+-->
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>term-fleet · 方向 A · Quiet Precision</title>
+<style>
+/* ---------------------------------------------------------------- tokens */
+:root {
+  color-scheme: dark;
+  --bg: #0b0c0e;
+  --bg-raised: #121316;
+  --bg-sunken: #08090a;
+  --line: rgba(255,255,255,.08);
+  --line-soft: rgba(255,255,255,.05);
+  --line-strong: rgba(255,255,255,.14);
+  --hover: rgba(255,255,255,.045);
+  --active: rgba(255,255,255,.085);
+  --fg: rgba(238,240,244,.96);
+  --fg-70: rgba(238,240,244,.70);
+  --fg-50: rgba(238,240,244,.50);
+  --accent: #7c84e0;
+  --accent-hover: #8d94e8;
+  --accent-tint: rgba(124,132,224,.13);
+  --on-accent: #ffffff;
+  --ok: #7fbf9a;
+  --warn: #d3ab72;
+  --err: #e08e91;
+  /* 终端纸面 token：浅色主题不覆盖（见文件头注释） */
+  --term-bg: #101114;
+  --term-line: rgba(255,255,255,.06);
+  --term-fg: rgba(236,238,242,.94);
+  --term-dim: rgba(236,238,242,.55);
+  --term-prompt: #9aa3f2;
+  --term-path: #a9b7d4;
+  --term-ok: #93c9a4;
+  --term-err: #e79b9e;
+  --term-branch: #d4b98c;
+  --term-mod: #d4b98c;
+  --term-colhead: rgba(236,238,242,.62);
+  --term-cursor: #e6e8ee;
+  --term-lh: 1.45;
+  --canvas-bg: #060708;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --radius-s: 6px;
+  --radius-m: 8px;
+  --radius-l: 10px;
+  --radius-xl: 14px;
+  --radius-full: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --shadow-1: 0 1px 2px rgba(0,0,0,.30);
+  --shadow-2: 0 10px 30px rgba(0,0,0,.38);
+  --shadow-3: 0 24px 64px rgba(0,0,0,.46);
+}
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f7f8;
+  --bg-raised: #ffffff;
+  --bg-sunken: #eeeef0;
+  --line: rgba(15,16,20,.10);
+  --line-soft: rgba(15,16,20,.06);
+  --line-strong: rgba(15,16,20,.16);
+  --hover: rgba(15,16,20,.045);
+  --active: rgba(15,16,20,.085);
+  --fg: rgba(20,21,25,.94);
+  --fg-70: rgba(20,21,25,.68);
+  --fg-50: rgba(20,21,25,.46);
+  --accent: #5058cd;
+  --accent-hover: #454dbd;
+  --accent-tint: rgba(80,88,205,.10);
+  --ok: #33795a;
+  --warn: #9a6f2c;
+  --err: #b8524f;
+  --canvas-bg: #e3e4e7;
+  --shadow-1: 0 1px 2px rgba(15,16,20,.08);
+  --shadow-2: 0 10px 30px rgba(15,16,20,.12);
+  --shadow-3: 0 24px 64px rgba(15,16,20,.16);
+}
+
+/* ------------------------------------------------------------------ base */
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--canvas-bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: var(--fs-13);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button, input {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+}
+button { cursor: pointer; }
+::selection { background: rgba(124,132,224,.32); }
+:where(button, input, [tabindex]):focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: var(--radius-s);
+}
+svg.ic { width: 14px; height: 14px; flex: none; display: block; }
+
+/* 画布与手机外壳：桌面视图 .phone 不参与布局 */
+.canvas { height: 100%; }
+.phone { height: 100%; display: contents; }
+
+/* -------------------------------------------------------------- app 骨架 */
+.app {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+.body { flex: 1; display: flex; min-height: 0; }
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+
+/* ---------------------------------------------------------------- header */
+/* 真实桌面壳里整条 header 是拖拽区，可点元素集中在右侧一组 */
+.hd {
+  flex: none;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.hd-brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.brand-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent);
+}
+.hd-banner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-12);
+  color: var(--warn);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.hd-banner .banner-text { overflow: hidden; text-overflow: ellipsis; }
+.hd-banner.is-success { color: var(--ok); }
+.hd-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-m);
+  font-size: var(--fs-12);
+  color: var(--fg-70);
+  white-space: nowrap;
+  transition: background .12s ease, color .12s ease;
+}
+.btn:hover { background: var(--hover); color: var(--fg); }
+.btn:active { background: var(--active); }
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-1);
+}
+.btn-primary:hover { background: var(--accent-hover); color: var(--on-accent); }
+.btn-primary:active { background: var(--accent-hover); transform: translateY(.5px); }
+.btn-ghost { color: var(--fg-70); }
+.btn-xs { height: 22px; padding: 0 8px; font-size: var(--fs-11); }
+.icon-btn { width: 26px; padding: 0; justify-content: center; display: none; }
+.kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 4px;
+  border-radius: 4px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--line-soft);
+  color: inherit;
+}
+.btn-primary .kbd { background: rgba(255,255,255,.14); border-color: transparent; }
+html[data-theme="light"] .kbd { background: rgba(15,16,20,.05); border-color: var(--line-soft); }
+html[data-theme="light"] .btn-primary .kbd { background: rgba(255,255,255,.16); }
+
+/* --------------------------------------------------------------- sidebar */
+.side {
+  flex: none;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+}
+.side-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  font-size: var(--fs-11);
+  color: var(--fg-50);
+}
+.side-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-70);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line-soft);
+}
+.side-scroll { flex: 1; overflow-y: auto; padding: 0 var(--space-2) var(--space-2); }
+.machine {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-3) var(--space-2) var(--space-1);
+  font-size: var(--fs-11);
+  color: var(--fg-50);
+  text-align: left;
+  border-radius: var(--radius-s);
+}
+.machine:hover { color: var(--fg-70); }
+.machine .m-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.machine .m-state { margin-left: auto; font-size: 10px; color: var(--fg-50); }
+.machine.off .m-label, .machine.off .m-dot { opacity: .45; }
+.m-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); flex: none; }
+.machine.off .m-dot { background: var(--fg-50); }
+.m-chevron { transition: transform .15s ease; }
+.machine.collapsed .m-chevron { transform: rotate(-90deg); }
+.srow {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-m);
+  text-align: left;
+  transition: background .1s ease;
+}
+.srow:hover { background: var(--hover); }
+.srow:active { background: var(--active); }
+.srow.open { background: var(--active); }
+.srow.open .s-title { color: var(--fg); }
+.srow.dead { opacity: .62; }
+.srow-top { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.s-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-50); flex: none; }
+.s-dot.ctl { background: var(--ok); }
+.s-dot.dead { background: var(--err); }
+.s-title { font-size: var(--fs-12); color: var(--fg-70); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-50);
+  padding-left: 13px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.s-kill {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: var(--fs-11);
+  color: var(--err);
+  padding: 2px 7px;
+  border-radius: var(--radius-s);
+  opacity: 0;
+  transition: opacity .12s ease, background .12s ease;
+}
+.srow:hover .s-kill, .s-kill:focus-visible { opacity: 1; }
+.s-kill:hover { background: color-mix(in srgb, var(--err) 14%, transparent); }
+.s-kill-pop {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 6px;
+  z-index: 8;
+  width: 208px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-12);
+  color: var(--fg-70);
+}
+.s-kill-pop .pop-row { display: flex; gap: var(--space-2); justify-content: flex-end; margin-top: var(--space-2); }
+.btn-danger { color: var(--err); }
+.btn-danger:hover { background: color-mix(in srgb, var(--err) 14%, transparent); color: var(--err); }
+.side-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-50);
+}
+.relay-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); flex: none; }
+.relay-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.linklike { margin-left: auto; font-size: var(--fs-11); color: var(--fg-50); border-radius: var(--radius-s); padding: 2px 4px; }
+.linklike:hover { color: var(--fg); background: var(--hover); }
+.side-scrim {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  background: rgba(0,0,0,.5);
+}
+
+/* ------------------------------------------------------------------ tabs */
+.tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 220px;
+  height: 26px;
+  padding: 0 6px 0 10px;
+  border-radius: var(--radius-m);
+  font-size: var(--fs-12);
+  color: var(--fg-50);
+  white-space: nowrap;
+  transition: background .12s ease, color .12s ease;
+}
+.tab:hover { background: var(--hover); color: var(--fg-70); }
+.tab.active {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+  color: var(--fg);
+  padding: 0 5px 0 9px;
+}
+.tab.dead { opacity: .62; }
+.t-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-50); flex: none; }
+.t-dot.ctl { background: var(--ok); }
+.t-dot.dead { background: var(--err); }
+.t-pill {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--fg-50);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  padding: 1px 5px;
+  max-width: 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.t-label { overflow: hidden; text-overflow: ellipsis; }
+.t-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: var(--fg-50);
+  opacity: 0;
+  transition: opacity .1s ease, background .1s ease;
+}
+.tab:hover .t-close, .tab.active .t-close { opacity: 1; }
+.t-close:hover { background: var(--active); color: var(--fg); }
+.tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-m);
+  color: var(--fg-50);
+}
+.tab-add:hover { background: var(--hover); color: var(--fg); }
+
+/* --------------------------------------------------------- 终端纸面 */
+/* 纸面在两套主题下都保持深色（文件头注释有说明）；四周留 12px 边距 +
+   圆角 + 发丝线描边，让深色纸面在浅色 chrome 上是"一张纸"而不是贴边的一块黑。
+   内容限宽形成可读栏宽。 */
+.panes { position: relative; flex: 1; min-height: 0; background: var(--bg); }
+.pane {
+  position: absolute;
+  inset: var(--space-3);
+  overflow: auto;
+  background: var(--term-bg);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-l);
+  padding: 14px var(--space-4) var(--space-4);
+  visibility: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--term-line) transparent;
+}
+.pane.active { visibility: visible; }
+.pane-inner { max-width: 960px; font-family: var(--font-mono); font-size: var(--fs-13); line-height: var(--term-lh); color: var(--term-fg); }
+.pane[data-density="loose"] .pane-inner { --term-lh: 1.58; font-size: var(--fs-14); }
+.tl { white-space: pre; min-height: calc(var(--term-lh) * 1em); }
+.c-prompt { color: var(--term-prompt); }
+.c-dim { color: var(--term-dim); }
+.c-cmdhead { color: var(--term-dim); }
+.c-accent { color: var(--term-prompt); }
+.c-path { color: var(--term-path); }
+.c-ok { color: var(--term-ok); }
+.c-err { color: var(--term-err); }
+.c-branch { color: var(--term-branch); }
+.c-mod { color: var(--term-mod); }
+.c-colhead { color: var(--term-colhead); }
+.c-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 1.15em;
+  vertical-align: text-bottom;
+  background: var(--term-cursor);
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+.pane-ro {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 10px;
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border-radius: var(--radius-s);
+  padding: 2px 8px;
+  pointer-events: none;
+}
+.copy-chip {
+  position: absolute;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: var(--fs-11);
+  color: var(--fg);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-2);
+}
+.copy-chip:hover { background: var(--hover); }
+.copy-chip[hidden] { display: none; }
+
+/* ------------------------------------------------- composer（命令条） */
+.composer-zone {
+  flex: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.cmdbar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 34px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-l);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-1);
+  transition: border-color .12s ease;
+}
+.cmdbar:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.cmdbar.is-disabled { opacity: .55; }
+.cmd-glyph { color: var(--term-prompt); }
+.cmd-input { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-13); color: var(--fg); }
+.cmd-input::placeholder { color: var(--fg-50); }
+.cmd-input:focus { outline: none; }
+.cmd-input:disabled { cursor: default; }
+.cmd-hint { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-50); font-size: var(--fs-11); }
+.cmd-hint .kbd { font-size: 9px; padding: 2px 3px; }
+
+/* ---------------------------------------------------------- 键条 */
+.keys-wrap { position: relative; flex: none; }
+.keys-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  font-size: var(--fs-11);
+  color: var(--fg-50);
+  transition: background .12s ease, color .12s ease;
+}
+.keys-pill:hover { background: var(--hover); color: var(--fg-70); }
+.keys-pill[aria-expanded="true"] { background: var(--active); color: var(--fg); }
+.keys-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  z-index: 10;
+  width: 316px;
+  padding: var(--space-2);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-2);
+}
+.keys-panel[hidden] { display: none; }
+.keys-panel .keys-title { font-size: 10px; color: var(--fg-50); padding: 2px 4px 6px; }
+.keys-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.key {
+  flex: 0 0 auto;
+  min-width: 34px;
+  height: 26px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-11);
+  color: var(--fg-70);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  transition: background .08s ease, transform .08s ease;
+}
+.key:hover { color: var(--fg); border-color: var(--line-strong); }
+.key:active, .key.flash { background: var(--active); transform: translateY(.5px); }
+.key.sticky-on {
+  background: var(--accent-tint);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+.key-w { min-width: 44px; }
+
+/* ------------------------------------------------------------ 状态栏 */
+.status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 24px;
+  padding: 0 var(--space-3);
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-50);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.st-conn { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-70); }
+.st-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--ok); flex: none; }
+.st-dot.warn { background: var(--warn); }
+.st-dot.err { background: var(--err); }
+.st-sep { opacity: .5; }
+.st-item { overflow: hidden; text-overflow: ellipsis; }
+
+[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------ 空状态 */
+.empty {
+  position: absolute;
+  inset: 40px 0 24px 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.empty-box { display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 360px; padding: var(--space-4); }
+.empty-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--fg-50);
+  margin-bottom: var(--space-4);
+}
+.empty-glyph svg { width: 20px; height: 20px; }
+.empty-title { margin: 0 0 6px; font-size: var(--fs-14); font-weight: 600; color: var(--fg); }
+.empty-sub { margin: 0 0 var(--space-5); font-size: var(--fs-12); color: var(--fg-50); line-height: 1.7; }
+.empty-actions { display: flex; align-items: center; gap: var(--space-2); }
+.empty-keys {
+  margin-top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-l);
+  background: var(--bg-raised);
+}
+.ek-row { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-12); color: var(--fg-70); }
+.ek-row .ek-keys { display: flex; gap: 4px; min-width: 92px; }
+.ek-row .kbd { font-size: 9px; }
+.ek-row span:last-child { color: var(--fg-50); }
+
+/* ------------------------------------------------------------ 连接中继 */
+.connect {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--canvas-bg) 72%, transparent);
+}
+.connect-card {
+  width: 100%;
+  max-width: 372px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-3);
+  padding: var(--space-5);
+}
+.connect-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.connect-head h1 { margin: 0; font-size: var(--fs-14); font-weight: 600; }
+.connect-reason { margin: 0 0 var(--space-4); font-size: var(--fs-12); color: var(--fg-50); line-height: 1.6; }
+.connect-form { display: flex; flex-direction: column; gap: var(--space-3); }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-11); color: var(--fg-50); }
+.field input {
+  height: 32px;
+  padding: 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  transition: border-color .12s ease;
+}
+.field input:focus { outline: none; border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.field input::placeholder { color: var(--fg-50); }
+.connect-error { margin: 0; font-size: var(--fs-12); color: var(--err); }
+.connect-submit { justify-content: center; height: 30px; }
+.connect-submit:disabled { opacity: .6; cursor: default; }
+.connect-note { margin: var(--space-4) 0 0; font-size: var(--fs-11); color: var(--fg-50); line-height: 1.65; opacity: .85; }
+.x-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-s);
+  color: var(--fg-50);
+}
+.x-btn:hover { background: var(--hover); color: var(--fg); }
+
+/* -------------------------------------------------------------- Tweaks */
+/* 胶囊上移到状态栏（高 24px）之上并留 8px 间距，避免压住「已连接」chip */
+.tweaks { position: fixed; left: 14px; bottom: calc(24px + 8px); z-index: 60; }
+.tweaks-capsule {
+  height: 24px;
+  padding: 0 11px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-1);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-50);
+}
+.tweaks-capsule:hover { color: var(--fg); }
+.tweaks-capsule[aria-expanded="true"] { color: var(--fg); }
+.tweaks-panel {
+  position: absolute;
+  left: 0;
+  bottom: 32px;
+  width: 268px;
+  padding: var(--space-3);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.tweaks-panel[hidden] { display: none; }
+.tw-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.tw-row > span { font-size: var(--fs-11); color: var(--fg-50); }
+.seg { display: flex; gap: 2px; padding: 2px; border-radius: var(--radius-m); background: var(--bg); border: 1px solid var(--line-soft); }
+.seg button {
+  height: 20px;
+  padding: 0 9px;
+  border-radius: var(--radius-s);
+  font-size: var(--fs-11);
+  color: var(--fg-50);
+}
+.seg button:hover { color: var(--fg-70); }
+.seg button.on { background: var(--active); color: var(--fg); }
+
+/* --------------------------------------------------------------- toast */
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 36px;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+.toast {
+  max-width: 320px;
+  padding: 8px var(--space-3);
+  border-radius: var(--radius-m);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-2);
+  font-size: var(--fs-12);
+  color: var(--fg-70);
+  opacity: 1;
+  transform: none;
+  transition: opacity .3s ease, transform .3s ease;
+}
+.toast.out { opacity: 0; transform: translateY(4px); }
+
+/* --------------------------------------------------- 手机外壳 ?frame=phone */
+body[data-frame="phone"] .canvas { display: flex; align-items: center; justify-content: center; padding: 20px; }
+body[data-frame="phone"] .phone {
+  display: block;
+  position: relative;
+  width: 390px;
+  height: 844px;
+  max-height: 100%;
+  flex: none;
+  border-radius: 44px;
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+  background: var(--bg);
+  --safe-b: 16px;
+}
+body[data-frame="phone"] .phone::after {
+  content: '';
+  position: absolute;
+  bottom: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 118px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,.22);
+  pointer-events: none;
+  z-index: 50;
+}
+html[data-theme="light"] body[data-frame="phone"] .phone::after { background: rgba(15,16,20,.22); }
+body[data-frame="phone"] .app { font-size: var(--fs-13); }
+body[data-frame="phone"] .icon-btn { display: inline-flex; }
+body[data-frame="phone"] .hd { padding: 0 10px; gap: 8px; }
+body[data-frame="phone"] .hd-brand { font-size: var(--fs-12); }
+body[data-frame="phone"] .btn-primary .kbd { display: none; }
+body[data-frame="phone"] .side {
+  position: absolute;
+  top: 40px;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  width: min(84vw, 300px);
+  transform: translateX(-104%);
+  transition: transform .18s ease;
+  box-shadow: var(--shadow-3);
+  border-right: 1px solid var(--line);
+}
+body[data-frame="phone"] .app.side-open .side { transform: none; }
+body[data-frame="phone"] .app.side-open .side-scrim { display: block; }
+body[data-frame="phone"] .tabs { height: 46px; padding: 0 10px; }
+body[data-frame="phone"] .tab { height: 38px; }
+body[data-frame="phone"] .t-close { opacity: 1; }
+body[data-frame="phone"] .srow { padding: 10px 10px; }
+body[data-frame="phone"] .s-kill { opacity: 1; padding: 4px 10px; }
+body[data-frame="phone"] .cmd-hint-text { display: none; }
+body[data-frame="phone"] .composer-zone { padding-bottom: calc(var(--space-3) + var(--safe-b)); }
+body[data-frame="phone"] .status {
+  height: auto;
+  min-height: 24px;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding-bottom: calc(4px + var(--safe-b));
+}
+body[data-frame="phone"] .keys-panel {
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  width: auto;
+  border-radius: var(--radius-l) var(--radius-l) 0 0;
+  padding-bottom: calc(var(--space-3) + var(--safe-b));
+}
+body[data-frame="phone"] .keys-grid { gap: 6px; }
+body[data-frame="phone"] .key { height: 44px; min-width: 48px; font-size: var(--fs-13); border-radius: var(--radius-m); }
+body[data-frame="phone"] .key-w { min-width: 60px; }
+body[data-frame="phone"] .toasts { right: 12px; bottom: 44px; }
+body[data-frame="phone"] .toast { max-width: 300px; }
+body[data-frame="phone"] .empty { inset: 40px 0 0 0; }
+body[data-frame="phone"] .connect { z-index: 45; }
+
+/* ------------------------------------------------- 侧栏隐藏（Tweaks） */
+body[data-sidebar="off"] .side, body[data-sidebar="off"] .side-scrim { display: none; }
+
+/* ------------------------------------------------------------- 补充 */
+.s-empty { padding: 6px 10px 8px; font-size: 11px; color: var(--fg-50); }
+.s-kill-pop > span { display: block; line-height: 1.6; }
+.tab, .srow { cursor: pointer; }
+.keys-pill:disabled { opacity: .45; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="phone">
+    <div class="app" id="app" data-screen-label="主界面">
+      <header class="hd">
+        <div class="hd-brand"><span class="brand-dot"></span>term-fleet</div>
+        <div class="hd-banner" id="banner" hidden>
+          <span class="banner-text" id="bannerText"></span>
+          <button class="btn btn-ghost btn-xs" id="bannerAction" hidden></button>
+          <button class="btn btn-ghost btn-xs" id="bannerCancel" hidden>取消</button>
+        </div>
+        <div class="hd-actions">
+          <button class="icon-btn" id="btnDrawer" aria-label="会话列表">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+          </button>
+          <button class="btn btn-primary" id="btnNewTop">
+            <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>
+            新建终端 <span class="kbd">⌘T</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="body">
+        <aside class="side" id="sidebar" aria-label="主机会话">
+          <div class="side-head">
+            <span>主机会话</span>
+            <span class="side-count" id="sessionCount">4</span>
+          </div>
+          <div class="side-scroll" id="sideList"><!-- JS 渲染 --></div>
+          <div class="side-foot">
+            <span class="relay-dot" aria-hidden="true"></span>
+            <span class="relay-name">relay.example.com</span>
+            <button class="linklike" id="btnRelay">重新连接</button>
+          </div>
+        </aside>
+        <div class="side-scrim" id="sideScrim"></div>
+
+        <main class="main">
+          <div class="tabs" id="tabbar" role="tablist"><!-- JS 渲染 --></div>
+          <div class="panes" id="panes">
+            <!-- 终端内容逐字来自 SPEC §2.3；{语义} 标注映射为 c-* 着色 -->
+            <div class="pane active" id="pane-s2" data-pane="s2">
+              <div class="pane-inner"><div class="tl"><span class="c-path">~/Desktop/carl-github/term-fleet</span> <span class="c-dim">via</span> <span class="c-accent">v24.20.0</span></div>
+<div class="tl"><span class="c-prompt">❯</span> pnpm run check</div>
+<div class="tl c-cmdhead">&gt; term-fleet@0.4.8 check</div>
+<div class="tl c-cmdhead">&gt; go vet ./... &amp;&amp; pnpm --dir web run typecheck</div>
+<div class="tl"> </div>
+<div class="tl c-cmdhead">&gt; term-fleet-web@0.4.8 typecheck</div>
+<div class="tl c-cmdhead">&gt; tsc --noEmit</div>
+<div class="tl c-dim">· 1.24s</div>
+<div class="tl"><span class="c-prompt">❯</span> git status -sb</div>
+<div class="tl"><span class="c-branch">## main...origin/main</span></div>
+<div class="tl"><span class="c-mod"> M</span> cmd/tfdesktop/reach_test.go</div>
+<div class="tl"><span class="c-mod"> M</span> internal/hub/hub_test.go</div>
+<div class="tl"><span class="c-mod"> M</span> internal/relay/relay_test.go</div>
+<div class="tl"><span class="c-prompt">❯</span> go test ./internal/hub/ -run TestAttach</div>
+<div class="tl"><span class="c-ok">ok</span>  <span class="c-path">github.com/carl/term-fleet/internal/hub</span>  <span class="c-dim">0.42s</span></div>
+<div class="tl"><span class="c-prompt">❯</span> <span class="c-cursor"></span></div></div>
+            </div>
+            <div class="pane" id="pane-s5" data-pane="s5">
+              <span class="pane-ro">只读</span>
+              <div class="pane-inner"><div class="tl"><span class="c-prompt">❯</span> go test ./...</div>
+<div class="tl c-err">--- FAIL: TestRosterCallbackGuard (0.01s)</div>
+<div class="tl c-err">    hub_test.go:214: read loop closed before the callback ran</div>
+<div class="tl"><span class="c-err">FAIL</span>  <span class="c-path">github.com/carl/term-fleet/internal/hub</span>  <span class="c-dim">0.38s</span></div>
+<div class="tl c-err">FAIL</div>
+<div class="tl"><span class="c-prompt">❯</span> <span class="c-cursor"></span></div></div>
+            </div>
+            <div class="pane" id="pane-b1" data-pane="b1">
+              <div class="pane-inner"><div class="tl"><span class="c-prompt">❯</span> docker compose -f deploy/compose.yml ps</div>
+<div class="tl c-colhead">NAME      IMAGE            STATUS       PORTS</div>
+<div class="tl"><span class="c-ok">tfrelay</span>   term-fleet:dev   Up 3 hours   0.0.0.0:8443-&gt;8443/tcp</div>
+<div class="tl"><span class="c-ok">tfd</span>       term-fleet:dev   Up 3 hours   127.0.0.1:7678-&gt;7678/tcp</div>
+<div class="tl"><span class="c-prompt">❯</span> <span class="c-cursor"></span></div></div>
+            </div>
+            <button class="copy-chip" id="copyChip" hidden>
+              <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></svg>
+              复制
+            </button>
+          </div>
+          <div class="composer-zone">
+            <div class="cmdbar">
+              <svg class="ic cmd-glyph" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
+              <input class="cmd-input" id="cmdInput" type="text" spellcheck="false" autocomplete="off"
+                     placeholder="输入命令，回车发送（Shift+回车换行）" aria-label="发送到会话">
+              <span class="cmd-hint"><span class="kbd">⌘</span><span class="kbd">↵</span><span class="cmd-hint-text">运行</span></span>
+            </div>
+            <div class="keys-wrap">
+              <button class="keys-pill" id="keysPill" aria-expanded="false">
+                <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1.75" y="4" width="12.5" height="8" rx="1.5"/><path d="M4.2 6.8h.01M6.7 6.8h.01M9.2 6.8h.01M11.7 6.8h.01M4.8 9.4h6.4"/></svg>
+                按键
+              </button>
+              <div class="keys-panel" id="keysPanel" hidden>
+                <div class="keys-title">发送到当前会话 · Ctrl / Alt 为粘滞键</div>
+                <div class="keys-grid">
+                  <button class="key" data-key="Esc">Esc</button>
+                  <button class="key" data-key="Tab">Tab</button>
+                  <button class="key key-w" data-key="Ctrl" data-sticky="1">Ctrl</button>
+                  <button class="key key-w" data-key="Alt" data-sticky="1">Alt</button>
+                  <button class="key" data-key="ArrowUp">↑</button>
+                  <button class="key" data-key="ArrowDown">↓</button>
+                  <button class="key" data-key="ArrowRight">→</button>
+                  <button class="key" data-key="ArrowLeft">←</button>
+                  <button class="key" data-key="C-c">C-c</button>
+                  <button class="key" data-key="C-d">C-d</button>
+                  <button class="key" data-key="|">|</button>
+                  <button class="key" data-key="-">-</button>
+                  <button class="key" data-key="/">/</button>
+                  <button class="key" data-key="~">~</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <footer class="status">
+        <span class="st-conn"><i class="st-dot" id="statusDot"></i><span id="statusConn">已连接</span></span>
+        <span class="st-sep" aria-hidden="true">·</span>
+        <span class="st-item" id="statusHost">—</span>
+        <span class="st-sep" aria-hidden="true">·</span>
+        <span class="st-item" id="statusSession">未选中会话</span>
+      </footer>
+
+      <section class="empty" id="screenEmpty" data-screen-label="空状态" hidden>
+        <div class="empty-box">
+          <div class="empty-glyph">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5 6.5 8 3 11.5"/><path d="M8.5 12h4.5"/></svg>
+          </div>
+          <h1 class="empty-title" id="emptyTitle">中继上还没有登记任何机器</h1>
+          <p class="empty-sub" id="emptySub">创建一个终端会话开始工作，或先连接到中继。</p>
+          <div class="empty-actions">
+            <button class="btn btn-primary" id="btnNewEmpty">
+              <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>
+              新建终端 <span class="kbd">⌘T</span>
+            </button>
+            <button class="btn" id="btnConnectEmpty">连接中继</button>
+            <button class="btn btn-ghost" id="btnKeysEmpty">看看快捷键</button>
+          </div>
+          <div class="empty-keys" id="emptyKeys" hidden>
+            <div class="ek-row"><span class="ek-keys"><span class="kbd">⌘T</span></span><span>新建终端</span></div>
+            <div class="ek-row"><span class="ek-keys"><span class="kbd">⌘W</span></span><span>关闭当前标签（停止观看，不结束进程）</span></div>
+            <div class="ek-row"><span class="ek-keys"><span class="kbd">⌘Tab</span><span class="kbd">⌘⇧Tab</span></span><span>切换标签</span></div>
+            <div class="ek-row"><span class="ek-keys"><span class="kbd">⌘1</span><span class="kbd">…</span><span class="kbd">⌘9</span></span><span>跳到第 N 个标签</span></div>
+          </div>
+        </div>
+      </section>
+
+      <div class="connect" id="screenConnect" data-screen-label="连接中继" hidden>
+        <div class="connect-card">
+          <div class="connect-head">
+            <h1>连接中继</h1>
+            <button class="x-btn" id="connectClose" aria-label="关闭">
+              <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4.2 4.2 7.6 7.6M11.8 4.2l-7.6 7.6"/></svg>
+            </button>
+          </div>
+          <p class="connect-reason" id="connectReason">需要访问令牌才能连接中继</p>
+          <div class="connect-form">
+            <label class="field"><span>中继地址</span>
+              <input id="relayAddr" value="wss://relay.example.com/relay/client" spellcheck="false">
+            </label>
+            <label class="field"><span>访问令牌</span>
+              <input id="relayToken" type="password" placeholder="粘贴访问令牌" autocomplete="off">
+            </label>
+            <p class="connect-error" id="connectError" hidden>访问令牌无效，请重新输入</p>
+            <button class="btn btn-primary connect-submit" id="connectSubmit">连接</button>
+          </div>
+          <p class="connect-note">令牌只保存在这台设备的浏览器里，通过首帧发送，不会出现在 URL 或访问日志中。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tweaks">
+  <button class="tweaks-capsule" id="tweaksCapsule" aria-expanded="false">Tweaks</button>
+  <div class="tweaks-panel" id="tweaksPanel" hidden>
+    <div class="tw-row"><span>主题</span>
+      <div class="seg" data-tw="theme"><button data-v="dark">深</button><button data-v="light">浅</button></div>
+    </div>
+    <div class="tw-row"><span>屏幕</span>
+      <div class="seg" data-tw="screen"><button data-v="main">主界面</button><button data-v="empty">空状态</button><button data-v="connect">连接页</button></div>
+    </div>
+    <div class="tw-row"><span>视图</span>
+      <div class="seg" data-tw="frame"><button data-v="desktop">桌面</button><button data-v="phone">手机</button></div>
+    </div>
+    <div class="tw-row"><span>侧栏</span>
+      <div class="seg" data-tw="sidebar"><button data-v="on">显示</button><button data-v="off">隐藏</button></div>
+    </div>
+    <div class="tw-row"><span>只读演示</span>
+      <div class="seg" data-tw="readonly"><button data-v="on">开</button><button data-v="off">关</button></div>
+    </div>
+    <div class="tw-row"><span>终端密度</span>
+      <div class="seg" data-tw="density"><button data-v="compact">紧凑</button><button data-v="loose">宽松</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* ================= 数据：SPEC §2.1 / §2.2 mock，逐字 ================= */
+const MACHINES = [
+  { id: 'local', label: 'carls-Mac-mini.local', short: 'mini', online: true, platform: 'darwin', arch: 'arm64',
+    sessions: [
+      { id: 's2', title: 'carl', cwd: '~', cols: 70, rows: 31, pid: 25745, controller: 'c1', alive: true,  role: 'controller' },
+      { id: 's5', title: 'term-fleet-dev', cwd: '~/Desktop/carl-github/term-fleet', cols: 132, rows: 38, pid: 31299, controller: 'c4', alive: true, role: 'viewer' },
+      { id: 's9', title: 'deploy', cwd: '~/srv/api', cols: 120, rows: 30, pid: 28810, controller: null, alive: false, role: null }
+    ] },
+  { id: 'build-box', label: 'build-box.lan', short: 'build-box', online: true, platform: 'linux', arch: 'amd64',
+    sessions: [
+      { id: 'b1', title: 'go test ./...', cwd: '/srv/term-fleet', cols: 200, rows: 50, pid: 8812, controller: 'c1', alive: true, role: 'controller' }
+    ] },
+  { id: 'macbook-air', label: 'macbook-air', short: 'air', online: false, platform: 'darwin', arch: 'arm64', sessions: [] }
+];
+
+const state = {
+  screen: 'main', theme: 'dark', frame: 'desktop', sidebar: 'on',
+  density: 'compact', readonlyDemo: true,
+  mode: 'relay',                 // 中继模式：侧栏按机器分组，标签带机器 pill
+  tabs: [
+    { key: 't1', mid: 'local', sid: 's2' },
+    { key: 't2', mid: 'local', sid: 's5' },
+    { key: 't3', mid: 'build-box', sid: 'b1' }
+  ],
+  activeKey: 't1',
+  collapsed: {},                 // 机器分组折叠
+  paneSeq: 0,
+  histIdx: 0,
+  composerHistory: [],
+  s5Taken: false                 // 接管后不再随只读演示复位
+};
+
+/* ================= 工具 ================= */
+const $ = (id) => document.getElementById(id);
+const machine = (id) => MACHINES.find((m) => m.id === id);
+const sessionOf = (mid, sid) => { const m = machine(mid); return m ? m.sessions.find((s) => s.id === sid) : null; };
+const findTab = (key) => state.tabs.find((t) => t.key === key);
+const activeTab = () => findTab(state.activeKey);
+const tabSession = (t) => (t ? sessionOf(t.mid, t.sid) : null);
+
+function roleOf(sess) {
+  if (!sess) return 'none';
+  if (!sess.alive) return 'dead';
+  return sess.role === 'controller' ? 'controller' : 'viewer';
+}
+const roleText = (r) => ({ controller: '控制中', viewer: '只读', dead: '已退出', none: '—' }[r] || '—');
+const dotClass = (r) => (r === 'controller' ? 'ctl' : r === 'dead' ? 'dead' : '');
+const totalSessions = () => MACHINES.reduce((n, m) => n + m.sessions.length, 0);
+
+function toast(msg, tone) {
+  const box = $('toasts');
+  if (!box) return;
+  const el = document.createElement('div');
+  el.className = 'toast' + (tone ? ' toast-' + tone : '');
+  el.textContent = msg;
+  box.appendChild(el);
+  while (box.children.length > 4) box.removeChild(box.firstChild);
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 320); }, 4000);
+}
+
+/* ================= 主题 / 屏幕 / 视图 / Tweaks ================= */
+function setTheme(t) {
+  state.theme = t === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', state.theme);
+  syncTweaks();
+}
+function setFrame(f) {
+  state.frame = f === 'phone' ? 'phone' : 'desktop';
+  document.body.setAttribute('data-frame', state.frame);
+  if (state.frame === 'desktop') $('app').classList.remove('side-open');
+  syncTweaks();
+}
+function setSidebar(v) {
+  state.sidebar = v === 'off' ? 'off' : 'on';
+  document.body.setAttribute('data-sidebar', state.sidebar);
+  syncTweaks();
+}
+function setDensity(d) {
+  state.density = d === 'loose' ? 'loose' : 'compact';
+  document.querySelectorAll('.pane').forEach((p) => p.setAttribute('data-density', state.density));
+  syncTweaks();
+}
+function setReadonlyDemo(on) {
+  state.readonlyDemo = on !== false;
+  const s5 = sessionOf('local', 's5');
+  if (s5) {
+    if (!state.readonlyDemo) { s5.role = 'controller'; s5.controller = 'c1'; }
+    else if (!state.s5Taken) { s5.role = 'viewer'; s5.controller = 'c4'; }
+  }
+  renderAll();
+}
+function setScreen(s) {
+  state.screen = ['main', 'empty', 'connect'].includes(s) ? s : 'main';
+  $('screenEmpty').hidden = state.screen !== 'empty';
+  $('screenConnect').hidden = state.screen !== 'connect';
+  $('emptyTitle').textContent = state.mode === 'relay' ? '中继上还没有登记任何机器' : '主机上还没有会话';
+  syncTweaks();
+}
+function openConnect(reason) {
+  if (reason) $('connectReason').textContent = reason;
+  else $('connectReason').textContent = '需要访问令牌才能连接中继';
+  $('connectError').hidden = true;
+  setScreen('connect');
+}
+function syncTweaks() {
+  document.querySelectorAll('.seg').forEach((seg) => {
+    const g = seg.getAttribute('data-tw');
+    const val = { theme: state.theme, screen: state.screen, frame: state.frame,
+      sidebar: state.sidebar, readonly: state.readonlyDemo ? 'on' : 'off', density: state.density }[g];
+    seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.getAttribute('data-v') === val));
+  });
+}
+
+/* ================= URL 参数（SPEC §3.1） ================= */
+function applyParams() {
+  const q = new URLSearchParams(location.search);
+  const t = q.get('theme');   if (t) setTheme(t);
+  const f = q.get('frame');   if (f) setFrame(f);
+  const sc = q.get('screen'); if (sc) state.screen = ['main', 'empty', 'connect'].includes(sc) ? sc : 'main';
+}
+
+/* ================= 画布通信（SPEC §3.5） ================= */
+window.addEventListener('message', (e) => {
+  const m = e && e.data;
+  if (!m || m.type !== 'tf-set') return;
+  if (m.theme) setTheme(m.theme);
+  if (m.screen) setScreen(m.screen);
+  if (m.frame) setFrame(m.frame);
+});
+
+/* ================= 渲染 ================= */
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const SVG_X = '<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4.2 4.2 7.6 7.6M11.8 4.2l-7.6 7.6"/></svg>';
+const SVG_CHEV = '<svg class="ic m-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>';
+const shortLabel = (m) => (m && m.short) || m.label.replace(/\.(local|lan)$/, '');
+
+function renderTabs() {
+  const bar = $('tabbar');
+  bar.innerHTML = '';
+  const needsPill = state.mode === 'relay' && new Set(state.tabs.map((t) => t.mid)).size > 1;
+  state.tabs.forEach((t) => {
+    const sess = tabSession(t);
+    const r = roleOf(sess);
+    const m = machine(t.mid);
+    const label = sess ? (sess.title || sess.id) : '新终端';
+    const el = document.createElement('div');
+    el.className = 'tab' + (t.key === state.activeKey ? ' active' : '') + (r === 'dead' ? ' dead' : '');
+    el.setAttribute('role', 'tab');
+    el.setAttribute('aria-selected', String(t.key === state.activeKey));
+    el.title = (m ? m.label + ' · ' : '') + (sess ? sess.id : '');
+    el.innerHTML =
+      (needsPill ? '<span class="t-pill">' + esc(shortLabel(m)) + '</span>' : '') +
+      '<span class="t-dot ' + dotClass(r) + '"></span>' +
+      '<span class="t-label">' + esc(label) + '</span>' +
+      '<button class="t-close" aria-label="关闭标签">' + SVG_X + '</button>';
+    el.addEventListener('click', (e) => { if (!e.target.closest('.t-close')) activate(t.key); });
+    el.querySelector('.t-close').addEventListener('click', () => closeTab(t.key));
+    bar.appendChild(el);
+  });
+  const add = document.createElement('button');
+  add.className = 'tab-add';
+  add.setAttribute('aria-label', '新建终端');
+  add.title = '新建终端 ⌘T';
+  add.innerHTML = '<svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3.2v9.6M3.2 8h9.6"/></svg>';
+  add.addEventListener('click', newTerminal);
+  bar.appendChild(add);
+}
+
+function renderSidebar() {
+  const list = $('sideList');
+  list.innerHTML = '';
+  $('sessionCount').textContent = String(totalSessions());
+  MACHINES.forEach((m) => {
+    if (state.mode === 'direct' && m.id !== 'local') return;
+    const mh = document.createElement('button');
+    mh.className = 'machine' + (m.online ? '' : ' off') + (state.collapsed[m.id] ? ' collapsed' : '');
+    mh.title = m.platform + '/' + m.arch + (m.online ? '' : ' · 离线');
+    mh.innerHTML = '<span class="m-dot"></span><span class="m-label">' + esc(m.label) + '</span>' +
+      (m.online ? '' : '<span class="m-state">离线</span>') + SVG_CHEV;
+    mh.addEventListener('click', () => { state.collapsed[m.id] = !state.collapsed[m.id]; renderSidebar(); });
+    list.appendChild(mh);
+    if (state.collapsed[m.id]) return;
+    if (!m.sessions.length) {
+      const e = document.createElement('div');
+      e.className = 's-empty';
+      e.textContent = m.online ? '这台机器上还没有会话' : '机器离线，无法查看会话';
+      list.appendChild(e);
+      return;
+    }
+    m.sessions.forEach((s) => {
+      const r = roleOf(s);
+      const openTab = state.tabs.find((t) => t.mid === m.id && t.sid === s.id);
+      const row = document.createElement('div');
+      row.className = 'srow' + (openTab && openTab.key === state.activeKey ? ' open' : '') + (r === 'dead' ? ' dead' : '');
+      row.title = s.id + ' · pid ' + s.pid + ' · ' + s.cwd;
+      row.innerHTML =
+        '<div class="srow-top"><span class="s-dot ' + dotClass(r) + '"></span><span class="s-title">' + esc(s.title) + '</span></div>' +
+        '<div class="s-meta"><span>' + s.cols + '×' + s.rows + '</span><span>' + roleText(r) + '</span></div>' +
+        (s.alive ? '<button class="s-kill">结束</button>' : '');
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.s-kill') || e.target.closest('.s-kill-pop')) return;
+        openSessionTab(m.id, s.id);
+      });
+      const kill = row.querySelector('.s-kill');
+      if (kill) kill.addEventListener('click', (e) => { e.stopPropagation(); showKillConfirm(row, m, s); });
+      list.appendChild(row);
+    });
+  });
+}
+
+function showKillConfirm(row, m, s) {
+  if (row.querySelector('.s-kill-pop')) return;
+  const pop = document.createElement('div');
+  pop.className = 's-kill-pop';
+  pop.innerHTML = '<span>结束「' + esc(s.title) + '」不可逆，确定？</span>' +
+    '<div class="pop-row"><button class="btn btn-xs">取消</button><button class="btn btn-xs btn-danger">结束</button></div>';
+  pop.querySelector('.btn').addEventListener('click', () => pop.remove());
+  pop.querySelector('.btn-danger').addEventListener('click', () => {
+    s.alive = false; s.role = null; s.controller = null;
+    pop.remove();
+    toast('已结束 ' + s.title + '（原型演示）');
+    renderAll();
+  });
+  row.appendChild(pop);
+}
+
+function ensurePane(t) {
+  let p = $('pane-' + t.sid);
+  if (p) return p;
+  p = document.createElement('div');
+  p.className = 'pane';
+  p.id = 'pane-' + t.sid;
+  p.setAttribute('data-pane', t.sid);
+  p.setAttribute('data-density', state.density);
+  const sess = tabSession(t);
+  p.innerHTML = '<div class="pane-inner"><div class="tl"><span class="c-prompt">❯</span> <span class="c-cursor"></span></div>' +
+    (sess && !sess.alive ? '<div class="tl c-dim">· 该会话已退出，可读取输出后关闭标签</div>' : '') + '</div>';
+  $('panes').appendChild(p);
+  return p;
+}
+
+function renderPanes() {
+  state.tabs.forEach(ensurePane);
+  const at = activeTab();
+  document.querySelectorAll('#panes .pane').forEach((p) => {
+    p.classList.toggle('active', !!at && p.getAttribute('data-pane') === at.sid);
+  });
+  const ro = document.querySelector('#pane-s5 .pane-ro');
+  if (ro) ro.hidden = roleOf(sessionOf('local', 's5')) !== 'viewer';
+}
+
+/* ================= 状态同步（标签 / 侧栏 / banner / 状态栏 / 输入条一致） ================= */
+let bannerStage = 0;
+let bannerTimer = null;
+
+function syncBanner() {
+  const banner = $('banner'), text = $('bannerText'), act = $('bannerAction'), cancel = $('bannerCancel');
+  banner.classList.remove('is-success');
+  cancel.hidden = true;
+  const sess = tabSession(activeTab());
+  const r = roleOf(sess);
+  bannerStage = 0;
+  if (!sess || r === 'controller' || r === 'none') { banner.hidden = true; act.hidden = true; return; }
+  banner.hidden = false;
+  act.hidden = false;
+  if (r === 'viewer') {
+    text.textContent = '只读：该会话正被 ' + (sess.controller || '其他端') + ' 控制';
+    act.textContent = '接管';
+    act.setAttribute('data-act', 'takeover');
+  } else {
+    text.textContent = '会话已退出，可读取输出后关闭标签';
+    act.textContent = '关闭标签';
+    act.setAttribute('data-act', 'close');
+  }
+}
+
+function takeoverConfirm() {
+  const sess = tabSession(activeTab());
+  if (!sess) return;
+  bannerStage = 1;
+  $('bannerText').textContent = '接管后 ' + (sess.controller || 'c4') + ' 将变为只读，确定？';
+  const act = $('bannerAction');
+  act.textContent = '确认接管';
+  act.setAttribute('data-act', 'takeover-confirm');
+  $('bannerCancel').hidden = false;
+}
+
+function doTakeover() {
+  const sess = tabSession(activeTab());
+  if (!sess) return;
+  sess.role = 'controller';
+  sess.controller = 'c1';
+  state.s5Taken = true;
+  const banner = $('banner');
+  banner.classList.add('is-success');
+  $('bannerText').textContent = '已接管，现在可以输入';
+  $('bannerAction').hidden = true;
+  $('bannerCancel').hidden = true;
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(syncBanner, 2400);
+  renderTabs(); renderSidebar(); renderPanes(); syncComposer(); syncStatus();
+  toast('已接管');
+}
+
+function syncStatus() {
+  const t = activeTab();
+  const sess = tabSession(t);
+  $('statusConn').textContent = '已连接';
+  $('statusDot').className = 'st-dot';
+  const m = t ? machine(t.mid) : null;
+  if (m) {
+    const n = m.id === 'local' ? totalSessions() : m.sessions.length;
+    $('statusHost').textContent = m.label + ' · ' + m.platform + '/' + m.arch + ' · ' + n + ' 个会话';
+  } else {
+    $('statusHost').textContent = state.mode === 'relay' ? 'relay.example.com · 未选择机器' : '未选择机器';
+  }
+  $('statusSession').textContent = sess ? sess.id + ' · ' + roleText(roleOf(sess)) + ' · ' + sess.cols + '×' + sess.rows : '未选中会话';
+}
+
+function syncComposer() {
+  const t = activeTab();
+  const sess = tabSession(t);
+  const input = $('cmdInput');
+  const bar = document.querySelector('.cmdbar');
+  const r = roleOf(sess);
+  // A phone has no Shift+Enter to mention: the long hint is a desktop line.
+  let ph = document.body.dataset.frame === 'phone'
+    ? '输入命令，回车发送'
+    : '输入命令，回车发送（Shift+回车换行）';
+  let dis = false;
+  if (!t) { ph = '尚未创建会话'; dis = true; }
+  else if (r === 'viewer') { ph = '只读：等待接管'; dis = true; }
+  else if (r === 'dead') { ph = '会话已退出'; dis = true; }
+  input.disabled = dis;
+  input.placeholder = ph;
+  bar.classList.toggle('is-disabled', dis);
+  $('keysPill').disabled = dis;
+  document.querySelectorAll('#keysPanel .key').forEach((k) => { k.disabled = dis; });
+}
+
+function activate(key) {
+  if (!findTab(key)) return;
+  state.activeKey = key;
+  renderAll();
+  const at = activeTab();
+  if (at) { const p = $('pane-' + at.sid); if (p) p.scrollTop = p.scrollHeight; }
+}
+
+/* ================= 标签操作 ================= */
+function openSessionTab(mid, sid) {
+  const existed = state.tabs.find((t) => t.mid === mid && t.sid === sid);
+  if (existed) { activate(existed.key); if (state.screen !== 'main') setScreen('main'); return; }
+  const sess = sessionOf(mid, sid);
+  if (!sess) return;
+  state.tabs.push({ key: 't' + (++state.paneSeq + 10), mid, sid, title: sess.title });
+  if (state.screen !== 'main') setScreen('main');
+  activate(state.tabs[state.tabs.length - 1].key);
+}
+
+function newTerminal() {
+  const m = machine('local');
+  const id = 'n' + (++state.paneSeq);
+  m.sessions.push({ id, title: '新终端', cwd: '~', cols: 80, rows: 24, pid: 30000 + state.paneSeq, controller: 'c1', alive: true, role: 'controller' });
+  state.tabs.push({ key: 't' + (++state.paneSeq + 10), mid: 'local', sid: id, title: '新终端' });
+  if (state.screen !== 'main') setScreen('main');
+  activate(state.tabs[state.tabs.length - 1].key);
+  $('cmdInput').focus();
+}
+
+function closeTab(key) {
+  const i = state.tabs.findIndex((t) => t.key === key);
+  if (i < 0) return;
+  state.tabs.splice(i, 1);
+  if (!state.tabs.length) { state.activeKey = null; setScreen('empty'); renderAll(); return; }
+  if (state.activeKey === key) state.activeKey = state.tabs[Math.min(i, state.tabs.length - 1)].key;
+  renderAll();
+}
+
+/* ================= composer：整条发送 + 历史 ================= */
+function submitCommand() {
+  const input = $('cmdInput');
+  const cmd = input.value.trim();
+  const t = activeTab();
+  if (!t || !cmd) return;
+  const pane = $('pane-' + t.sid);
+  const inner = pane && pane.querySelector('.pane-inner');
+  if (!inner) return;
+  const frag = document.createElement('div');
+  frag.innerHTML = '<div class="tl"><span class="c-prompt">❯</span> ' + esc(cmd) + '</div>' +
+    '<div class="tl c-dim">· 已发送（原型演示，不产生真实输出）</div>';
+  while (frag.firstChild) inner.appendChild(frag.firstChild);
+  pane.scrollTop = pane.scrollHeight;
+  state.composerHistory.push(cmd);
+  state.histIdx = state.composerHistory.length;
+  input.value = '';
+}
+
+function recall(dir) {
+  const input = $('cmdInput');
+  const h = state.composerHistory;
+  if (!h.length) return;
+  state.histIdx = Math.max(0, Math.min(h.length, state.histIdx + dir));
+  input.value = state.histIdx === h.length ? '' : h[state.histIdx];
+}
+
+/* ================= 键条：粘滞 + 面板 ================= */
+const sticky = { Ctrl: false, Alt: false };
+
+function initKeys() {
+  const pill = $('keysPill'), panel = $('keysPanel');
+  pill.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    pill.setAttribute('aria-expanded', String(open));
+  });
+  panel.addEventListener('click', (e) => {
+    const k = e.target.closest('.key');
+    if (!k || k.disabled) return;
+    const name = k.getAttribute('data-key');
+    if (k.getAttribute('data-sticky')) {
+      sticky[name] = !sticky[name];
+      k.classList.toggle('sticky-on', sticky[name]);
+      return;
+    }
+    k.classList.add('flash');
+    setTimeout(() => k.classList.remove('flash'), 140);
+    if (name === 'Esc') $('cmdInput').value = '';
+    else if ('|/~-'.indexOf(name) >= 0) $('cmdInput').value += name;
+  });
+  document.addEventListener('click', (e) => {
+    if (!panel.hidden && !e.target.closest('.keys-wrap')) {
+      panel.hidden = true;
+      pill.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+/* ================= 复制 chip ================= */
+function initCopyChip() {
+  const chip = $('copyChip');
+  const panes = $('panes');
+  document.addEventListener('mouseup', () => {
+    setTimeout(() => {
+      const sel = window.getSelection();
+      const text = sel ? String(sel) : '';
+      const within = sel && sel.anchorNode && panes.contains(sel.anchorNode);
+      if (text.trim() && within && sel.rangeCount) {
+        const r = sel.getRangeAt(0).getBoundingClientRect();
+        const pr = panes.getBoundingClientRect();
+        chip.hidden = false;
+        chip.style.left = Math.min(Math.max(r.left - pr.left + r.width / 2 - 36, 8), pr.width - 84) + 'px';
+        chip.style.top = Math.max(r.top - pr.top - 36, 8) + 'px';
+      } else {
+        chip.hidden = true;
+      }
+    }, 0);
+  });
+  chip.addEventListener('click', () => {
+    const sel = window.getSelection();
+    if (sel && String(sel)) {
+      try { if (navigator.clipboard) navigator.clipboard.writeText(String(sel)); } catch (err) { /* 原型忽略 */ }
+    }
+    chip.hidden = true;
+    toast('已复制');
+  });
+}
+
+/* ================= 连接中继页 ================= */
+function initConnect() {
+  const addr = $('relayAddr'), token = $('relayToken'), submit = $('connectSubmit');
+  addr.addEventListener('keydown', (e) => { if (e.key === 'Enter') token.focus(); });
+  token.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit.click(); });
+  submit.addEventListener('click', () => {
+    if (!token.value.trim()) {
+      $('connectError').hidden = false;
+      $('connectReason').textContent = '访问令牌无效，请重新输入';
+      token.focus();
+      return;
+    }
+    $('connectError').hidden = true;
+    submit.disabled = true;
+    submit.textContent = '鉴权中…';
+    setTimeout(() => {
+      submit.disabled = false;
+      submit.textContent = '连接';
+      setScreen('main');
+    }, 1200);
+  });
+  $('connectClose').addEventListener('click', () => setScreen('main'));
+}
+
+/* ================= banner / chrome / tweaks / 快捷键 ================= */
+function initBanner() {
+  $('bannerAction').addEventListener('click', () => {
+    const act = $('bannerAction').getAttribute('data-act');
+    if (act === 'takeover') takeoverConfirm();
+    else if (act === 'takeover-confirm') doTakeover();
+    else if (act === 'close') { const t = activeTab(); if (t) closeTab(t.key); }
+  });
+  $('bannerCancel').addEventListener('click', syncBanner);
+}
+
+function initChrome() {
+  $('btnDrawer').addEventListener('click', () => $('app').classList.toggle('side-open'));
+  $('sideScrim').addEventListener('click', () => $('app').classList.remove('side-open'));
+  $('btnNewTop').addEventListener('click', newTerminal);
+  $('btnNewEmpty').addEventListener('click', newTerminal);
+  $('btnConnectEmpty').addEventListener('click', () => openConnect());
+  $('btnKeysEmpty').addEventListener('click', () => { const k = $('emptyKeys'); k.hidden = !k.hidden; });
+  $('btnRelay').addEventListener('click', () => openConnect());
+}
+
+function initTweaks() {
+  const cap = $('tweaksCapsule'), panel = $('tweaksPanel');
+  cap.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    cap.setAttribute('aria-expanded', String(open));
+  });
+  document.addEventListener('click', (e) => {
+    if (!panel.hidden && !e.target.closest('.tweaks')) {
+      panel.hidden = true;
+      cap.setAttribute('aria-expanded', 'false');
+    }
+  });
+  panel.addEventListener('click', (e) => {
+    const b = e.target.closest('.seg button');
+    if (!b) return;
+    const g = b.closest('.seg').getAttribute('data-tw');
+    const v = b.getAttribute('data-v');
+    if (g === 'theme') setTheme(v);
+    else if (g === 'screen') setScreen(v);
+    else if (g === 'frame') setFrame(v);
+    else if (g === 'sidebar') setSidebar(v);
+    else if (g === 'readonly') setReadonlyDemo(v !== 'off');
+    else if (g === 'density') setDensity(v);
+  });
+}
+
+function cycleTab(d) {
+  if (state.tabs.length < 2) return;
+  const i = state.tabs.findIndex((t) => t.key === state.activeKey);
+  activate(state.tabs[(i + d + state.tabs.length) % state.tabs.length].key);
+}
+
+function initShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === 't') { e.preventDefault(); newTerminal(); }
+    else if (k === 'w') { e.preventDefault(); if (activeTab()) closeTab(state.activeKey); }
+    else if (e.key === 'Tab') { e.preventDefault(); cycleTab(e.shiftKey ? -1 : 1); }
+    else if (/^[1-9]$/.test(e.key)) {
+      const t = state.tabs[Number(e.key) - 1];
+      if (t) { e.preventDefault(); activate(t.key); }
+    }
+  });
+}
+
+function initComposer() {
+  const input = $('cmdInput');
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!input.disabled) submitCommand(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); recall(-1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); recall(1); }
+  });
+}
+
+/* ================= 启动 ================= */
+function renderAll() {
+  renderTabs();
+  renderSidebar();
+  renderPanes();
+  syncStatus();
+  syncBanner();
+  syncComposer();
+}
+
+function boot() {
+  applyParams();
+  renderAll();
+  setScreen(state.screen);
+  initChrome();
+  initBanner();
+  initComposer();
+  initKeys();
+  initCopyChip();
+  initConnect();
+  initTweaks();
+  initShortcuts();
+  syncTweaks();
+  try { parent.postMessage({ type: 'tf-ready', direction: 'A' }, '*'); } catch (err) { /* 无父窗口 */ }
+}
+
+boot();
+</script>
+</body>
+</html>

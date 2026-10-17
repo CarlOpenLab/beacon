@@ -2,10 +2,12 @@ package main
 
 import (
 	_ "embed"
+	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
 
+	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -25,6 +27,17 @@ const activityButtonSize = 34
 // is 40px; this window's tabs carry the same job, and the same height keeps the
 // two reading as one design.
 const tabBarHeight = 40
+
+// paneInset is how far the terminal's sheet stands off the window's ground, the
+// browser client's .tf-pane::after inset. A shell that fills the window to the
+// edge reads as a different kind of program from one that sits on a page.
+const paneInset = 10
+
+// terminalGround is the sheet's own colour, which does not follow the
+// appearance: the ANSI sixteen are designed for a dark ground, so the terminal
+// keeps the browser client's --term-bg in both appearances and only the chrome
+// around it flips.
+var terminalGround = ui.Hex("#0a0d12")
 
 //go:embed assets/mark.png
 var markPNG []byte
@@ -146,6 +159,206 @@ func (w *window) serviceLine() string {
 	return w.serviceLabel()
 }
 
+// statusHostLine is where the shell on screen runs, and what that machine is:
+// its name, its platform, and how many shells it has. The browser client's
+// status bar says the same, so a person moving between the two reads one line
+// either way.
+func (w *window) statusHostLine() string {
+	tb := w.activeTab()
+	if tb == nil {
+		return ""
+	}
+	line := w.machineName(tb.machine)
+	if m, ok := w.machineByID(tb.machine); ok && m.Host.Platform != "" {
+		line = fmt.Sprintf("%s · %s/%s", line, m.Host.Platform, m.Host.Arch)
+	}
+	if n := len(w.sessionsOn(tb.machine)); n > 0 {
+		line = fmt.Sprintf("%s · %d 个会话", line, n)
+	}
+	return line
+}
+
+// statusSessionLine is the shell on screen itself: its id, its role, its size.
+func (w *window) statusSessionLine() string {
+	tb := w.activeTab()
+	if tb == nil {
+		return ""
+	}
+	role := "—"
+	switch {
+	case !tb.alive:
+		role = "已退出"
+	case tb.held():
+		role = "控制中"
+	case tb.controller != "":
+		role = "只读"
+	}
+	line := or(tb.id, "待创建")
+	if role != "—" {
+		line = fmt.Sprintf("%s · %s", line, role)
+	}
+	if size := tb.size(); size != "" {
+		line = fmt.Sprintf("%s · %s", line, size)
+	}
+	return line
+}
+
+// sessionsOn is how many shells a machine is running, as the panel last heard.
+func (w *window) sessionsOn(machine string) []protocol.Summary {
+	if machine == machineLocal {
+		return w.live
+	}
+	return w.remoteSessions[machine]
+}
+
+// header names the shell on screen, with the service's address under the name,
+// where a window would put a subtitle. The controls a shell needs live in the
+// column beside it, on the panel they act on.
+//
+// The band is 44px, the height the browser client's header is: the shell's name
+// and where it can be reached are the same two facts there, in the same order,
+// at the same size.
+// tabStrip is the row of tabs under the header, the browser client's strip in
+// this window's own terms: a tab per shell this window has open, whichever
+// machine it runs on, with the machine named in a pill when there is more than
+// one, a dot for the shell's state, and the underline coloured by role the way
+// the browser's is.
+//
+// The header used to name the shell on screen and nothing else, which left a
+// window with several shells open with no way to see them all or pick between
+// them except the sidebar.
+func (w *window) tabStrip(c *ui.Context, labels []string) {
+	t := c.Theme()
+	col := shellColorsFor(t)
+
+	ui.Row(c).
+		Height(tabBarHeight).AlignItems(ui.Stretch).
+		Background(col.pane).
+		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
+		Children(func() {
+			ui.Scroll(c).Fill().Children(func() {
+				ui.Row(c).AlignItems(ui.Stretch).Children(func() {
+					for i, key := range w.order {
+						tb := w.tabs[key]
+						if tb == nil {
+							continue
+						}
+						w.tab(c, tb, i == w.selected)
+					}
+					// One more shell, where the browser client puts its ＋.
+					add := ui.Box(c).
+						Width(40).FillHeight().
+						AlignItems(ui.Center).Justify(ui.Center).
+						Label("新建标签页").Tooltip("新建标签页 ⌘T")
+					if add.Hovered() {
+						add.Background(t.SurfaceHover)
+					}
+					add.Children(func() {
+						ui.Icon(c, iconPlus).FontSize(14).TextColor(col.icon)
+					})
+					if add.Clicked() {
+						w.newTab()
+					}
+				})
+			})
+		})
+}
+
+// tab is one tab in the strip: its machine, its state, its name, and a way to
+// close it. Closing a tab stops watching the shell; ending the shell is the
+// panel's own action, so the two are not the same button.
+func (w *window) tab(c *ui.Context, tb *tab, active bool) {
+	t := c.Theme()
+
+	cell := ui.Row(c).
+		Height(tabBarHeight).PaddingX(10).Gap(7).
+		AlignItems(ui.Center).
+		MaxWidth(224).
+		Label(tb.label()).Tooltip(tb.label() + "\n" + w.machineName(tb.machine))
+	if active {
+		cell.Background(t.Background)
+	} else if cell.Hovered() {
+		cell.Background(t.SurfaceHover)
+	}
+	// The underline is the state: teal while this window holds the shell, red
+	// once it is gone or its machine is offline.
+	lineColor := t.Success
+	switch {
+	case !tb.alive:
+		lineColor = t.Danger
+	case tb.holder() != "":
+		lineColor = t.Warning
+	}
+	cell.BorderWidth(0, 0, 2, 0).BorderColor(lineColor)
+	if !active {
+		cell.BorderColor(lineColor.Alpha(0.35))
+	}
+
+	cell.Children(func() {
+		ui.Box(c).Size(7, 7).Radius(3.5).Background(w.leaseColor(t, tb.machine, tb.id, tb.holder()))
+		// The machine's pill only when more than one machine is in play: on a
+		// single-machine window it is a fact the sidebar already states.
+		if w.multiMachine() {
+			pill := ui.Box(c).Radius(4).PaddingX(5).Height(16).
+				AlignItems(ui.Center).Justify(ui.Center)
+			if active {
+				pill.Background(t.Success.Alpha(0.12)).BorderWidth(1).BorderColor(t.Success.Alpha(0.38))
+			} else {
+				pill.Background(t.Background.Alpha(0.5)).BorderWidth(1).BorderColor(t.Border)
+			}
+			pill.Children(func() {
+				ui.Text(c, w.machineName(tb.machine)).FontSize(10).TextColor(t.TextMuted)
+			})
+		}
+		name := ui.Text(c, tb.label()).FontSize(12)
+		if active {
+			name.TextColor(t.Text).FontWeight(550)
+		} else {
+			name.TextColor(t.TextMuted)
+		}
+		// Closing a tab stops watching the shell; the shell keeps running, and
+		// ending it is the panel's own action. So the × is on the tab, and the
+		// 结束 that kills a process is not.
+		close := ui.Box(c).
+			Size(18, 18).Radius(4).
+			AlignItems(ui.Center).Justify(ui.Center).
+			Label("关闭标签页").Tooltip("关闭标签页（仅停止观看，不结束进程）")
+		if close.Hovered() {
+			close.Background(t.Danger.Alpha(0.12))
+		}
+		close.Children(func() {
+			ui.Icon(c, iconClose).FontSize(11).TextColor(t.TextMuted)
+		})
+		if close.Clicked() {
+			w.removeTab(tb)
+		}
+	})
+
+	if cell.Clicked() {
+		w.selectTab(tb)
+	}
+}
+
+// multiMachine reports whether this window has shells on more than one machine,
+// which is what decides whether a tab names the machine it belongs to.
+func (w *window) multiMachine() bool {
+	first := ""
+	for _, key := range w.order {
+		tb := w.tabs[key]
+		if tb == nil {
+			continue
+		}
+		if first == "" {
+			first = tb.machine
+			continue
+		}
+		if tb.machine != first {
+			return true
+		}
+	}
+	return false
+}
+
 // header names the shell on screen, with the service's address under the name,
 // where a window would put a subtitle. The controls a shell needs live in the
 // column beside it, on the panel they act on.
@@ -173,14 +386,45 @@ func (w *window) header(c *ui.Context, labels []string) {
 				ui.Text(c, name).FontSize(13).FontWeight(600)
 				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(t.TextMuted)
 			})
-			// A shell someone else is driving says so here, with the way back: the
-			// glow says "not yours right now", the popover explains it, and this is
-			// the button a person looks for when the keyboard has stopped working.
+			// The inspector's opener sits at the far end of the header, where
+			// the browser client puts its toggle: it is about the shell on
+			// screen, not about the window.
+			ui.Spacer(c)
+			show := iconButton(c, iconInfo, "会话检视", panelButtonSize)
+			show.Tooltip("会话检视（会话的 id、尺寸、控制端）")
+			if show.Clicked() {
+				inspectVisible = !inspectVisible
+				w.invalidate()
+			}
+			// The lease, and the two things a person does about it.
+			//
+			// 接管 and 释放 are separate buttons because they are opposite
+			// questions: one takes the shell from someone else, the other hands
+			// it back. Neither ends the process and neither closes the tab —
+			// 结束 and 关闭标签 are their own actions, on the panel and the tab
+			// strip, and coupling any of the four together is how a client ends
+			// up killing a shell it only meant to stop watching.
 			if tb == nil {
 				return
 			}
 			holder := tb.holder()
 			if holder == "" {
+				// This window holds the lease: it can give it up without giving
+				// up the shell. The hub hands the lease to the machine the shell
+				// runs on, so nobody is left with a mute terminal.
+				if !tb.alive {
+					return
+				}
+				ui.Spacer(c)
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Row(c).Gap(6).AlignItems(ui.Center).Label("你正在控制").Children(func() {
+						ui.Box(c).Size(8, 8).Radius(4).Background(t.Success)
+						ui.Text(c, "你正在控制").FontSize(11).TextColor(t.Success)
+					})
+					if ui.Button(c, "释放控制权").Tooltip("释放控制权：终端继续运行，本窗口改为只读观看").Clicked() {
+						w.releaseLease(tb)
+					}
+				})
 				return
 			}
 			ui.Spacer(c)
@@ -195,7 +439,7 @@ func (w *window) header(c *ui.Context, labels []string) {
 				if tb.machine != machineLocal {
 					take = "接管"
 				}
-				if ui.Button(c, take).Clicked() {
+				if ui.Button(c, take).Tooltip("取得控制权（对方会变成只读）").Clicked() {
 					w.reclaim(tb)
 				}
 			})
@@ -216,25 +460,34 @@ func (w *window) body(c *ui.Context, labels []string) {
 
 	holder := tb.holder()
 
-	pane := ui.Box(c).Fill().Children(func() {
-		terminal.View(c, tb.term).Fill().AutoFocus()
-	})
-	if holder == "" {
-		return // this window holds the lease: nothing to say, nothing to draw
-	}
+	// The terminal sits on a sheet of its own: inset from the window's ground,
+	// rounded, with a hairline off its edge. The browser client draws the same
+	// sheet around its xterm, and a shell that ran edge to edge in one client
+	// and floated in the other was the difference people noticed first.
+	sheet := ui.Box(c).Fill().Margin(paneInset).Radius(radius).
+		BorderWidth(1).BorderColor(shellColorsFor(c.Theme()).hairline).
+		Background(terminalGround)
+	sheet.Children(func() {
+		pane := ui.Box(c).Fill().Children(func() {
+			terminal.View(c, tb.term).Fill().AutoFocus()
+		})
+		if holder == "" {
+			return // this window holds the lease: nothing to say, nothing to draw
+		}
 
-	// The fade is an animation, so a desktop asking for less motion gets the
-	// glow at once rather than slowly; the breathing stands still for the same
-	// reason, which is the preference the glow can read.
-	strength := pane.Animate("lease", 1, glowFade)
-	leaseGlow(c, float64(strength), c.Preferences().ReduceMotion)
+		// The fade is an animation, so a desktop asking for less motion gets the
+		// glow at once rather than slowly; the breathing stands still for the same
+		// reason, which is the preference the glow can read.
+		strength := pane.Animate("lease", 1, glowFade)
+		leaseGlow(c, float64(strength), c.Preferences().ReduceMotion)
 
-	// The popover hangs from a marker at the top of the pane, so it floats over
-	// the terminal's first rows: a panel hung from the pane itself would have
-	// no room below it and flip above the window.
-	marker := ui.Box(c).Height(2)
-	leasePopover(c, marker, &w.leaseOpen, holder, tb.machine != machineLocal, func() {
-		w.reclaim(tb)
+		// The popover hangs from a marker at the top of the pane, so it floats over
+		// the terminal's first rows: a panel hung from the pane itself would have
+		// no room below it and flip above the window.
+		marker := ui.Box(c).Height(2)
+		leasePopover(c, marker, &w.leaseOpen, holder, tb.machine != machineLocal, func() {
+			w.reclaim(tb)
+		})
 	})
 }
 
@@ -244,6 +497,23 @@ func (w *window) body(c *ui.Context, labels []string) {
 // and the holder is told.
 func (w *window) reclaim(tb *tab) {
 	tb.conn.claiming(tb.machine != machineLocal)
+}
+
+// releaseLease gives the lease up without giving up the shell: the process keeps
+// running and the tab keeps watching it, this window just stops being the one
+// that types into it. The hub hands the lease to the machine the shell runs on,
+// so the shell is not left mute.
+//
+// This is the opposite question to reclaim, and its own button: 释放 is not the
+// absence of 接管, it is a thing a person chooses to do — usually so somebody
+// else can take the keyboard while this window keeps the output on screen.
+func (w *window) releaseLease(tb *tab) {
+	// The window let this go a frame ago, so the role frame answering it — which
+	// names the machine as the new controller — is not a machine taking the shell
+	// back and must not open the popover or tear the link down.
+	tb.letGoLease()
+	tb.conn.releasing()
+	w.setNotice("已释放控制权：" + tb.label() + " 继续运行，本窗口改为只读")
 }
 
 // emptyState is the window with nothing open. The browser client's empty state
@@ -304,6 +574,16 @@ func (w *window) statusBar(c *ui.Context) {
 				ui.Box(c).Size(6, 6).Radius(3).Background(state)
 				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(state)
 			})
+			// The machine and the shell, the two facts the browser client keeps
+			// in its status bar: where the shell on screen runs, and what it is.
+			// Without them a window driving three machines' shells has nothing
+			// on screen that says which one this is.
+			if host := w.statusHostLine(); host != "" {
+				ui.Text(c, host).FontSize(11).TextColor(t.TextMuted)
+			}
+			if sess := w.statusSessionLine(); sess != "" {
+				ui.Text(c, sess).FontSize(11).TextColor(t.TextMuted)
+			}
 			// The window's own news, when there is any: a machine that took its
 			// shell back is something the person here has to be told, and the line
 			// the fleet already lives on is where they look.

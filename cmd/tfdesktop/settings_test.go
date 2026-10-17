@@ -57,6 +57,13 @@ func TestSettingsPanesRenderAndSwitch(t *testing.T) {
 	if !tt.HasText("本机服务") {
 		t.Fatalf("the server pane did not open: %q", tt.Texts())
 	}
+	// The firewall prompt is named before it happens. macOS shows it the first
+	// time a listening socket appears and offers no way for an app to
+	// pre-authorise itself, so the only thing that can be done is tell the
+	// person what the prompt is and that clicking 允许 settles it for good.
+	if !tt.HasText("允许接受传入连接") {
+		t.Fatalf("the server pane does not explain the macOS firewall prompt: %q", tt.Texts())
+	}
 }
 
 func TestSettingsRestoreDefaultsResetsTheDraft(t *testing.T) {

@@ -321,23 +321,37 @@ func TestTakeoverAcrossMachines(t *testing.T) {
 	})
 
 	// The machine whose shell it is takes it back, with no confirmation: the hub
-	// honours its own window's claim over anyone else's. Taking a shell back ends
-	// the driver's connection to that machine — the tab goes, the link goes, the
-	// panels come home, and the window says who did it.
+	// honours its own window's claim over anyone else's.
+	//
+	// Taking a shell back moves the lease, and nothing else: this window keeps
+	// watching the shell, keeps its link to the machine, and keeps the 接管
+	// button that takes the shell back. It used to drop the relay stream and
+	// remove the tab as well, which left the button nothing to be drawn on — so
+	// a client that reached a machine's shell and lost it had no way back at all.
 	owner.send(protocol.Msg{T: protocol.CTClaim, SessionID: shell})
-	waitFor(t, "the tab to go when the machine takes its shell back", 20*time.Second, func() bool {
+	waitFor(t, "this window to be demoted when the machine takes its shell back", 20*time.Second, func() bool {
 		w.drain()
-		return w.tabOf("member-2", shell) == nil
+		return tb.holder() != ""
 	})
-	if _, open := w.remote["member-2"]; open {
-		t.Error("the link to the machine that took its shell back is still open")
+	if w.tabOf("member-2", shell) == nil {
+		t.Error("the tab watching the taken-back shell is gone")
 	}
-	if got := w.selectedMachine(); got != machineLocal {
-		t.Errorf("the panels are on %q after being disconnected, want this machine", got)
+	if _, open := w.remote["member-2"]; !open {
+		t.Error("the link to the machine whose shell was taken back is gone")
 	}
-	if notice := w.currentNotice(); !strings.Contains(notice, w.machineName("member-2")) {
-		t.Errorf("notice = %q, want it to name the machine that took its shell back", notice)
+	// This test never picked the machine on the panel — it only looked at it — so
+	// the panels are still on this machine, where they were before the takeover.
+	if !w.leaseOpen {
+		t.Error("the popover naming the new holder did not open")
 	}
+
+	// And 接管 really works: pressing it steals the shell back, which is the
+	// whole point of keeping the tab and the link.
+	w.reclaim(tb)
+	waitFor(t, "this window to hold the shell again", 20*time.Second, func() bool {
+		w.drain()
+		return tb.held()
+	})
 }
 
 // Two desktops, one relay: the pair the report was about. Each machine is a
@@ -348,7 +362,8 @@ func TestTakeoverAcrossMachines(t *testing.T) {
 // The window that opens a shell on another machine drives it — reaching a machine
 // is the consent — so the machine whose shell it is goes read-only behind the
 // glow and takes it back with 拿回控制权: the hub always honours the machine the
-// shell runs on, and taking it back ends the driver's connection to that machine.
+// shell runs on. Taking it back moves the lease and nothing else: the driver
+// keeps its tab, its link, and the 接管 button that takes the shell back.
 func TestTwoDesktopsDriveEachOther(t *testing.T) {
 	url, alphaID, alphaSecret, betaID, betaSecret := twoDeskRelay(t)
 	alpha, alphaDesk := deskFleet(t, url, alphaID, alphaSecret)
@@ -439,23 +454,30 @@ func TestTwoDesktopsDriveEachOther(t *testing.T) {
 		}
 
 		// The machine takes its shell back — the person sitting at it presses
-		// 拿回控制权 — and the driver's connection to that machine ends: the tab
-		// goes, the link goes, the panels return to its own machine, and it says
-		// who did it.
+		// 拿回控制权 — and the driver is demoted, keeping the tab, the link, and
+		// the 接管 button it needs to take the shell back.
 		side.waiting.reclaim(side.waiting.tabOf(machineLocal, s.ID))
-		waitFor(t, side.who+" to be disconnected from "+side.target, 20*time.Second, func() bool {
+		waitFor(t, side.who+" to be demoted by "+side.target, 20*time.Second, func() bool {
 			side.w.drain()
-			return side.w.tabOf(side.target, s.ID) == nil
+			return tb.holder() != ""
 		})
-		if _, open := side.w.remote[side.target]; open {
-			t.Errorf("%s: the link to %s is still open after it took its shell back", side.who, side.target)
+		if side.w.tabOf(side.target, s.ID) == nil {
+			t.Errorf("%s: the tab watching %s's shell is gone", side.who, side.target)
 		}
-		if got := side.w.selectedMachine(); got != machineLocal {
-			t.Errorf("%s: the panels are on %q after being disconnected, want this machine", side.who, got)
+		if _, open := side.w.remote[side.target]; !open {
+			t.Errorf("%s: the link to %s is gone after it took its shell back", side.who, side.target)
 		}
-		if notice := side.w.currentNotice(); !strings.Contains(notice, side.w.machineName(side.target)) {
-			t.Errorf("%s: notice = %q, want it to name the machine that took its shell back", side.who, notice)
+		if !side.w.leaseOpen {
+			t.Errorf("%s: the popover naming the new holder did not open", side.who)
 		}
+
+		// And 接管 works: the driver steals the shell back, which is the point of
+		// keeping the tab, the link, and the button.
+		side.w.reclaim(tb)
+		waitFor(t, side.who+" to drive "+side.target+" again", 20*time.Second, func() bool {
+			side.w.drain()
+			return tb.held()
+		})
 	}
 }
 

@@ -119,6 +119,13 @@ export class App {
   private activeMachine = ''
   private tabs: Tab[] = []
   private activeKey = -1
+  /**
+   * Sessions this client has just let go on purpose, by sessionId. The hub
+   * answers a release by handing the lease to the machine the shell runs on,
+   * so the releasing client gets a viewer role naming a controller — its own
+   * machine. Without this it would toast "已被接管" for something it asked for.
+   */
+  private letGo = new Set<string>()
   private nextKey = 1
 
   private root: HTMLElement
@@ -307,8 +314,13 @@ export class App {
         this.renderFleet()
         this.renderHero()
         // Reflect host-side truth: an exit we missed, or someone else's control.
+        // A tab that has already been told its shell exited is never revived
+        // here — the hub broadcasts the roster right after the exit frame, and
+        // the session may still be in it with a stale alive flag, which would
+        // put a live-looking tab on screen over a dead shell.
         for (const tab of this.tabs) {
           if (tab.machineId !== machineId || !tab.sessionId) continue
+          if (!tab.alive) continue
           const summary = list.find((s) => s.sessionId === tab.sessionId)
           if (!summary) continue
           tab.alive = summary.alive
@@ -365,7 +377,7 @@ export class App {
         this.renderInspect()
         this.syncComposer()
         if (role === ROLE.controller) this.composer.focus()
-        else if (controller) {
+        else if (controller && !this.letGo.delete(sessionId)) {
           this.toast(`已被接管（${controller}），你现在是只读`, 'info')
         }
       },
@@ -380,9 +392,12 @@ export class App {
         this.renderInspect()
         this.syncComposer()
       },
+      // The hub no longer sends this: a close produces the same exit frame for
+      // every watcher, including whoever asked. Kept as a no-op guard so a frame
+      // from an older daemon cannot take the tab's final output away.
       closed: (sessionId) => {
         const tab = this.findTab(machineId, sessionId)
-        if (tab) this.removeTab(tab)
+        if (tab) tab.alive = false
       },
       errored: (code, message, sessionId) => {
         if (code === ERR.notController) {
@@ -848,17 +863,26 @@ export class App {
     const tab = this.current()
     this.banner.replaceChildren()
 
-    let text = ''
-    let label = ''
-    let action: (() => void) | undefined
+    // A banner action: what the button says, what it does, and whether it is
+    // the one that ends something. There is more than one of them now, because
+    // 接管, 释放, 关闭标签 and 结束 are four different questions and a person
+    // looking at a shell asks them at different moments.
+    const actions: Array<{ label: string; title: string; run: () => void; tone?: string }> = []
 
     const mv = tab ? this.machine(tab.machineId) : undefined
+    let text = ''
     if (tab && mv && !mv.online) {
       text = `${mv.label} 离线，重连后将自动恢复`
     } else if (tab?.sessionId && !tab.alive) {
+      // The shell is gone. Its output is still on screen and still worth
+      // reading, so the tab stays until it is closed on purpose — 结束 above
+      // never took the tab away, which is why this is here to be pressed.
       text = '会话已退出，可读取输出后关闭标签'
-      label = '关闭标签'
-      action = () => this.closeTab(tab)
+      actions.push({
+        label: '关闭标签',
+        title: '关闭标签（仅停止观看）',
+        run: () => this.closeTab(tab),
+      })
     } else if (tab?.sessionId && tab.alive && tab.role !== ROLE.controller) {
       // The sessions broadcast, not the role frame, is what tells us whether
       // control is merely unclaimed or actually held elsewhere.
@@ -871,23 +895,43 @@ export class App {
       } else {
         text = holder ? `只读：该会话正被 ${holder} 控制` : '只读：当前无人控制'
       }
-      label = '接管'
-      action = () => {
-        // Taking a shell from under someone is a thing a person asks for: an
-        // unclaimed shell is claimed outright, a held one is confirmed first,
-        // and the holder is told either way.
-        if (holder && !window.confirm(`从 ${holder} 手中接管这个会话？\n\n对方会收到通知并变为只读。`)) return
-        this.fleetOf(tab)?.claim(tab.sessionId, Boolean(holder))
-      }
+      // Taking a shell from under someone is a thing a person asks for: an
+      // unclaimed shell is claimed outright, a held one is confirmed first,
+      // and the holder is told either way.
+      actions.push({
+        label: '接管',
+        title: '接管这个会话（对方会变成只读）',
+        run: () => {
+          if (holder && !window.confirm(`从 ${holder} 手中接管这个会话？\n\n对方会收到通知并变为只读。`)) return
+          this.letGo.delete(tab.sessionId)
+          this.fleetOf(tab)?.claim(tab.sessionId, Boolean(holder))
+        },
+      })
+    } else if (tab?.sessionId && tab.alive && tab.role === ROLE.controller) {
+      // This client holds the lease. Letting it go is its own action, not the
+      // absence of one: the shell keeps running, and the machine it belongs to
+      // takes the lease back, so nobody is left looking at a mute terminal.
+      text = '你正在控制这个会话'
+      actions.push({
+        label: '释放控制权',
+        title: '释放控制权（终端继续运行，改为只读观看）',
+        run: () => {
+          this.letGo.add(tab.sessionId)
+          this.fleetOf(tab)?.release(tab.sessionId)
+          this.toast('已释放控制权，终端继续运行', 'info')
+        },
+      })
     }
 
     this.banner.classList.toggle('on', Boolean(text))
     if (!text || !tab) return
     this.banner.append(el('span', undefined, text))
-    if (!action) return
-    const button = el('button', 'tf-btn tf-btn-small', label)
-    button.onclick = action
-    this.banner.append(button)
+    for (const a of actions) {
+      const button = el('button', 'tf-btn tf-btn-small', a.label)
+      button.title = a.title
+      button.onclick = a.run
+      this.banner.append(button)
+    }
   }
 
   private toast(text: string, kind: 'info' | 'warn' | 'error' = 'info'): void {
@@ -1180,6 +1224,7 @@ export class App {
   }
 
   private removeTab(tab: Tab): void {
+    this.letGo.delete(tab.sessionId)
     tab.unwire()
     tab.bundle.dispose()
     tab.pane.remove()
@@ -1259,16 +1304,48 @@ export class App {
     }
   }
 
+  /**
+   * End a session: kill the process on its machine, for every client.
+   *
+   * This is one of four separate things a client can do to a shell, and the
+   * point of keeping them apart is that they answer different questions:
+   *
+   *   接管       take the lease from whoever holds it
+   *   释放       give the lease up, leaving the shell running
+   *   结束       kill the process, for every client, irreversibly
+   *   关闭标签   stop watching, leaving the process alone
+   *
+   * Ending needs control, and a client that is only watching does not have it —
+   * so it claims first, stealing when someone else holds the lease. That is what
+   * "结束" means from a row the user is looking at, and it works because the
+   * close that follows carries no epoch: the hub checks that this client is the
+   * controller, which is the check that matters, rather than an epoch a claim
+   * has just moved.
+   *
+   * A client that already holds the shell skips the claim. The claim is a means
+   * to the end, not the end: the tab is left alone either way, because reading
+   * the shell's last output is the reason it is still there.
+   */
   private killSession(mv: MachineView, session: Summary): void {
     const name = session.title || basename(session.cwd) || session.sessionId
-    const owner = session.controller ? `当前由 ${session.controller} 控制` : '当前无人控制'
+    const mine = this.tabs.some(
+      (t) =>
+        t.machineId === mv.id &&
+        t.sessionId === session.sessionId &&
+        t.role === ROLE.controller,
+    )
+    const held = Boolean(session.controller) && !mine
     if (
       !window.confirm(
-        `在 ${mv.label} 上结束会话「${name}」？\n\n这会终止主机上的进程，对所有客户端不可见。\n${owner}`,
+        `在 ${mv.label} 上结束会话「${name}」？\n\n` +
+          `这会终止主机上的进程，对所有客户端都不可再恢复。\n` +
+          (held ? `需要先取得控制权（会从 ${session.controller} 手中接管）。\n` : '当前无人控制。\n') +
+          `\n标签不会被关闭：结束后仍可读取最后的输出，再由你决定是否关闭标签。`,
       )
     ) {
       return
     }
+    if (held) mv.fleet.claim(session.sessionId, true)
     mv.fleet.closeSession(session.sessionId)
   }
 

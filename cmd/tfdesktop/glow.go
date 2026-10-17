@@ -116,6 +116,10 @@ const leasePopoverWidth = 260
 // back. anchor is the pane it hangs from; open is the window's own state, so
 // the panel stays where the user left it. Its width is fixed rather than fitted,
 // so it never runs past the pane it is about.
+//
+// The panel is about the lease and nothing else. Ending the shell and closing
+// the tab are deliberately absent: one kills a process for every client and the
+// other stops watching it, and neither is a question about who may type.
 func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, steal bool, reclaim func()) {
 	t := c.Theme()
 	ui.Popover(c, anchor, open, func() {
@@ -135,7 +139,7 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 				if ui.Button(c, "保持只读").Clicked() {
 					*open = false
 				}
-				if ui.PrimaryButton(c, take).Clicked() {
+				if ui.PrimaryButton(c, take).Tooltip("取得控制权（对方会变成只读）").Clicked() {
 					reclaim()
 					*open = false
 				}

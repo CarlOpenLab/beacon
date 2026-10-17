@@ -28,6 +28,9 @@ var (
 	// iconPlus opens a shell, iconClose ends the one on screen.
 	iconPlus  = lucide(`<path d="M5 12h14"/><path d="M12 5v14"/>`)
 	iconClose = lucide(`<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`)
+	// iconInfo opens the session inspector: what the shell on screen is, beyond
+	// what its own output says.
+	iconInfo = lucide(`<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>`)
 	// iconMonitor stands for another machine, which a shell can be taken from.
 	iconMonitor = lucide(`<rect width="20" height="14" x="2" y="3" rx="2"/>` +
 		`<path d="M8 21h8"/><path d="M12 17v4"/>`)

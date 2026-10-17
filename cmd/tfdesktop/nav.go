@@ -13,8 +13,10 @@ import (
 
 // The column's measurements: what it is wide, what its panels ask for.
 const (
-	// sidebarWidth fits a shell's label and where it is working.
-	sidebarWidth = 216
+	// sidebarWidth is the browser client's --w-side. The two clients list the
+	// same shells in the same order with the same badges, so the column they sit
+	// in is the same width too.
+	sidebarWidth = 248
 
 	// The room the machines' panel needs before the shells' panel takes the rest
 	// of the column, and the least the shells' panel will accept. The line
@@ -84,9 +86,14 @@ func (w *window) sessionPanel(c *ui.Context) {
 
 	ui.Column(c).Fill().Children(func() {
 		// The title counts what the panel is showing, and the two controls act on
-		// the machine it is showing: 新建 opens a shell there, 关闭 ends the one on
-		// screen. A panel whose buttons quietly applied to a different machine than
-		// its list would be the worst of both.
+		// the machine it is showing: 新建 opens a shell there, and the × closes
+		// the tab watching it. A panel whose buttons quietly applied to a
+		// different machine than its list would be the worst of both.
+		//
+		// The × closes the tab and only the tab: the shell keeps running, and
+		// ending it is the row's own 结束 button. The two used to be the same
+		// button, which meant "close this tab" killed a process on a machine
+		// somewhere — for every client watching it, not just this window.
 		panelHead(c, "会话", len(entries), func() {
 			newTip := "在本机开一个新终端"
 			if remote {
@@ -95,8 +102,9 @@ func (w *window) sessionPanel(c *ui.Context) {
 			if iconButton(c, iconPlus, "新建标签页", panelButtonSize).Tooltip(newTip).Clicked() {
 				w.newTab()
 			}
-			if iconButton(c, iconClose, "关闭标签页", panelButtonSize).Clicked() {
-				w.kill(w.activeTab())
+			if iconButton(c, iconClose, "关闭标签页", panelButtonSize).
+				Tooltip("关闭标签页（仅停止观看，不结束进程）").Clicked() {
+				w.removeTab(w.activeTab())
 			}
 		})
 
@@ -136,7 +144,13 @@ type sessionEntry struct {
 	// shell is being driven from elsewhere without opening it.
 	holder string
 	active bool
-	pick   func()
+	// alive is whether the shell is still running, which is what decides whether
+	// the row offers 结束: there is nothing to end once it has exited.
+	alive bool
+	pick  func()
+	// end kills the process behind this shell, for every client. It is the row's
+	// own action, separate from picking the row and from closing the tab.
+	end func()
 }
 
 // sessionEntries is the panel's list: this window's tabs when the panel is on
@@ -159,10 +173,12 @@ func (w *window) sessionEntries() []sessionEntry {
 				machine: machineLocal,
 				session: tab.id,
 				label:   tab.label(),
-				meta:    tab.id,
+				meta:    tab.size(),
 				holder:  tab.holder(),
 				active:  tab == w.activeTab(),
+				alive:   tab.alive,
 				pick:    func() { w.selectTab(tab) },
+				end:     func() { w.kill(tab) },
 			})
 		}
 		return out
@@ -187,19 +203,17 @@ func (w *window) sessionEntries() []sessionEntry {
 			machine: machine,
 			session: summary.SessionID,
 			label:   name,
-			meta:    fmt.Sprintf("%s · %dx%d", summary.SessionID, summary.Cols, summary.Rows),
+			meta:    fmt.Sprintf("%dx%d", summary.Cols, summary.Rows),
 			holder:  summary.Controller,
 			active:  tab != nil && tab == w.activeTab(),
+			alive:   summary.Alive,
 			pick:    func() { w.openOrSelect(machine, summary.SessionID) },
+			end:     func() { w.killSessionOn(machine, summary.SessionID) },
 		})
 	}
 	return out
 }
 
-// sessionRow is one shell in the 会话 panel, drawn the same way whether it runs
-// on this machine or another one. The row on screen carries the accent bar the
-// picked machine carries, so "which shell am I typing into" is answered the same
-// way in both panels — and a shell another client holds says so on its row.
 // sessionRow is one shell in the 会话 panel, drawn the same way whether it runs
 // on this machine or another one.
 //
@@ -231,6 +245,27 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 			// colour, after the badge rather than instead of it.
 			if e.holder != "" {
 				ui.Text(c, e.holder).FontSize(10).TextColor(t.Warning)
+			}
+			// 结束, on the row it ends. It is the one action here that kills a
+			// process, so it sits apart from picking the row — a click anywhere
+			// else on the row selects it — and it says what it does in its
+			// tooltip, because the word alone does not distinguish it from
+			// 关闭标签页.
+			if e.alive {
+				ui.Spacer(c)
+				kill := ui.Box(c).
+					Width(38).Height(20).Radius(4).
+					AlignItems(ui.Center).Justify(ui.Center).
+					Label("结束会话").Tooltip("结束会话：终止这台机器上的进程，对所有客户端生效（不会关闭标签）")
+				if kill.Hovered() {
+					kill.Background(t.Danger.Alpha(0.12))
+				}
+				kill.Children(func() {
+					ui.Text(c, "结束").FontSize(11).TextColor(t.Danger)
+				})
+				if kill.Clicked() {
+					e.end()
+				}
 			}
 		})
 		if e.meta != "" {

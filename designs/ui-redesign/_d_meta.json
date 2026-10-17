@@ -1,0 +1,76 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "term-fleet UI 重设计 · 方向 A/B/C": {
+      "versions": [
+        {
+          "path": "direction-a-quiet-precision.html",
+          "createdAt": "2026-10-17T07:01:12.707Z",
+          "status": "needs-review",
+          "subtitle": "方向 A · Quiet Precision",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "三个方向"
+        }
+      ]
+    },
+    "term-fleet UI 重设计 · 三个方向": {
+      "versions": [
+        {
+          "path": "direction-a-quiet-precision.html",
+          "createdAt": "2026-10-17T07:15:33.766Z",
+          "status": "needs-review",
+          "subtitle": "方向 A · Quiet Precision",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "三个方向"
+        },
+        {
+          "path": "direction-b-command-deck.html",
+          "createdAt": "2026-10-17T07:15:33.797Z",
+          "status": "needs-review",
+          "subtitle": "方向 B · Command Deck",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "三个方向"
+        },
+        {
+          "path": "direction-c-editor-native.html",
+          "createdAt": "2026-10-17T07:15:33.834Z",
+          "status": "needs-review",
+          "subtitle": "方向 C · Editor Native",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "三个方向"
+        }
+      ]
+    },
+    "term-fleet UI 重设计 · 对比画布": {
+      "versions": [
+        {
+          "path": "UI Redesign.html",
+          "createdAt": "2026-10-17T07:15:33.864Z",
+          "status": "needs-review",
+          "subtitle": "三个方向同屏对比 + 设计说明",
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "section": "画布"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-17T07:01:12.708Z",
+  "updatedAt": "2026-10-17T07:15:33.865Z"
+}
