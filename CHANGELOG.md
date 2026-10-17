@@ -4,6 +4,21 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.4
+
+**Desktop app**
+
+- Fixed the 会话 panel not switching shells. Clicking a shell another machine was
+  running, when this window already had a tab for it, did nothing at all: the
+  click was swallowed and the pane stayed where it was, so a machine's shells —
+  the tabs opened to watch them — could not be walked between, while this
+  machine's own tabs could. The panel now builds one list either way and picking
+  a row selects its tab, opening one only when the shell has no tab yet.
+- The 会话 panel says which shell is on screen, with the same accent bar the
+  picked machine carries, and picking a shell on another machine moves the 机器
+  and 会话 panels with it rather than leaving them on a machine that is no longer
+  on screen. ⌘⇧] and ⌘⇧[ walk this window's tabs, wherever each shell runs.
+
 ## 0.4.3
 
 **Brand**
