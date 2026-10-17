@@ -34,29 +34,23 @@ func newTestShellWindow(t *testing.T, titles ...string) (*window, string) {
 
 // drawNav draws the window's navigation the way its view draws it: the strip of
 // controls, and the column of shells beside it. The appearance comes from the
-// store and the labels from the shells that are open.
+// store, and the shells from what the window has open.
 func drawNav(t *testing.T, w *window) *ui.Tester {
 	t.Helper()
 	return ui.NewTester(func(c *ui.Context) {
 		mode := w.store.Get().Theme
 		applyTheme(c, mode)
-		labels := make([]string, 0, len(w.order))
-		for _, id := range w.order {
-			if tb := w.tabs[id]; tb != nil {
-				labels = append(labels, tb.label())
-			}
-		}
 		// A row, as the window draws them: the strip beside the column, both as
 		// tall as the window. Stacked, the strip's controls would land where no
 		// window ever puts them.
 		ui.Row(c).Fill().Children(func() {
 			w.activityRail(c, mode)
-			w.sidebar(c, labels, mode)
+			w.sidebar(c, mode)
 		})
 	}, activityWidth+sidebarWidth, 420)
 }
 
-func TestSidebarListsTheOpenShellsAndPicksOne(t *testing.T) {
+func TestSessionPanelListsTheOpenShellsAndPicksOne(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one", "two")
 	tt := drawNav(t, w)
 
@@ -401,5 +395,103 @@ func TestMachinePanelDoesNotListThisMachineTwice(t *testing.T) {
 	tt.Frame()
 	if got := w.machineCount(); got != 1 {
 		t.Fatalf("machineCount with no roster = %d, want this machine alone", got)
+	}
+}
+
+// A shell another machine is running that this window already has a tab for is
+// *switched to* when its row is picked — that is what a list of tabs is for, and
+// it used to do nothing at all: the click was swallowed and the pane stayed on
+// whichever shell happened to be there.
+func TestPickingARemoteShellSwitchesToItsTab(t *testing.T) {
+	w, _ := newTestShellWindow(t, "local one")
+	w.fleet = newTestFleet(t)
+	w.roster = []tunnel.Machine{{
+		ID: "other-box", Name: "other box", Online: true,
+		Host: protocol.Host{Platform: "linux", Arch: "amd64"},
+	}}
+	w.remoteSessions = map[string][]protocol.Summary{
+		"other-box": {
+			{SessionID: "s7", Title: "remote one", Cols: 120, Rows: 40, Alive: true},
+			{SessionID: "s8", Title: "remote two", Cols: 120, Rows: 40, Alive: true},
+		},
+	}
+	w.machineSel = "other-box"
+
+	// Two tabs on that machine, as clicking each row would have left them.
+	first := &tab{id: "s7", machine: "other-box", title: "remote one", ordinal: 1}
+	second := &tab{id: "s8", machine: "other-box", title: "remote two", ordinal: 2}
+	w.tabs[2], w.tabs[3] = first, second
+	w.order = append(w.order, 2, 3)
+
+	// With this machine's shell on screen, neither remote row claims to be it.
+	entries := w.sessionEntries()
+	if len(entries) != 2 {
+		t.Fatalf("the panel lists %d rows, want the machine's two shells", len(entries))
+	}
+	for _, e := range entries {
+		if e.active {
+			t.Fatalf("row %q is marked as the shell on screen while it is not", e.label)
+		}
+	}
+
+	// Picking the second row puts its tab on screen.
+	tt := drawNav(t, w)
+	if err := tt.Click("remote two"); err != nil {
+		t.Fatalf("Click(remote two): %v", err)
+	}
+	if got := w.activeTab(); got != second {
+		t.Fatalf("picking the row left %v on screen, want the second tab", got)
+	}
+	if got := w.selectedMachine(); got != "other-box" {
+		t.Fatalf("the panels moved to %q, want the machine whose shell is on screen", got)
+	}
+	// ...and the row says so, which is the active state the panel was missing.
+	entries = w.sessionEntries()
+	if !entries[1].active || entries[0].active {
+		t.Fatalf("active rows = %v/%v, want only the second", entries[0].active, entries[1].active)
+	}
+
+	// The same click again is a switch, not a second tab for the same shell.
+	before := len(w.tabs)
+	if err := tt.Click("remote two"); err != nil {
+		t.Fatalf("Click(remote two) again: %v", err)
+	}
+	if len(w.tabs) != before {
+		t.Fatalf("picking an open shell opened another tab: %d tabs, want %d", len(w.tabs), before)
+	}
+}
+
+// A tab strip's own keys: ⌘⇧] and ⌘⇧[ walk the shells this window has open,
+// wherever each one runs.
+func TestSwitchingShellsWithTheKeyboard(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one", "two", "three")
+	w.fleet = newTestFleet(t)
+
+	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
+	tt.Frame()
+	if w.activeTab() != w.tabs[1] {
+		t.Fatalf("the window does not start on its first shell")
+	}
+
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyBracketRight)
+	tt.Frame()
+	if w.activeTab() != w.tabs[2] {
+		t.Fatalf("⌘⇧] left the wrong shell on screen")
+	}
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyBracketRight)
+	tt.Frame()
+	if w.activeTab() != w.tabs[3] {
+		t.Fatalf("⌘⇧] left the wrong shell on screen")
+	}
+	// Round the end, and back.
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyBracketRight)
+	tt.Frame()
+	if w.activeTab() != w.tabs[1] {
+		t.Fatalf("⌘⇧] past the last shell did not come round to the first")
+	}
+	tt.Key(ui.Cmd|ui.Shift, ui.KeyBracketLeft)
+	tt.Frame()
+	if w.activeTab() != w.tabs[3] {
+		t.Fatalf("⌘⇧[ from the first shell did not come round to the last")
 	}
 }

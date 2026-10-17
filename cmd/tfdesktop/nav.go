@@ -4,19 +4,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
-// The rail's selection is the id of the shell on screen, prefixed so that one
-// field can carry what the column of shells asked for.
+// The column's measurements: what it is wide, what its panels ask for.
 const (
-	railTabPrefix = "tab:"
-
 	// sidebarWidth fits a shell's label and where it is working.
 	sidebarWidth = 216
 
@@ -28,12 +23,11 @@ const (
 	// machinePanelBase is the panel's own room: its title row, this machine, the
 	// relay, and the note under them.
 	machinePanelBase = 120
-	// machineRowHeight and sessionRowHeight are what one machine and one of its
-	// shells add to the panel, and machinePanelMost is the most it will reserve
-	// before the shells take the rest: a long roster scrolls rather than
-	// pushing the shells out of the column.
+	// machineRowHeight is what one machine adds to the machines' panel, and
+	// machinePanelMost is the most that panel will reserve before the shells take
+	// the rest: a long roster scrolls rather than pushing the shells out of the
+	// column.
 	machineRowHeight = 46
-	sessionRowHeight = 36
 	machinePanelMost = 300
 
 	// heldLineHeight is the room one line of warning under this machine's row
@@ -50,21 +44,9 @@ const (
 // under them, with a draggable line between. It is rebuilt from the window's
 // own state on every frame, so a shell that appears — started here, or taken
 // over from another machine later — shows up as soon as its tab does.
-func (w *window) sidebar(c *ui.Context, labels []string, mode string) {
+func (w *window) sidebar(c *ui.Context, mode string) {
 	t := c.Theme()
 	col := shellColorsFor(t)
-
-	// The column draws with the window's selection field and that field is never
-	// seeded here: the click that changes the selection is written into the very
-	// pointer the column was registered with, so overwriting it before the click
-	// is read back would swallow the click. When the field names a shell that is
-	// still open it *is* the window's idea of the shell on screen.
-	if w.indexOfTab(strings.TrimPrefix(w.rail, railTabPrefix)) < 0 {
-		w.rail = ""
-		if id := w.activeID(); id != "" {
-			w.rail = railTabPrefix + id
-		}
-	}
 
 	ui.Column(c).
 		Width(sidebarWidth).FillHeight().
@@ -82,7 +64,7 @@ func (w *window) sidebar(c *ui.Context, labels []string, mode string) {
 				w.sidebarSplit = max(minSessionPanel, height-need)
 			}
 			ui.SplitVertical(c, &w.sidebarSplit, func() {
-				w.sessionPanel(c, labels, mode)
+				w.sessionPanel(c)
 			}, func() {
 				w.machinePanel(c)
 			})
@@ -93,21 +75,18 @@ func (w *window) sidebar(c *ui.Context, labels []string, mode string) {
 // the two things a shell needs — one more, and an end to this one. The controls
 // sit beside the title rather than across the window, because this is the panel
 // they act on.
-func (w *window) sessionPanel(c *ui.Context, labels []string, mode string) {
+func (w *window) sessionPanel(c *ui.Context) {
 	t := c.Theme()
 	machine := w.selectedMachine()
 	remote := machine != machineLocal
+	entries := w.sessionEntries()
 
 	ui.Column(c).Fill().Children(func() {
 		// The title counts what the panel is showing, and the two controls act on
 		// the machine it is showing: 新建 opens a shell there, 关闭 ends the one on
 		// screen. A panel whose buttons quietly applied to a different machine than
 		// its list would be the worst of both.
-		count := len(labels)
-		if remote {
-			count = len(w.remoteSessions[machine])
-		}
-		panelHead(c, "会话", count, func() {
+		panelHead(c, "会话", len(entries), func() {
 			newTip := "在本机开一个新终端"
 			if remote {
 				newTip = "在 " + w.machineName(machine) + " 上开一个新终端"
@@ -120,72 +99,188 @@ func (w *window) sessionPanel(c *ui.Context, labels []string, mode string) {
 			}
 		})
 
-		if remote {
-			w.remoteSessionList(c, machine)
+		if len(entries) == 0 {
+			ui.Column(c).Gap(6).Padding(12, 10).Children(func() {
+				if remote {
+					// Saying nothing here would leave a machine that is running
+					// nothing looking like a machine that cannot be read.
+					ui.Text(c, "这台机器上没有活着的终端。").FontSize(12).TextColor(t.TextMuted)
+					ui.Text(c, "点标题行的 ＋ 在它上面开一个。").FontSize(11).TextColor(t.TextMuted)
+					return
+				}
+				ui.Text(c, "还没有终端").FontSize(12).TextColor(t.TextMuted)
+			})
 			return
 		}
 
-		rail := ui.Sidebar(c, &w.rail, func() {
-			if len(labels) == 0 {
-				ui.Text(c, "还没有终端").FontSize(12).TextColor(t.TextMuted)
-				return
-			}
-			for i, key := range w.order {
-				tb := w.tabs[key]
-				if tb == nil {
-					continue
+		ui.Scroll(c).Fill().Children(func() {
+			ui.Column(c).Gap(2).Padding(0, 8, 8, 8).Children(func() {
+				for _, e := range entries {
+					w.sessionRow(c, e)
 				}
-				label := tb.id
-				if i < len(labels) {
-					label = labels[i]
-				}
-				item := ui.SidebarItem(c, railTabPrefix+tb.id, iconTerminal, label)
-				// A shell another client holds says so on its row, not only in
-				// the pane: the strip is where a person looks for which tab is
-				// being driven from elsewhere.
-				if holder := tb.holder(); holder != "" {
-					item.Children(func() { leaseTabMark(c, holder) })
-				}
-			}
-		}).Fill()
-
-		switch {
-		case rail.Changed():
-			w.railAction(c, mode)
-		case w.rail != w.selectionID():
-			// The shell on screen changed somewhere else — one was opened or closed, or
-			// a shell was taken over — so the column follows it on the next frame.
-			w.rail = w.selectionID()
-		}
+			})
+		})
 	})
 }
 
-// remoteSessionList is the shells another machine is running, as the 会话 panel
-// shows them while that machine is the one picked: one row per shell, and
-// clicking a row opens a tab here watching it.
-func (w *window) remoteSessionList(c *ui.Context, machine string) {
-	t := c.Theme()
-	m, ok := w.machineByID(machine)
-	if !ok {
-		return
+// sessionEntry is one row of the 会话 panel: what it is called, what it is, and
+// what picking it does. The panel is built from these whether the shells belong
+// to this machine or to another one, so the two cases cannot drift apart.
+type sessionEntry struct {
+	machine string
+	session string
+	label   string
+	meta    string
+	// holder is who else holds the shell, for the row's mark: it is what says a
+	// shell is being driven from elsewhere without opening it.
+	holder string
+	active bool
+	pick   func()
+}
+
+// sessionEntries is the panel's list: this window's tabs when the panel is on
+// this machine, and the shells the picked machine is running when it is on
+// another one.
+func (w *window) sessionEntries() []sessionEntry {
+	machine := w.selectedMachine()
+	if machine == machineLocal {
+		out := make([]sessionEntry, 0, len(w.order))
+		for _, key := range w.order {
+			tb := w.tabs[key]
+			if tb == nil {
+				continue
+			}
+			tab := tb
+			out = append(out, sessionEntry{
+				machine: machineLocal,
+				session: tab.id,
+				label:   tab.label(),
+				meta:    tab.id,
+				holder:  tab.holder(),
+				active:  tab == w.activeTab(),
+				pick:    func() { w.selectTab(tab) },
+			})
+		}
+		return out
 	}
+
 	list := w.remoteSessions[machine]
-	if len(list) == 0 {
-		// Saying nothing here would leave a machine that is running nothing
-		// looking like a machine that cannot be read.
-		ui.Column(c).Gap(6).Padding(12, 10).Children(func() {
-			ui.Text(c, "这台机器上没有活着的终端。").FontSize(12).TextColor(t.TextMuted)
-			ui.Text(c, "点标题行的 ＋ 在它上面开一个。").FontSize(11).TextColor(t.TextMuted)
+	out := make([]sessionEntry, 0, len(list))
+	for _, s := range list {
+		summary := s
+		name := summary.Title
+		if name == "" {
+			name = filepath.Base(summary.Cwd)
+		}
+		if name == "" || name == "." || name == "/" {
+			name = summary.SessionID
+		}
+		// A shell the window already has a tab for is on screen when that tab is
+		// the tab on screen: picking it is switching to it, not opening a second
+		// tab, which is what a tab list is for.
+		tab := w.tabOf(machine, summary.SessionID)
+		out = append(out, sessionEntry{
+			machine: machine,
+			session: summary.SessionID,
+			label:   name,
+			meta:    fmt.Sprintf("%s · %dx%d", summary.SessionID, summary.Cols, summary.Rows),
+			holder:  summary.Controller,
+			active:  tab != nil && tab == w.activeTab(),
+			pick:    func() { w.openOrSelect(machine, summary.SessionID) },
 		})
-		return
 	}
-	ui.Scroll(c).Fill().Children(func() {
-		ui.Column(c).Gap(2).Padding(0, 8, 8, 8).Children(func() {
-			for _, summary := range list {
-				w.remoteSessionRow(c, m, summary)
+	return out
+}
+
+// sessionRow is one shell in the 会话 panel, drawn the same way whether it runs
+// on this machine or another one. The row on screen carries the accent bar the
+// picked machine carries, so "which shell am I typing into" is answered the same
+// way in both panels — and a shell another client holds says so on its row.
+func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
+	t := c.Theme()
+
+	row := ui.Column(c).Gap(1).Padding(5, 8).Radius(t.Radius)
+	if e.active {
+		row.Background(t.SurfacePressed).BorderWidth(0, 0, 0, 2).BorderColor(t.Accent)
+	} else if row.Hovered() {
+		row.Background(t.SurfaceHover)
+	}
+	row.Tooltip(w.machineName(e.machine) + " · " + e.session)
+	row.Children(func() {
+		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(6, 6).Radius(3).
+				Background(w.leaseColor(t, e.machine, e.session, e.holder))
+			ui.Text(c, e.label).FontSize(11)
+			if e.holder != "" {
+				leaseTabMark(c, e.holder)
 			}
 		})
+		if e.meta != "" {
+			ui.Text(c, e.meta).FontSize(10).TextColor(t.TextMuted)
+		}
 	})
+	if row.Clicked() {
+		e.pick()
+	}
+}
+
+// selectTab puts a tab on screen, and with it the machine the panels are about:
+// the 机器 and 会话 panels follow the shell a person is looking at, so switching
+// to a shell on another machine moves them there rather than leaving them on a
+// machine that is no longer on screen.
+func (w *window) selectTab(tb *tab) {
+	for i, key := range w.order {
+		if w.tabs[key] != tb {
+			continue
+		}
+		w.selected = i
+		if tb.machine != "" {
+			w.machineSel = tb.machine
+		}
+		w.invalidate()
+		return
+	}
+}
+
+// openOrSelect shows the tab watching a shell, or opens one. Clicking a shell
+// that is already open has to switch to it: a list that only reacts the first
+// time a shell is picked is not a list of tabs.
+func (w *window) openOrSelect(machine, sessionID string) {
+	if tb := w.tabOf(machine, sessionID); tb != nil {
+		w.selectTab(tb)
+		return
+	}
+	if machine == machineLocal {
+		// A shell of this machine's always has a tab: the session list mounts one.
+		return
+	}
+	if w.openTab(machine, sessionID) == nil {
+		w.linkNote = w.noLinkReason(machine)
+	}
+}
+
+// stepTab moves the shell on screen to the next or previous tab this window has
+// open, whichever machine each one runs on — what a tab strip's own keys do, and
+// the reason the panel's rows are not the only way between shells.
+func (w *window) stepTab(delta int) {
+	if len(w.order) < 2 {
+		return
+	}
+	on := w.activeTab()
+	at := 0
+	for i, key := range w.order {
+		if w.tabs[key] == on {
+			at = i
+			break
+		}
+	}
+	next := (at + delta) % len(w.order)
+	if next < 0 {
+		next += len(w.order)
+	}
+	if tb := w.tabs[w.order[next]]; tb != nil {
+		w.selectTab(tb)
+	}
 }
 
 // ownMachine reports whether a roster entry is this machine. A roster is keyed
@@ -349,32 +444,6 @@ func (w *window) machineName(id string) string {
 	return id
 }
 
-// remoteSessionRow is one shell on another machine. Opening it attaches over
-// that machine's link, so the lease that decides who may type is that machine's
-// hub's, exactly as it is for a shell on this one.
-func (w *window) remoteSessionRow(c *ui.Context, m tunnel.Machine, s protocol.Summary) {
-	t := c.Theme()
-	name := s.Title
-	if name == "" {
-		name = filepath.Base(s.Cwd)
-	}
-	if name == "" || name == "." || name == "/" {
-		name = s.SessionID
-	}
-	row := ui.Column(c).Gap(1).Padding(5, 8).Margin(2, 0, 0, 12).Radius(t.Radius).Children(func() {
-		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(6, 6).Radius(3).Background(w.leaseColor(t, m.ID, s.SessionID, s.Controller))
-			ui.Text(c, name).FontSize(11)
-		})
-		ui.Text(c, fmt.Sprintf("%s · %dx%d", s.SessionID, s.Cols, s.Rows)).
-			FontSize(10).TextColor(t.TextMuted)
-	})
-	row.Tooltip(m.Name + " 上的 " + s.SessionID)
-	if row.Clicked() {
-		w.openRemoteSession(m.ID, s.SessionID)
-	}
-}
-
 // lookAtMachine opens the window's link to a machine and asks what it runs. A
 // second look re-uses the stream, so the panel can be looked at freely. It is
 // what picking a machine does; a machine the window cannot reach says why, in
@@ -382,16 +451,6 @@ func (w *window) remoteSessionRow(c *ui.Context, m tunnel.Machine, s protocol.Su
 // must never do.
 func (w *window) lookAtMachine(machine string) {
 	w.ensureSessionList(machine)
-}
-
-// openRemoteSession attaches a tab to a shell on another machine.
-func (w *window) openRemoteSession(machine, sessionID string) {
-	if w.tabOf(machine, sessionID) != nil {
-		return
-	}
-	if w.openTab(machine, sessionID) == nil {
-		w.linkNote = w.noLinkReason(machine)
-	}
 }
 
 // machineState is what a roster machine's tooltip says about it.
@@ -501,46 +560,4 @@ func panelHead(c *ui.Context, title string, count int, controls func()) {
 				controls()
 			}
 		})
-}
-
-// selectionID is the column's id for the shell on screen, or "" for none.
-func (w *window) selectionID() string {
-	if id := w.activeID(); id != "" {
-		return railTabPrefix + id
-	}
-	return ""
-}
-
-// railAction runs what the column asked for. A click was written into the
-// selection field while the column was being drawn, and the column reports it in
-// the same frame, so the choice takes effect at once.
-func (w *window) railAction(c *ui.Context, mode string) {
-	if !strings.HasPrefix(w.rail, railTabPrefix) {
-		return
-	}
-	if i := w.indexOfTab(strings.TrimPrefix(w.rail, railTabPrefix)); i >= 0 {
-		w.selected = i
-	}
-}
-
-// activeID is the session id of the shell on screen, or "" when there is none.
-func (w *window) activeID() string {
-	if tb := w.activeTab(); tb != nil {
-		return tb.id
-	}
-	return ""
-}
-
-// indexOfTab is where a session sits in the tab order, or -1. A shell the hub
-// has not named yet cannot be chosen from the column, so it is not there.
-func (w *window) indexOfTab(id string) int {
-	if id == "" {
-		return -1
-	}
-	for i, key := range w.order {
-		if tb := w.tabs[key]; tb != nil && tb.id == id {
-			return i
-		}
-	}
-	return -1
 }

@@ -48,27 +48,34 @@ func TestRenderShellPreviews(t *testing.T) {
 		fleet bool
 		pick  bool
 		ask   bool
+		// onRemote puts another machine's shell on screen: its row in the 会话
+		// panel is the active one, which is what a tab list has to show.
+		onRemote bool
 	}{
-		{"shell-dark", themeDark, true, false, false, false, false},
-		{"shell-light", themeLight, true, false, false, false, false},
-		{"empty-dark", themeDark, false, false, false, false, false},
-		{"empty-light", themeLight, false, false, false, false, false},
+		{"shell-dark", themeDark, true, false, false, false, false, false},
+		{"shell-light", themeLight, true, false, false, false, false, false},
+		{"empty-dark", themeDark, false, false, false, false, false, false},
+		{"empty-light", themeLight, false, false, false, false, false, false},
 		// A shell another client holds: the glow around the terminal, the
 		// popover under it, and the mark on its row.
-		{"taken-dark", themeDark, true, true, false, false, false},
-		{"taken-light", themeLight, true, true, false, false, false},
+		{"taken-dark", themeDark, true, true, false, false, false, false},
+		{"taken-light", themeLight, true, true, false, false, false, false},
 		// A fleet: the 机器 panel as a list you switch between, with this machine
 		// and one other.
-		{"fleet-dark", themeDark, true, false, true, false, false},
-		{"fleet-light", themeLight, true, false, true, false, false},
+		{"fleet-dark", themeDark, true, false, true, false, false, false},
+		{"fleet-light", themeLight, true, false, true, false, false, false},
 		// Another machine picked: its row carries the selection, and the 会话 panel
 		// below shows the shells that machine is running rather than this one's.
-		{"fleet-picked-dark", themeDark, true, false, true, true, false},
-		{"fleet-picked-light", themeLight, true, false, true, true, false},
+		{"fleet-picked-dark", themeDark, true, false, true, true, false, false},
+		{"fleet-picked-light", themeLight, true, false, true, true, false, false},
 		// Picking an unreachable machine: the dialog that asks the relay for a
 		// short-lived credential first.
-		{"fleet-ask-dark", themeDark, true, false, true, false, true},
-		{"fleet-ask-light", themeLight, true, false, true, false, true},
+		{"fleet-ask-dark", themeDark, true, false, true, false, true, false},
+		{"fleet-ask-light", themeLight, true, false, true, false, true, false},
+		// The other machine's shell on screen: its row carries the accent bar the
+		// picked machine carries, and this machine's shell is a tab behind it.
+		{"fleet-remote-dark", themeDark, true, false, true, true, false, true},
+		{"fleet-remote-light", themeLight, true, false, true, true, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := previewWindow(t, tc.mode, tc.shell)
@@ -84,6 +91,17 @@ func TestRenderShellPreviews(t *testing.T) {
 			}
 			if tc.ask {
 				w.reachPrompt = "mac-studio"
+			}
+			if tc.onRemote {
+				// The tab a click on that row leaves: the same picture, labelled as
+				// the shell on the other machine.
+				remote := &tab{
+					id: "s7", machine: "mac-studio", title: "~/work/term-fleet",
+					ordinal: 2, term: w.tabs[1].term, alive: true,
+				}
+				w.tabs[2] = remote
+				w.order = append(w.order, 2)
+				w.selectTab(remote)
 			}
 			tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, previewWidth, previewHeight)
 			out := filepath.Join(dir, tc.name+".png")
@@ -184,14 +202,24 @@ func previewFleet(w *window) {
 		Online: true,
 	}}
 	w.remoteSessions = map[string][]protocol.Summary{
-		"mac-studio": {{
-			SessionID: "s7",
-			Title:     "~/work/term-fleet",
-			Shell:     "/bin/zsh",
-			Cols:      120,
-			Rows:      40,
-			Alive:     true,
-		}},
+		"mac-studio": {
+			{
+				SessionID: "s7",
+				Title:     "~/work/term-fleet",
+				Shell:     "/bin/zsh",
+				Cols:      120,
+				Rows:      40,
+				Alive:     true,
+			},
+			{
+				SessionID: "s8",
+				Title:     "~/work/api",
+				Shell:     "/bin/zsh",
+				Cols:      120,
+				Rows:      40,
+				Alive:     true,
+			},
+		},
 	}
 }
 

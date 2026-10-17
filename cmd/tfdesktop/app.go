@@ -86,10 +86,6 @@ type window struct {
 	notice   string
 	noticeAt time.Time
 
-	// rail is the navigation sidebar's selection: the id of the shell on screen,
-	// or one of the rail's action ids on the frame a click is handled.
-	rail string
-
 	// sidebarSplit is the height of the shells' panel in the column, which the
 	// line between it and the machines' panel drags. A negative value means the
 	// line has not been dragged: the shells then take whatever the machines do
@@ -288,9 +284,19 @@ func (w *window) view(c *ui.Context) {
 	mode := w.store.Get().Theme
 	applyTheme(c, mode)
 
+	// A tab strip's own keys, because the panel's rows are not the only way
+	// between shells: ⌘⇧] and ⌘⇧[ walk this window's tabs, wherever each shell
+	// runs. The terminal takes the keys it binds; these it does not.
+	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight) {
+		w.stepTab(1)
+	}
+	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) {
+		w.stepTab(-1)
+	}
+
 	ui.Row(c).Fill().Background(c.Theme().Background).Children(func() {
 		w.activityRail(c, mode)
-		w.sidebar(c, labels, mode)
+		w.sidebar(c, mode)
 		ui.Column(c).Fill().Children(func() {
 			w.header(c, labels)
 			w.body(c, labels)
