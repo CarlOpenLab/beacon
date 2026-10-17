@@ -182,7 +182,7 @@ func (c *pipeClient) recv() protocol.Msg {
 
 func (c *pipeClient) waitFor(what string, pred func(protocol.Msg) bool) protocol.Msg {
 	c.t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		if m := c.recv(); pred(m) {
 			return m

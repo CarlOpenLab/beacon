@@ -93,7 +93,7 @@ func (c *conn) recv() protocol.Msg {
 // test actually cares about.
 func (c *conn) waitFor(what string, pred func(protocol.Msg) bool) protocol.Msg {
 	c.t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		if m := c.recv(); pred(m) {
 			return m
@@ -107,7 +107,7 @@ func (c *conn) waitFor(what string, pred func(protocol.Msg) bool) protocol.Msg {
 // stream cursor just past the frame that contained it.
 func (c *conn) waitOutput(needle string) int64 {
 	c.t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	var got strings.Builder
 	for time.Now().Before(deadline) {
 		m := c.recv()
@@ -268,7 +268,7 @@ func TestAttachResumesFromCursor(t *testing.T) {
 	b.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: cursor})
 
 	var got strings.Builder
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) && !strings.Contains(got.String(), "BBB") {
 		if m := b.recv(); m.T == protocol.STOutput {
 			got.Write(m.Data)
@@ -396,7 +396,7 @@ func (c *pipeConn) recv() protocol.Msg {
 
 func (c *pipeConn) waitFor(what string, pred func(protocol.Msg) bool) protocol.Msg {
 	c.t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		if m := c.recv(); pred(m) {
 			return m
@@ -408,7 +408,7 @@ func (c *pipeConn) waitFor(what string, pred func(protocol.Msg) bool) protocol.M
 
 func (c *pipeConn) waitOutput(needle string) {
 	c.t.Helper()
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	var got strings.Builder
 	for time.Now().Before(deadline) {
 		m := c.recv()

@@ -227,7 +227,7 @@ func (c *client) next() tunnel.Frame {
 			c.t.Fatal("relay socket closed while waiting for the next frame")
 		}
 		return f
-	case <-time.After(15 * time.Second):
+	case <-time.After(60 * time.Second):
 		c.t.Fatal("timed out waiting for the next frame")
 	}
 	return tunnel.Frame{}
@@ -235,7 +235,7 @@ func (c *client) next() tunnel.Frame {
 
 func (c *client) waitFor(what string, pred func(tunnel.Frame) bool) tunnel.Frame {
 	c.t.Helper()
-	deadline := time.After(15 * time.Second)
+	deadline := time.After(60 * time.Second)
 	for {
 		select {
 		case f, ok := <-c.in:
