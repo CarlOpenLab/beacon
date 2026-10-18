@@ -8,9 +8,11 @@ package main
 //
 //   - a 只读 chip in the sheet's top-right corner, the mark the browser client
 //     puts in the same place, and the same chip for a shell that has exited.
-//     It is on every shell another client holds, wherever that shell runs,
-//     because it is about the pane you are looking at;
-//   - a panel under the top of the pane naming who holds it, with the way back.
+//     It is on every shell this window may not type into, wherever that shell
+//     runs and whether or not anybody holds it, because it is about the pane
+//     you are looking at;
+//   - a panel under the top of the pane naming who holds it — or that nobody
+//     does — with the way back.
 //
 // And one says something the others cannot: the glow along the pane's edge. It
 // is drawn for one state only — a shell this machine runs, being driven by
@@ -77,6 +79,19 @@ func (w *window) drivenElsewhere(tb *tab) bool {
 	return tb != nil && tb.alive && tb.machine == machineLocal && tb.holder() != ""
 }
 
+// readOnly is whether the shell on screen is one this window may not type into:
+// alive, with a lease that is somebody else's or nobody's. The pane's 只读 chip,
+// the band above it and the panel over it are drawn from this answer and from
+// nothing else, so the three can never disagree about it.
+//
+// Nobody's is the same answer as somebody else's here — a shell no one drives
+// takes no typing either — and it is the state a remote shell lands in when its
+// lease is let go with the machine that owns it not watching. Not knowing yet is
+// a separate case: the word arrives in a role frame.
+func readOnly(tb *tab) bool {
+	return tb.alive && tb.known() && !tb.held()
+}
+
 // leaseGlow draws the light along the edge of a pane another client holds, as an
 // overlay the pointer goes through. It covers the whole body rather than the
 // pane, because that is the room the light needs; the pane's own edge is
@@ -131,18 +146,38 @@ const leasePopoverWidth = 268
 // The last one is the one an interface usually leaves out, and it is the one
 // that decides whether the button gets pressed.
 //
+// It has a state for a holder that is nobody. The panel opens on the frame that
+// takes a shell away from this window, and that frame can hand it to no one: a
+// remote shell whose lease was let go with the machine that owns it not
+// watching is free, and a panel that said " 正在控制这个终端" with a blank where
+// a name goes would be a panel about nobody. The offer stands all the same — a
+// claim on a free lease is honoured at once, and there is no one to steal from.
+//
 // Ending the shell and closing the tab are deliberately absent: one kills a
 // process for every client and the other stops watching it, and neither is a
 // question about who may type.
 func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, steal bool, reclaim func()) {
 	t := c.Theme()
 
+	// The word is about which machine the shell runs on: one this window never
+	// drove is 接管, one it drove and lost is 拿回.
 	take := "拿回控制权"
-	outcome := holder + " 会变成只读，之后仍能看着这个终端。"
 	if steal {
+		take = "接管"
+	}
+	who := holder + " 正在控制这个终端"
+	outcome := holder + " 会变成只读，之后仍能看着这个终端。"
+	tip := "取得控制权（" + holder + " 会变成只读）"
+	if holder == "" {
+		// Nobody's shell: the panel says so rather than leaving a blank where a
+		// name goes, and the button promises nothing about a person who is not
+		// there.
+		who = "当前无人控制这个终端"
+		outcome = "取得控制权后你就能继续输入。"
+		tip = "取得控制权（当前无人控制）"
+	} else if steal {
 		// Another machine's shell: this window never had it, so it is taken
 		// rather than taken back, and the holder is told.
-		take = "接管"
 		outcome = "接管会通知 " + holder + "，对方会变成只读。"
 	}
 
@@ -152,7 +187,7 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 			// the pane's 只读 chip is drawn in, so the three never disagree.
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(3.5).Background(t.Warning)
-				ui.Text(c, holder+" 正在控制这个终端").
+				ui.Text(c, who).
 					FontSize(13).FontWeight(600).SingleLine()
 			})
 			ui.Text(c, "你的输入不会送进 shell。").
@@ -163,7 +198,7 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 				if ui.Button(c, "保持只读").Clicked() {
 					*open = false
 				}
-				if ui.PrimaryButton(c, take).Tooltip("取得控制权（对方会变成只读）").Clicked() {
+				if ui.PrimaryButton(c, take).Tooltip(tip).Clicked() {
 					reclaim()
 					*open = false
 				}

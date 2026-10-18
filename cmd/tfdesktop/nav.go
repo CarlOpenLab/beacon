@@ -147,12 +147,17 @@ type sessionEntry struct {
 	holder string
 	active bool
 	// alive is whether the shell is still running, which is what decides whether
-	// the row offers 结束: there is nothing to end once it has exited.
+	// the row offers 结束: there is nothing to end once it has exited. An ended
+	// shell offers 关闭 instead — its tab is still holding the last output, and
+	// closing it is the only thing left to do with the row.
 	alive bool
 	pick  func()
 	// end kills the process behind this shell, for every client. It is the row's
 	// own action, separate from picking the row and from closing the tab.
 	end func()
+	// close stops watching the shell: it closes the tab this row is about and
+	// nothing else. Empty for a row that has no tab of this window's.
+	close func()
 }
 
 // sessionEntries is the panel's list: this window's tabs when the panel is on
@@ -174,13 +179,14 @@ func (w *window) sessionEntries() []sessionEntry {
 			out = append(out, sessionEntry{
 				machine: machineLocal,
 				session: tab.id,
-				label:   tab.label(),
+				label:   tab.name(),
 				meta:    tab.size(),
 				holder:  tab.holder(),
 				active:  tab == w.activeTab(),
 				alive:   tab.alive,
 				pick:    func() { w.selectTab(tab) },
 				end:     func() { w.kill(tab) },
+				close:   func() { w.removeTab(tab) },
 			})
 		}
 		return out
@@ -201,16 +207,29 @@ func (w *window) sessionEntries() []sessionEntry {
 		// the tab on screen: picking it is switching to it, not opening a second
 		// tab, which is what a tab list is for.
 		tab := w.tabOf(machine, summary.SessionID)
+		var close func()
+		if tab != nil {
+			close = func() { w.removeTab(tab) }
+		}
+		// Who holds it, from the freshest word the window has: a tab's lease
+		// frames arrive as the lease moves, while the machine's list is a
+		// broadcast that can be a push behind. A row and the pane over it naming
+		// two different holders is the disagreement this row exists to avoid.
+		holder := summary.Controller
+		if tab != nil {
+			holder = tab.holder()
+		}
 		out = append(out, sessionEntry{
 			machine: machine,
 			session: summary.SessionID,
 			label:   name,
 			meta:    fmt.Sprintf("%dx%d", summary.Cols, summary.Rows),
-			holder:  summary.Controller,
+			holder:  holder,
 			active:  tab != nil && tab == w.activeTab(),
 			alive:   summary.Alive,
 			pick:    func() { w.openOrSelect(machine, summary.SessionID) },
 			end:     func() { w.killSessionOn(machine, summary.SessionID) },
+			close:   close,
 		})
 	}
 	return out
@@ -242,7 +261,7 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(7, 7).Radius(3.5).
 				Background(w.leaseColor(t, e.machine, e.session, e.holder, e.alive))
-			name := ui.Text(c, e.label).FontSize(12.5)
+			name := ui.Text(c, e.label).FontSize(12.5).SingleLine()
 			if e.active {
 				name.TextColor(t.Text)
 			}
@@ -261,8 +280,13 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 			// way — and a control that is not on screen is a control nobody looks
 			// for. It is quiet instead: a hairline of the state's colour, no wash
 			// until the pointer is on it.
+			//
+			// A shell that has ended wears 关闭 in the same place. There is
+			// nothing left to end, and the row is the one thing on screen still
+			// named after a shell that is gone: a 已退出 row with no control on it
+			// at all is a row a person can only stare at.
+			ui.Spacer(c)
 			if e.alive {
-				ui.Spacer(c)
 				kill := ui.Box(c).
 					Width(38).Height(20).Radius(radiusSmall).
 					AlignItems(ui.Center).Justify(ui.Center).
@@ -277,6 +301,24 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 				if kill.Clicked() {
 					e.end()
 				}
+				return
+			}
+			if e.close == nil {
+				return
+			}
+			shut := ui.Box(c).
+				Width(38).Height(20).Radius(radiusSmall).
+				AlignItems(ui.Center).Justify(ui.Center).
+				Label("关闭 " + e.label).Tooltip("关闭标签页（仅停止观看，不结束进程）")
+			shut.BorderWidth(1).BorderColor(col.line)
+			if shut.Hovered() {
+				shut.Background(col.field)
+			}
+			shut.Children(func() {
+				ui.Text(c, "关闭").FontSize(10.5).TextColor(col.quiet)
+			})
+			if shut.Clicked() {
+				e.close()
 			}
 		})
 		ui.Text(c, w.sessionMeta(e)).FontSize(10.5).TextColor(col.quiet).SingleLine()
@@ -287,9 +329,15 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 }
 
 // sessionMeta is the row's second line: the shell's id, its size, and what it is
-// to this window — 控制中, 只读 with the name of whoever holds it, or 已退出. It
-// is the browser client's line, field for field, so the same shell reads the
-// same in both clients.
+// to this window — 控制中, 只读 with the name of whoever holds it, 无人控制 when
+// nobody does, or 已退出. It is the browser client's line, field for field, so
+// the same shell reads the same in both clients.
+//
+// The holder is not the controller a machine reports, and the difference shows
+// on another machine's panel: the hub there names this window as the controller
+// of the shell it is driving from here, and a row that read that at face value
+// would name this window to itself as the one to be read-only about. The tab
+// knows whether the lease is this window's; the summary does not.
 func (w *window) sessionMeta(e sessionEntry) string {
 	parts := []string{or(e.session, "待创建")}
 	if e.meta != "" {
@@ -298,12 +346,25 @@ func (w *window) sessionMeta(e sessionEntry) string {
 	switch {
 	case !e.alive:
 		parts = append(parts, "已退出")
+	case w.holds(e):
+		parts = append(parts, "控制中")
 	case e.holder != "":
 		parts = append(parts, "只读 "+e.holder)
 	default:
-		parts = append(parts, "控制中")
+		// Neither this window's nor anybody else's. 控制中 here would say a
+		// person has a keyboard that nobody has, over a shell whose pane says
+		// 只读 — which is what it said before there was a word for this.
+		parts = append(parts, "无人控制")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// holds is whether this window is the one driving the shell a row is about. A
+// row for a shell this window has no tab for is one it is not driving: the
+// window gives a lease up when the shell it belongs to leaves the screen.
+func (w *window) holds(e sessionEntry) bool {
+	tb := w.tabOf(e.machine, e.session)
+	return tb != nil && tb.held()
 }
 
 // leaseBadge is the row's state in words, for the states worth a badge: the two
@@ -311,15 +372,17 @@ func (w *window) sessionMeta(e sessionEntry) string {
 // left to type into. 控制中 is the ordinary case and wears no badge — a row that
 // badges everything says nothing. The colour is the same one the dot beside it
 // already uses, so the two never disagree.
+//
+// A row whose shell this window is watching asks its own tab, so the row and the
+// pane over it can never disagree; a shell nobody holds is not badged, because
+// there is nobody to be read-only about and the click that picks the row is the
+// claim.
 func (w *window) leaseBadge(t *ui.Theme, e sessionEntry) (string, ui.Color, bool) {
 	if tb := w.tabOf(e.machine, e.session); tb != nil {
 		if !tb.alive {
 			return "已退出", t.Danger, true
 		}
-		if tb.held() {
-			return "", t.Success, false
-		}
-		if e.holder != "" {
+		if readOnly(tb) {
 			return "只读", t.Warning, true
 		}
 		return "", t.Success, false
@@ -337,9 +400,15 @@ func (w *window) sessionTooltip(e sessionEntry) string {
 	if e.meta != "" {
 		lines = append(lines, e.meta)
 	}
-	if e.holder != "" {
+	switch {
+	case w.holds(e):
+		// This window is a client like any other, and on this machine's panel it
+		// is the one holding the lease of the shell it is showing. 当前无人控制
+		// here would be the window denying itself.
+		lines = append(lines, "控制端 本窗口")
+	case e.holder != "":
 		lines = append(lines, "控制端 "+e.holder)
-	} else {
+	default:
 		lines = append(lines, "当前无人控制")
 	}
 	return strings.Join(lines, "\n")
@@ -350,11 +419,14 @@ func (w *window) sessionTooltip(e sessionEntry) string {
 // same colour and nothing else — a state that is worth saying is worth saying
 // quietly, and a row wearing a wash for every state is a row nobody can scan.
 func badgeChip(c *ui.Context, text string, color ui.Color) {
-	chip := ui.Row(c).Gap(4).AlignItems(ui.Center).
+	// A chip is its word and nothing else: it does not wrap, and it does not
+	// give width up to the name beside it. Squeezed, 已退出 reads 已退/出 in a
+	// box drawn for three characters, which is a state badge that looks broken.
+	chip := ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0).
 		PaddingX(6).Height(16).Radius(radiusSmall).
 		BorderWidth(1).BorderColor(color.Alpha(0.42))
 	chip.Children(func() {
-		ui.Text(c, text).FontSize(10).TextColor(color)
+		ui.Text(c, text).FontSize(10).TextColor(color).SingleLine()
 	})
 }
 

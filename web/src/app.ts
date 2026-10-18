@@ -24,6 +24,8 @@ interface Tab {
   pane: HTMLElement
   role: Role | null
   alive: boolean
+  /** The code the shell exited with, for the tab's tooltip. */
+  exit?: number
   /** Composer contents kept while another tab is in front. */
   draft: string
   /** Commands this tab has sent, newest last, for ArrowUp recall. */
@@ -64,6 +66,13 @@ export interface AppOptions {
 }
 
 const MOD_LABEL = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'
+
+/**
+ * The machine serving this page. Its shells are the ones this client can open
+ * without a relay, and the ones nobody else can be handed: see the release
+ * button in `renderBanner`.
+ */
+const LOCAL_MACHINE = 'local'
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -204,8 +213,8 @@ export class App {
 
   private startDirect(): void {
     const connector = new DirectConnector(this.opts.ws, this.opts.ws)
-    this.addMachine('local', connector)
-    this.activeMachine = 'local'
+    this.addMachine(LOCAL_MACHINE, connector)
+    this.activeMachine = LOCAL_MACHINE
   }
 
   private startRelay(token: string): void {
@@ -398,7 +407,12 @@ export class App {
         const tab = this.findTab(machineId, sessionId)
         if (!tab) return
         tab.alive = false
-        tab.title = `${tab.title} — 已退出`
+        // The exit code goes to the tooltip, not to the tab's title. The tab has
+        // 230px and one line, so a title with " — 已退出" appended is cut by the
+        // ellipsis from the end, which takes the state word first and leaves the
+        // tab reading "~/work/api — …". The state is on the dot, the dimming and
+        // the tooltip instead, and the pane says it in words.
+        tab.exit = code
         tab.bundle.term.write(`\r\n\x1b[2m[进程已退出，退出码 ${code}]\x1b[0m\r\n`)
         this.renderTabs()
         this.renderBanner()
@@ -414,7 +428,18 @@ export class App {
       },
       errored: (code, message, sessionId) => {
         if (code === ERR.notController) {
-          this.toast('该会话由其他端控制，输入已被拒绝', 'warn')
+          // What the hub refused and why are not always "somebody else has it":
+          // a lease that was released and never claimed is free, and the way in
+          // is a claim rather than a takeover. Saying "another client controls
+          // this" about a shell nobody holds is a sentence that sends a person
+          // looking for a person who is not there.
+          const holder = this.machine(machineId)?.sessions.find(
+            (s) => s.sessionId === sessionId,
+          )?.controller
+          this.toast(
+            holder ? `该会话由 ${holder} 控制，操作已被拒绝` : '该会话当前无人控制：先取得控制权，再试一次',
+            'warn',
+          )
           const tab = sessionId ? this.findTab(machineId, sessionId) : undefined
           if (tab) {
             tab.role = ROLE.viewer
@@ -714,7 +739,7 @@ export class App {
     this.fleetList.replaceChildren()
 
     if (!this.multi) {
-      const mv = this.machine('local')
+      const mv = this.machine(LOCAL_MACHINE)
       if (!mv) return
       this.renderSessionsInto(this.fleetList, mv, false)
       return
@@ -799,15 +824,20 @@ export class App {
       }
 
       // The row's second line: the shell's id, its size, and what it is to this
-      // client — 控制中, 只读 with whoever holds it, or 已退出. It leaves the
-      // where and the pid to the tooltip and the inspector.
+      // client — 控制中, 只读 with whoever holds it, 无人控制 when nobody does,
+      // or 已退出. It leaves the where and the pid to the tooltip and the
+      // inspector.
+      //
+      // 控制中 is about a keyboard somebody has. A shell nobody holds is not
+      // that, and the pane over it reads 只读: the row would be the one place on
+      // screen claiming a holder there is none of.
       const standing = !s.alive
         ? '已退出'
         : mine
           ? '控制中'
           : s.controller
             ? `只读 ${s.controller}`
-            : '控制中'
+            : '无人控制'
       const meta = el('div', 'tf-session-meta', `${s.sessionId} · ${s.cols}×${s.rows} · ${standing}`)
       row.title = [
         s.sessionId,
@@ -863,6 +893,7 @@ export class App {
         summary?.cwd,
         summary ? `${summary.cols}×${summary.rows}` : '',
         summary?.controller ? `控制端 ${summary.controller}` : '',
+        tab.exit !== undefined ? `已退出（退出码 ${tab.exit}）` : '',
       ]
         .filter(Boolean)
         .join('\n')
@@ -928,8 +959,10 @@ export class App {
     } else if (tab?.sessionId && !tab.alive) {
       // The shell is gone. Its output is still on screen and still worth
       // reading, so the tab stays until it is closed on purpose — 结束 above
-      // never took the tab away, which is why this is here to be pressed.
-      text = '会话已退出，可读取输出后关闭标签'
+      // never took the tab away, which is why this is here to be pressed. The
+      // sentence does not name the button beside it: a banner that reads
+      // "…关闭标签 [关闭标签]" is a banner nobody reads twice.
+      text = '会话已退出，最后几行仍可读取。'
       actions.push({
         label: '关闭标签',
         title: '关闭标签（仅停止观看）',
@@ -961,12 +994,21 @@ export class App {
       })
     } else if (tab?.sessionId && tab.alive && tab.role === ROLE.controller) {
       // This client holds the lease: the ordinary state, so the banner stays
-      // empty — the way to give it up is in the header beside 新建终端. Letting
-      // go is its own act rather than the absence of one: the shell keeps
-      // running and the machine it belongs to takes the lease back, so nobody
-      // is left looking at a mute terminal.
+      // empty. Letting go is its own act rather than the absence of one — but
+      // only where there is somebody to let go *to*, which is the shell this
+      // client is driving on another machine: the lease goes back to the
+      // machine the shell runs on and nobody is left looking at a mute
+      // terminal. On a shell of this machine's the lease would go to nobody and
+      // this window would stop taking its own person's typing, so 释放 is not
+      // drawn for it. Handing one of those over is the other client's 接管.
     }
-    this.releaseBtn.hidden = !(tab?.sessionId && tab.alive && tab.role === ROLE.controller)
+    // 释放控制权 is for the shell this window is driving on another machine.
+    this.releaseBtn.hidden = !(
+      tab?.sessionId &&
+      tab.alive &&
+      tab.role === ROLE.controller &&
+      tab.machineId !== LOCAL_MACHINE
+    )
 
     this.banner.classList.toggle('on', Boolean(text))
     if (!text || !tab) return
@@ -1367,12 +1409,12 @@ export class App {
    *   结束       kill the process, for every client, irreversibly
    *   关闭标签   stop watching, leaving the process alone
    *
-   * Ending needs control, and a client that is only watching does not have it —
-   * so it claims first, stealing when someone else holds the lease. That is what
-   * "结束" means from a row the user is looking at, and it works because the
-   * close that follows carries no epoch: the hub checks that this client is the
-   * controller, which is the check that matters, rather than an epoch a claim
-   * has just moved.
+   * Ending needs control, and a client that does not hold the shell does not
+   * have it — so it claims first: stealing when someone else holds the lease,
+   * and simply claiming when nobody does. That is what "结束" means from a row
+   * the user is looking at, and it works because the close that follows carries
+   * no epoch: the hub checks that this client is the controller, which is the
+   * check that matters, rather than an epoch a claim has just moved.
    *
    * A client that already holds the shell skips the claim. The claim is a means
    * to the end, not the end: the tab is left alone either way, because reading
@@ -1391,13 +1433,24 @@ export class App {
       !window.confirm(
         `在 ${mv.label} 上结束会话「${name}」？\n\n` +
           `这会终止主机上的进程，对所有客户端都不可再恢复。\n` +
-          (held ? `需要先取得控制权（会从 ${session.controller} 手中接管）。\n` : '当前无人控制。\n') +
+          (held
+            ? `需要先取得控制权（会从 ${session.controller} 手中接管）。\n`
+            : mine
+              ? '控制权已经在你手里。\n'
+              : '当前无人控制，会先取得控制权。\n') +
           `\n标签不会被关闭：结束后仍可读取最后的输出，再由你决定是否关闭标签。`,
       )
     ) {
       return
     }
-    if (held) mv.fleet.claim(session.sessionId, true)
+    // The claim comes first in every case but one — and the one is not "nobody
+    // holds it", which is what this used to assume. Taking a shell from a live
+    // holder asks with `steal`; a shell nobody holds is claimed outright. Either
+    // way the close has to arrive at a hub that sees this client as the
+    // controller, or it is refused as a viewer's, so the claim is not only for
+    // other people's shells: on a released one it was the missing step, and 结束
+    // did nothing at all.
+    if (!mine) mv.fleet.claim(session.sessionId, held)
     mv.fleet.closeSession(session.sessionId)
   }
 
@@ -1408,7 +1461,12 @@ export class App {
       /* the pane may not be laid out yet */
     }
     const { cols, rows } = tab.bundle.term
-    if (tab.sessionId && tab.role === ROLE.controller) {
+    // A shell that has ended is not resized. The pane still lays out — the last
+    // output is still on screen and the banner appearing above it moves it — but
+    // there is no session on the other end of the frame, and the daemon answers
+    // one with no_session, which this client shows as an error toast: a red
+    // toast raised by the act of reading a shell's last lines.
+    if (tab.sessionId && tab.alive && tab.role === ROLE.controller) {
       this.machine(tab.machineId)?.fleet.resize(tab.sessionId, cols, rows)
     }
     return { cols, rows }

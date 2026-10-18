@@ -39,6 +39,14 @@ state needs no new channel:
   typing went. The offer says what pressing it does to the other side — *c9
   会变成只读，之后仍能看着这个终端。* — because a button that takes a keyboard
   away from somebody without saying so is one people learn not to press.
+* A shell **nobody** holds is marked read-only too. It is a different fact — no
+  one is typing — but it is the same answer at the keyboard, so the pane keeps
+  its 只读 chip, the band says 只读：当前无人控制 with the way in beside it, and the
+  row in the panel says 无人控制 rather than 控制中. A shell on another machine
+  lands there whenever its lease is let go with the machine that owns the PTY
+  not watching, and the hub's own refusal has to tell it apart from a shell
+  somebody has: *nobody holds s1; claim it to type* is a sentence with no second
+  person in it, and the other one sends a person looking for one.
 * One of those marks is not words: a light along the pane's edge, and it is
   drawn under exactly one condition — a shell **this machine runs**, driven by
   another client. Somebody sitting at their own desk reads it from across the
@@ -60,6 +68,13 @@ state needs no new channel:
   The machine's own window never needs a confirmation to take its shell back —
   the hub marks that client as the owner and honours its claim over anyone
   else's.
+* Handing a shell back is offered for a shell this window is driving *somewhere
+  else*: the lease returns to the machine the shell runs on, which is told in the
+  same frame and can type again. A shell of this machine's is never offered the
+  release, and not because it is rare: the machine that owns the PTY has nobody
+  to hand its own lease to, so releasing it leaves the lease held by no one — and
+  the one thing the button would do is stop the window in front of the shell
+  taking the typing of the person sitting at it.
 
 ## Latency: two different problems
 

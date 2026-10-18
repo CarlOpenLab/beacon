@@ -88,6 +88,8 @@ type session struct {
 	role       string
 	controller string
 	epoch      uint64
+	// ended is what the exit frame leaves behind: see holds.
+	ended bool
 }
 
 func newSession(id string, l *link, h Handlers) *session {
@@ -208,6 +210,7 @@ func (l *link) dispatch(m protocol.Msg) {
 			s.handlers.Role(m.Role, m.Controller, m.Epoch)
 		}
 	case protocol.STExit:
+		s.end()
 		s.handlers.Exit(m.ExitCode)
 	case protocol.STClosed:
 		s.handlers.Closed()
@@ -320,12 +323,24 @@ func (s *session) setRole(role, controller string, epoch uint64) {
 	s.mu.Unlock()
 }
 
-// holds reports whether this window may type into the session: it holds the
-// lease.
+// holds is what a terminal asks before it sends anything: this window holds the
+// lease, and there is still a shell to send to. A shell that has ended takes no
+// typing — the pane keeps its last output on screen, and keys over it would
+// echo in the view and be answered no_session — and its size is no longer
+// anything's business.
 func (s *session) holds() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.role == protocol.RoleController
+	return s.role == protocol.RoleController && !s.ended
+}
+
+// ended is set the moment the exit frame arrives, before the window is told:
+// the wire stops taking frames in the same breath as the tab learning the shell
+// is gone.
+func (s *session) end() {
+	s.mu.Lock()
+	s.ended = true
+	s.mu.Unlock()
 }
 
 // holder is who holds the lease when it is not this window.

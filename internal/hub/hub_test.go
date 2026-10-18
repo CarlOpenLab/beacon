@@ -304,6 +304,12 @@ func TestCloseRequiresControl(t *testing.T) {
 	if e.Code != protocol.ErrNotController {
 		t.Fatalf("viewer close error code is %q, want %q", e.Code, protocol.ErrNotController)
 	}
+	// And the refusal names the client that has the shell, because there is one:
+	// a message that says nobody holds a shell somebody is driving is as wrong
+	// as the other way round.
+	if !strings.Contains(e.Message, "another client controls s1") {
+		t.Errorf("close refusal = %q, want it to name the client that holds the shell", e.Message)
+	}
 
 	a.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1"})
 	a.waitFor("exit", func(m protocol.Msg) bool { return m.T == protocol.STExit })
@@ -805,4 +811,39 @@ func TestTheMachinesOwnWindowCanLetAShellGo(t *testing.T) {
 	if err.Code != protocol.ErrNotController {
 		t.Fatalf("input after a release was answered %q, want %q", err.Code, protocol.ErrNotController)
 	}
+	// The refusal says nobody holds the shell, because nobody does. It used to
+	// say "another client controls s1" whatever the state was — about a shell
+	// this same window had just let go, and with no client to name: a sentence
+	// that sends the person reading it looking for somebody who is not there,
+	// when all that stands between them and typing is a claim on a free lease.
+	if !strings.Contains(err.Message, "nobody holds "+shell) {
+		t.Errorf("input refusal after a release = %q, want it to say nobody holds the shell", err.Message)
+	}
+	if strings.Contains(err.Message, "another client") {
+		t.Errorf("input refusal after a release = %q, want it to name no other client", err.Message)
+	}
+
+	// The same refusal answers 结束, which is the other frame that needs control.
+	// A close on a free lease is refused by name too, and the claim the client
+	// sends first is what makes the close land — that is the whole reason this
+	// is a refusal and not a silent drop.
+	owner.send(protocol.Msg{T: protocol.CTClose, SessionID: shell})
+	refused := owner.waitFor("close refused", func(m protocol.Msg) bool { return m.T == protocol.STError })
+	if refused.Code != protocol.ErrNotController {
+		t.Fatalf("close on a free lease was answered %q, want %q", refused.Code, protocol.ErrNotController)
+	}
+	if !strings.Contains(refused.Message, "nobody holds "+shell) {
+		t.Errorf("close refusal on a free lease = %q, want it to say nobody holds the shell", refused.Message)
+	}
+
+	// And the claim the client would send first is honoured without a steal: no
+	// confirmation, nobody to ask.
+	owner.send(protocol.Msg{T: protocol.CTClaim, SessionID: shell})
+	owner.waitFor("the lease back", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	owner.send(protocol.Msg{T: protocol.CTClose, SessionID: shell})
+	owner.waitFor("the close lands once this client is the controller", func(m protocol.Msg) bool {
+		return m.T == protocol.STExit
+	})
 }

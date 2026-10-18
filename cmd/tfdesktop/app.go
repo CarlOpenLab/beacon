@@ -670,8 +670,15 @@ func (w *window) reconcile(live []protocol.Summary) {
 		}
 	}
 
-	// A shell that appeared gets one.
+	// A shell that appeared gets one. A shell that has *ended* does not, even if
+	// a list still names it: a tab is opened to watch something, and the one
+	// thing an ended shell needs no watching for. This is what used to put a
+	// 已退出 tab back on screen a moment after it was closed — a tab nobody
+	// could get rid of, because the next session list put it back.
 	for _, s := range live {
+		if !s.Alive {
+			continue
+		}
 		if w.tabOf(machineLocal, s.SessionID) != nil {
 			continue
 		}
@@ -1057,8 +1064,10 @@ type tab struct {
 	// the relay.
 	machine string
 
-	// alive is what the hub last said about the shell: false once it has
-	// exited, which is what marks the tab dead.
+	// alive is whether the shell is still running: false until the attach that
+	// opens the tab says otherwise, and false again the moment the exit frame
+	// arrives — see finish, which is the only place it is turned off and the
+	// reason it is not left to the session list.
 	alive bool
 
 	mu    sync.Mutex
@@ -1116,7 +1125,9 @@ func (t *tab) held() bool {
 	return t.role == protocol.RoleController
 }
 
-// holder is who holds the lease when this window does not.
+// holder is who holds the lease when this window does not. It is "" both when
+// this window holds the lease and when nobody does; ask known and held to tell
+// those apart.
 func (t *tab) holder() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -1124,6 +1135,17 @@ func (t *tab) holder() string {
 		return ""
 	}
 	return t.controller
+}
+
+// known reports whether the window has been told which side of the lease it is
+// on. It has not until the first role frame arrives, and that is a third state
+// rather than a quiet yes or no: a window that read the silence as 只读 would
+// mark every shell a person had just opened, for as long as the hub took to
+// answer.
+func (t *tab) known() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.role != ""
 }
 
 // letGoLease gives up the lease of a shell this window is no longer showing. The
@@ -1159,11 +1181,21 @@ func (t *tab) setTitle(title string) {
 	t.mu.Unlock()
 }
 
+// finish records that the shell has ended, and it is the only place the tab
+// learns it. The exit frame is the hub's own word on it, and a session list
+// never gives that word: the hub forgets a session the moment its process exits,
+// so the list that follows an exit does not name the session at all — there is
+// no summary left to say alive=false with. A tab that waited for one waited
+// forever, which left the window drawing a live shell's controls over a shell
+// that was gone: 结束 on a session the hub would only answer no_session to, no
+// 关闭 on the row, no dimmed pill, no 已退出 banner.
 func (t *tab) finish(code int) {
 	t.mu.Lock()
 	t.done = true
 	t.exit = code
 	t.mu.Unlock()
+	// Read and written on the UI thread only, like every other use of the field.
+	t.alive = false
 }
 
 // size is the terminal's own columns and rows, as "80x24". It is the one number
@@ -1180,9 +1212,19 @@ func (t *tab) size() string {
 	return fmt.Sprintf("%dx%d", cols, rows)
 }
 
-func (t *tab) label() string {
+// name is what the shell is called: its title once the shell has named itself,
+// and what it is until then. It carries no state. The panel's row says 已退出 in
+// a badge beside it, the pane says it in a corner, the status bar says it after
+// the size — and the tab strip says it with the dot and the dimming, which is
+// all a 30-high pill has room for: a name with a state word appended is a name
+// the strip cuts in half to show the state.
+func (t *tab) name() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	return t.nameLocked()
+}
+
+func (t *tab) nameLocked() string {
 	name := t.title
 	if name == "" {
 		// Nothing named this shell yet. Say what the tab is instead of
@@ -1196,10 +1238,19 @@ func (t *tab) label() string {
 			name = t.id
 		}
 	}
-	if t.done {
-		return fmt.Sprintf("%s (%d)", name, t.exit)
-	}
 	return name
+}
+
+// exitLine is what the tooltip says about a shell that has ended: the code it
+// ended with, which is the one thing the strip has no room for and the one
+// thing worth knowing when it is not zero.
+func (t *tab) exitLine() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.done {
+		return ""
+	}
+	return fmt.Sprintf("已退出（退出码 %d）", t.exit)
 }
 
 // programName turns the shell path a session reports into the short name shown

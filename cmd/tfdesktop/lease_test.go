@@ -377,6 +377,7 @@ func TestLeasePanelStaysInsideThePane(t *testing.T) {
 	w.fleet = newTestFleet(t)
 	tb := w.tabs[1]
 	tb.term = fedTerminal(t, previewScreen())
+	tb.alive = true
 	tb.setLease(protocol.RoleViewer, "c9", 4)
 	w.leaseOpen = true
 
@@ -391,5 +392,113 @@ func TestLeasePanelStaysInsideThePane(t *testing.T) {
 	}
 	if _, ok := tt.Find("拿回控制权"); !ok {
 		t.Fatalf("the panel lost the way back; texts = %v", tt.Texts())
+	}
+}
+
+// The panel has a state for a holder that is nobody. It opens on the frame that
+// takes a shell away from this window, and that frame can hand the shell to no
+// one: a shell on another machine whose lease was let go while the machine that
+// owns it was not watching is free. Built from a name the window does not have,
+// the panel put a blank where the name goes — " 正在控制这个终端" — and promised
+// that " 会变成只读". The offer stands all the same: a claim on a free lease is
+// honoured at once, and there is nobody to notify or to steal from.
+func TestTheLeasePanelNamesNobodyWhenNobodyHoldsTheShell(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.term = fedTerminal(t, previewScreen())
+	tb.machine = "mac-studio"
+	tb.alive = true
+	// A viewer, with no controller: the window is looking at a shell nobody holds.
+	tb.setLease(protocol.RoleViewer, "", 2)
+	w.leaseOpen = true
+
+	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
+	tt.Frame()
+	if !tt.HasText("当前无人控制这个终端") {
+		t.Fatalf("the panel does not say the shell is nobody's; texts = %v", tt.Texts())
+	}
+	if !tt.HasText("取得控制权后你就能继续输入。") {
+		t.Fatalf("the panel does not say what pressing the button does; texts = %v", tt.Texts())
+	}
+	for _, text := range tt.Texts() {
+		if strings.HasPrefix(text, " ") || strings.Contains(text, "通知 ，") {
+			t.Errorf("the panel is about a holder with no name: %q", text)
+		}
+	}
+	// The way in is still on screen: a shell nobody holds is a shell this window
+	// can take without taking it from anyone.
+	if _, ok := tt.Find("接管"); !ok {
+		t.Fatalf("the panel lost the way in; texts = %v", tt.Texts())
+	}
+}
+
+// The panel can be dismissed and the state cannot: a shell nobody drives takes
+// no typing, so the band and the sheet have to carry it too. A person who closed
+// the panel, or who never opened it — the shell came back this way — still has
+// to be able to read why their keys are going nowhere, and to have the way in
+// within reach.
+func TestAFreeShellIsMarkedReadOnlyAndOffersTheWayIn(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.term = fedTerminal(t, previewScreen())
+	tb.machine = "mac-studio"
+	tb.alive = true
+	tb.setLease(protocol.RoleViewer, "", 2)
+
+	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
+	tt.Frame()
+	if !tt.HasText("只读：当前无人控制") {
+		t.Fatalf("the band does not say the shell is nobody's; texts = %v", tt.Texts())
+	}
+	if _, ok := tt.Find("接管"); !ok {
+		t.Fatalf("the band does not offer the way in; texts = %v", tt.Texts())
+	}
+
+	// The sheet says it as well, in the corner the browser client uses.
+	sheet := ui.NewTester(func(c *ui.Context) {
+		applyTheme(c, w.store.Get().Theme)
+		w.body(c)
+	}, 900, 600)
+	if !sheet.HasText("只读") {
+		t.Fatalf("the sheet is not marked 只读; texts = %v", sheet.Texts())
+	}
+
+	// And a shell this window holds has none of it: the mark is about the lease,
+	// not about the window having opinions.
+	tb.setLease(protocol.RoleController, "", 3)
+	tt.Frame()
+	if tt.HasText("只读") {
+		t.Errorf("a shell this window holds is marked 只读; texts = %v", tt.Texts())
+	}
+	sheet.Frame()
+	if sheet.HasText("只读") {
+		t.Errorf("a shell this window holds is marked on the sheet; texts = %v", sheet.Texts())
+	}
+}
+
+// A shell whose lease the window has not heard about yet is not a shell somebody
+// else holds. The word arrives in a role frame, so between opening a shell and
+// the hub's answer the window knows nothing — and a window that read that
+// silence as 只读 would flash the mark and the band over every shell a person
+// opens.
+func TestAShellWhoseLeaseIsNotKnownYetIsNotMarked(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.term = fedTerminal(t, previewScreen())
+	tb.alive = true
+
+	if tb.known() {
+		t.Fatal("a fresh tab claims to know its lease")
+	}
+	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
+	tt.Frame()
+	if tt.HasText("只读") {
+		t.Errorf("a shell with no role frame yet is marked 只读; texts = %v", tt.Texts())
+	}
+	if tt.HasText("当前无人控制") {
+		t.Errorf("a shell with no role frame yet names nobody as its holder; texts = %v", tt.Texts())
 	}
 }

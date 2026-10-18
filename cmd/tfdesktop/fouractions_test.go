@@ -52,8 +52,8 @@ func TestReleasingTheLeaseLeavesTheShellRunning(t *testing.T) {
 	w.releaseLease(tb)
 	settleTabs(t, w, 1)
 	w.drain()
-	// The hub answers a release by handing the lease to the machine the shell
-	// runs on, which is a role frame this window has to be given time to read.
+	// The hub answers a release with a role frame this window has to be given
+	// time to read.
 	drainFor(t, w, func() bool { return !tb.held() })
 
 	// The shell is untouched: still in the roster, still running.
@@ -64,19 +64,32 @@ func TestReleasingTheLeaseLeavesTheShellRunning(t *testing.T) {
 	if len(w.order) != 1 {
 		t.Fatalf("releasing the lease left %d tabs, want the one still watching", len(w.order))
 	}
-	// And this window no longer holds the lease — the hub handed it to the
-	// machine the shell runs on, so the shell is not left mute.
+	// And this window no longer holds the lease. The lease goes to nobody: the
+	// hub hands a released lease to the machine the shell runs on, and this
+	// window *is* that machine's window, so there is no one to hand it to. That
+	// is the whole reason the button is not drawn for a shell of this machine's
+	// (TestTheLeaseButtonsAreOfferedByState): the act works, and it leaves the
+	// shell free for a client on the relay to take — which is a thing to ask
+	// for on a shell you are driving somewhere else, not on your own terminal.
 	if tb.held() {
 		t.Fatal("this window still holds the lease after releasing it")
 	}
 }
 
-// 释放 is offered while the lease is held, and 接管 while it is not. Neither
-// button ends the shell, which is what keeps them from being one control.
+// 释放 is offered while the lease is held on a shell this window is driving on
+// another machine, and 接管 while it is not. Neither button ends the shell,
+// which is what keeps them from being one control.
+//
+// A shell of this machine's is never offered 释放 — see the case at the end,
+// which is the one a person meets first and the one that made no sense.
 func TestTheLeaseButtonsAreOfferedByState(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
 	tb := w.tabs[1]
+	// The lease's controls are about a shell somebody else could be typing
+	// into, so the shell in question is one on another machine: this window
+	// reaches it over the relay and holds its lease until it lets go.
+	tb.machine = "mac-studio"
 	// A live shell: the header offers the lease's controls only while there is a
 	// shell to hold, and a tab the test made has not been told it is running.
 	tb.alive = true
@@ -111,6 +124,18 @@ func TestTheLeaseButtonsAreOfferedByState(t *testing.T) {
 	}
 	if tt.HasText("释放控制权") {
 		t.Fatalf("a window without the lease is offered 释放: %v", tt.Texts())
+	}
+
+	// The same lease, held on this machine's own shell, is offered nothing: the
+	// lease would be dropped and handed to nobody, so the one thing 释放 could
+	// do here is stop this terminal taking the typing of the person sitting at
+	// it — a button whose only effect is to break the thing it is drawn on.
+	tb.machine = machineLocal
+	tb.setLease(protocol.RoleController, "", 5)
+	tt = drawWindow()
+	tt.Frame()
+	if tt.HasText("释放控制权") {
+		t.Errorf("this machine's own shell is offered 释放: %v", tt.Texts())
 	}
 }
 
@@ -169,6 +194,16 @@ func TestEndingAShellLeavesTheTabToReadIt(t *testing.T) {
 	}
 	if len(w.order) != 1 {
 		t.Fatalf("结束 left %d tabs, want the one holding the shell's last output", len(w.order))
+	}
+	// And the tab is marked: the exit frame is the hub's word that the shell is
+	// gone, and it is the only word there is. The session list never carries it —
+	// the hub forgets a session as its process exits, so the list that follows
+	// does not name the session at all. A tab waiting for a summary to say
+	// alive=false waited forever, and while it waited the panel drew a live
+	// shell's row over a shell that was gone: 结束 for a session the hub answers
+	// no_session to, and no 关闭 to get the row off the screen.
+	if tb.alive {
+		t.Fatal("the tab is still marked alive after the shell it watches ended")
 	}
 }
 

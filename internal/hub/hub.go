@@ -566,6 +566,13 @@ func (h *Hub) handleInput(c *client, id string, data []byte, epoch uint64) {
 		if err := s.Write(data); err != nil {
 			c.fail(protocol.ErrNoSession, err.Error(), id)
 		}
+	case controlFree:
+		// Answered loudly, like the viewer's case below: the client can be
+		// offered the lease, and a claim on a free one is honoured at once. The
+		// sentence must not name a controller — there is none — and it must not
+		// send the person at the keyboard looking for one.
+		c.fail(protocol.ErrNotController,
+			"nobody holds "+id+"; claim it to type", id)
 	case controlLost:
 		// Answered loudly: the client is a viewer and can be offered the lease.
 		c.fail(protocol.ErrNotController,
@@ -595,7 +602,8 @@ type control int
 
 const (
 	controlHeld  control = iota // the sender holds the lease, at this epoch
-	controlLost                 // the sender does not hold the lease at all
+	controlFree                 // nobody holds it: released, lapsed, or never claimed
+	controlLost                 // another client holds it
 	controlStale                // the sender held it, at an epoch now past
 )
 
@@ -612,7 +620,13 @@ func (h *Hub) controlFor(c *client, id string, epoch uint64) control {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	w := h.watches[id]
-	if w == nil || w.controller != c {
+	if w == nil || w.controller == nil {
+		// A shell nobody is driving. Not the same thing as one somebody else is
+		// driving: the refusal a client gets has to tell them apart, because one
+		// of them sends a person looking for another person.
+		return controlFree
+	}
+	if w.controller != c {
 		return controlLost
 	}
 	if epoch != 0 && epoch != w.epoch {
@@ -626,12 +640,28 @@ func (h *Hub) controlFor(c *client, id string, epoch uint64) control {
 // answering the caller with a not_controller error when it may not. Input from
 // a viewer is rejected loudly rather than dropped, so a client can offer "take
 // control".
+//
+// The refusal says who has the shell, or that nobody does: a free lease is a
+// shell this client can take with a plain claim, and telling it that "another
+// client controls" a shell nobody holds is the kind of message that sends
+// somebody looking for a person who is not there.
 func (h *Hub) requireControl(c *client, id string, epoch uint64) bool {
-	if h.controlFor(c, id, epoch) == controlHeld {
+	switch h.controlFor(c, id, epoch) {
+	case controlHeld:
 		return true
+	case controlFree:
+		c.fail(protocol.ErrNotController,
+			"nobody holds "+id+"; claim it first", id)
+	case controlStale:
+		// This client *is* the controller, one handoff behind: its frame belongs
+		// to a moment that has passed, and the next one, at the epoch it has by
+		// then been told, is the one that lands.
+		c.fail(protocol.ErrNotController,
+			"the lease on "+id+" has moved; retry at the epoch you were last given", id)
+	default:
+		c.fail(protocol.ErrNotController,
+			"another client controls "+id+"; claim it first", id)
 	}
-	c.fail(protocol.ErrNotController,
-		"another client controls "+id+"; claim it first", id)
 	return false
 }
 

@@ -89,14 +89,21 @@ func (w *window) header(c *ui.Context) {
 //
 // 新建终端 is the accent control, and it is allowed to be: opening a shell is
 // what the window is for. The three beside it are quiet icon buttons, and 释放
-// only appears while this window is the one driving the shell on screen — a
-// control that is not about right now has no business being drawn.
+// only appears while this window is driving a shell that is not this machine's
+// — a control that is not about right now has no business being drawn.
+//
+// 释放控制权 on a shell this machine runs is the one case it is left out of,
+// and not because it is rare: releasing it drops the lease and hands it to
+// nobody, so the only thing the button does there is stop this terminal
+// accepting the typing of the person sitting at it, with no holder to name and
+// nothing on screen to say why. A shell of this machine's is typed into here;
+// there is no one to give it to.
 func (w *window) headerActions(c *ui.Context) {
 	t := c.Theme()
 
-	if tb := w.activeTab(); tb != nil && tb.alive && tb.held() {
+	if tb := w.activeTab(); tb != nil && tb.alive && tb.held() && tb.machine != machineLocal {
 		if ui.Button(c, "释放控制权").
-			Tooltip("释放控制权：终端继续运行，本窗口改为只读观看").Clicked() {
+			Tooltip("释放控制权：终端继续运行，交还给运行它的机器").Clicked() {
 			w.releaseLease(tb)
 		}
 	}
@@ -179,16 +186,28 @@ func (w *window) bannerState(c *ui.Context) (text, action string, tone ui.Color,
 		return "", "", t.TextMuted, nil
 	}
 	if !tb.alive {
-		return "会话已退出，可读取输出后关闭标签", "关闭标签", t.Danger, func() {
+		// The window says the state and offers the one thing left to do with it.
+		// The sentence does not name the button: a banner that reads
+		// "…关闭标签 [关闭标签]" is a banner nobody reads twice.
+		return "会话已退出，最后几行仍可读取。", "关闭标签", t.Danger, func() {
 			w.removeTab(tb)
 		}
 	}
-	if holder := tb.holder(); holder != "" {
+	if holder := tb.holder(); readOnly(tb) {
 		// This machine's own shell is taken back; another machine's was never
 		// this window's to begin with, so it is taken over.
 		take := "拿回控制权"
 		if tb.machine != machineLocal {
 			take = "接管"
+		}
+		if holder == "" {
+			// Nobody's, and said as such: a band that named a holder here would
+			// have a blank where the name goes. The way in is the same button —
+			// a claim on a free lease is honoured at once, with no one to steal
+			// it from and no one to tell.
+			return "只读：当前无人控制", take, t.Warning, func() {
+				w.reclaim(tb)
+			}
 		}
 		return "只读：该会话正被 " + holder + " 控制", take, t.Warning, func() {
 			w.reclaim(tb)
@@ -364,7 +383,7 @@ func (w *window) tab(c *ui.Context, tb *tab, active bool) {
 		Radius(radiusPill).
 		AlignItems(ui.Center).
 		MaxWidth(230).
-		Label(tb.label()).Tooltip(tb.label() + "\n" + w.machineName(tb.machine))
+		Label(tb.name()).Tooltip(tabTooltip(tb, w.machineName(tb.machine)))
 	if active {
 		// The pill on screen is raised: a step up from the strip's own face, a
 		// hairline all round, and the light that falls on a raised thing.
@@ -381,16 +400,26 @@ func (w *window) tab(c *ui.Context, tb *tab, active bool) {
 	pill.Children(func() {
 		ui.Box(c).Size(7, 7).Radius(3.5).Background(w.leaseColor(t, tb.machine, tb.id, tb.holder(), tb.alive))
 		// The machine's chip only when more than one machine is in play: on a
-		// single-machine window it is a fact the sidebar already states.
+		// single-machine window it is a fact the sidebar already states. It is
+		// the browser client's chip to the pixel — 86 wide at most, one line,
+		// cut — because a hostname that wraps inside a 16-high chip is a chip
+		// with three lines of text spilling out of it.
 		if w.multiMachine() {
-			machine := ui.Box(c).Height(16).PaddingX(6).Radius(radiusSmall).
+			machine := ui.Box(c).Height(16).MaxWidth(86).Shrink(0).
+				PaddingX(6).Radius(radiusSmall).
 				AlignItems(ui.Center).Justify(ui.Center).
 				Background(col.field).BorderWidth(1).BorderColor(col.line)
+			machine.Tooltip(w.machineName(tb.machine))
 			machine.Children(func() {
-				ui.Text(c, w.machineName(tb.machine)).FontSize(10).TextColor(col.quiet)
+				ui.Text(c, w.machineName(tb.machine)).FontSize(10).TextColor(col.quiet).SingleLine()
 			})
 		}
-		name := ui.Text(c, tb.label()).FontSize(12.5)
+		// One line, cut with an ellipsis, the way the browser client's
+		// .tf-tab-label is: the tab is a pill of a fixed 30, so a name that wraps
+		// inside it spills out of the strip. What the strip does not show — the
+		// whole name, the machine, the exit code — is in the tooltip, and a shell
+		// that has ended is the dimmed pill with the dot in the exit's colour.
+		name := ui.Text(c, tb.name()).FontSize(12.5).SingleLine()
 		if active {
 			name.TextColor(t.Text)
 		} else {
@@ -417,6 +446,17 @@ func (w *window) tab(c *ui.Context, tb *tab, active bool) {
 	if pill.Clicked() {
 		w.selectTab(tb)
 	}
+}
+
+// tabTooltip is what a tab says on hover: the shell's name, the machine it runs
+// on, and — for a shell that has ended — the code it ended with, which is the
+// one thing about it the strip has no room for.
+func tabTooltip(tb *tab, machine string) string {
+	lines := []string{tb.name(), machine}
+	if line := tb.exitLine(); line != "" {
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // multiMachine reports whether this window has shells on more than one machine,
@@ -454,6 +494,9 @@ func (w *window) body(c *ui.Context) {
 		return
 	}
 
+	// Whether this window may type into the shell on screen, and who it is that
+	// can instead — the one answer the sheet and the room around it are drawn
+	// from, and the panel's own words. See readOnly.
 	holder := tb.holder()
 
 	// The pane floats on the window's ground, and the light along its edge is
@@ -471,12 +514,16 @@ func (w *window) body(c *ui.Context) {
 				// A shell that has ended says so on the sheet: the tab and the
 				// banner say it too, and the pane is where a person is looking.
 				endedBadge(c)
-			} else if holder != "" {
+			} else if readOnly(tb) {
 				readOnlyBadge(c)
 			}
 		})
 
-		if holder == "" {
+		// What is left below is the shell that is somebody else's or nobody's. A
+		// shell that has ended is not that — the banner has already said what
+		// happened to it — and a panel offering 拿回控制权 over a process the hub
+		// has forgotten would be offering a button that cannot work.
+		if !tb.alive || !readOnly(tb) {
 			return
 		}
 
@@ -560,7 +607,7 @@ func (w *window) releaseLease(tb *tab) {
 	// back and must not open the popover or tear the link down.
 	tb.letGoLease()
 	tb.conn.releasing()
-	w.setNotice("已释放控制权：" + tb.label() + " 继续运行，本窗口改为只读")
+	w.setNotice("已释放控制权：" + tb.name() + " 继续运行，本窗口改为只读")
 }
 
 // emptyState is the window with nothing open. It is not a dead end: it says what

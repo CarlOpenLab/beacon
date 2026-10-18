@@ -54,43 +54,58 @@ func TestRenderShellPreviews(t *testing.T) {
 		// remoteTaken is that shell, driven by the machine it runs on: the state
 		// the light along the pane's edge is deliberately not drawn for.
 		remoteTaken bool
+		// ended is a shell that has exited: its tab stays so its last output can
+		// be read, and the way out of that state is on the tab, in the header and
+		// on the row.
+		ended bool
 	}{
-		{"shell-dark", themeDark, true, false, false, false, false, false, false},
-		{"shell-light", themeLight, true, false, false, false, false, false, false},
-		{"empty-dark", themeDark, false, false, false, false, false, false, false},
-		{"empty-light", themeLight, false, false, false, false, false, false, false},
+		{"shell-dark", themeDark, true, false, false, false, false, false, false, false},
+		{"shell-light", themeLight, true, false, false, false, false, false, false, false},
+		{"empty-dark", themeDark, false, false, false, false, false, false, false, false},
+		{"empty-light", themeLight, false, false, false, false, false, false, false, false},
 		// A shell of this machine's, another client driving it: the light along
 		// the pane's edge, the panel under it, and the mark on its row.
-		{"taken-dark", themeDark, true, true, false, false, false, false, false},
-		{"taken-light", themeLight, true, true, false, false, false, false, false},
+		{"taken-dark", themeDark, true, true, false, false, false, false, false, false},
+		{"taken-light", themeLight, true, true, false, false, false, false, false, false},
+		// A shell that has ended: 已退出 on the pane, on the tab and on its row,
+		// with 关闭 where a running shell's row has 结束.
+		{"ended-dark", themeDark, true, false, false, false, false, false, false, true},
+		{"ended-light", themeLight, true, false, false, false, false, false, false, true},
 		// A fleet: the 机器 panel as a list you switch between, with this machine
 		// and one other.
-		{"fleet-dark", themeDark, true, false, true, false, false, false, false},
-		{"fleet-light", themeLight, true, false, true, false, false, false, false},
+		{"fleet-dark", themeDark, true, false, true, false, false, false, false, false},
+		{"fleet-light", themeLight, true, false, true, false, false, false, false, false},
 		// Another machine picked: its row carries the selection, and the 会话 panel
 		// below shows the shells that machine is running rather than this one's.
-		{"fleet-picked-dark", themeDark, true, false, true, true, false, false, false},
-		{"fleet-picked-light", themeLight, true, false, true, true, false, false, false},
+		{"fleet-picked-dark", themeDark, true, false, true, true, false, false, false, false},
+		{"fleet-picked-light", themeLight, true, false, true, true, false, false, false, false},
 		// Picking an unreachable machine: the dialog that asks the relay for a
 		// short-lived credential first.
-		{"fleet-ask-dark", themeDark, true, false, true, false, true, false, false},
-		{"fleet-ask-light", themeLight, true, false, true, false, true, false, false},
+		{"fleet-ask-dark", themeDark, true, false, true, false, true, false, false, false},
+		{"fleet-ask-light", themeLight, true, false, true, false, true, false, false, false},
 		// The other machine's shell on screen: its row carries the accent bar the
 		// picked machine carries, and this machine's shell is a tab behind it.
-		{"fleet-remote-dark", themeDark, true, false, true, true, false, true, false},
-		{"fleet-remote-light", themeLight, true, false, true, true, false, true, false},
+		{"fleet-remote-dark", themeDark, true, false, true, true, false, true, false, false},
+		{"fleet-remote-light", themeLight, true, false, true, true, false, true, false, false},
 		// That same shell driven by the machine it runs on: 只读 on the pane and on
 		// the row, and no light. A pane that lit up for a process on a machine the
 		// person here is not sitting at would be spending the light on a fact they
 		// have no stake in.
-		{"fleet-taken-remote-dark", themeDark, true, false, true, true, false, true, true},
-		{"fleet-taken-remote-light", themeLight, true, false, true, true, false, true, true},
+		{"fleet-taken-remote-dark", themeDark, true, false, true, true, false, true, true, false},
+		{"fleet-taken-remote-light", themeLight, true, false, true, true, false, true, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := previewWindow(t, tc.mode, tc.shell)
 			if tc.taken {
 				w.tabs[1].setLease(protocol.RoleViewer, "c9", 4)
 				w.leaseOpen = true
+			}
+			if tc.ended {
+				// A shell that exited on its own, through the same door the exit
+				// frame uses: the tab is kept to read, and every control left on
+				// screen is the way out of it.
+				w.tabs[1].setLease(protocol.RoleViewer, "", 0)
+				w.tabs[1].finish(0)
 			}
 			if tc.fleet {
 				previewFleet(w)

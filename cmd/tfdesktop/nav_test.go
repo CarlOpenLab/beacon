@@ -118,8 +118,22 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	}
 	// The tab stays: the shell is gone, and the tab is where its last output is
 	// read. Closing it is a separate action, so it settles to one exited tab
-	// rather than to none.
-	settleTabs(t, w, 1)
+	// rather than to none — and the exit frame is what marks it exited, which is
+	// the mark the panel draws the row from: a tab the window never marked is a
+	// row still offering to end a shell that is already gone.
+	drainFor(t, w, func() bool { return len(w.order) == 1 && !w.tabs[w.order[0]].alive })
+	tt.Frame()
+	if !tt.HasText("已退出") {
+		t.Fatalf("the row of the shell that was just ended does not say so; texts = %v", tt.Texts())
+	}
+	if tt.HasText("结束") {
+		t.Errorf("an ended shell is still offered 结束, which would do nothing; texts = %v", tt.Texts())
+	}
+	// And the row is not a dead end: the way to stop watching a shell that is
+	// already gone is on it, in the place the 结束 was.
+	if _, ok := tt.Find("关闭 " + w.tabs[w.order[0]].name()); !ok {
+		t.Errorf("the ended shell's row offers no way to close the tab; texts = %v", tt.Texts())
+	}
 
 	// And the × that shares the panel's title row closes the tab without
 	// touching the process. The new shell is waited for by id rather than by
@@ -139,7 +153,11 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	// no longer listed at all.
 	list := f.Hub().Sessions()
 	fresh := list[len(list)-1].SessionID
-	settleTabs(t, w, 2)
+	// Both tabs are on screen — the one whose shell has ended and the new one,
+	// which is the tab on top and so the tab the panel's × closes.
+	drainFor(t, w, func() bool {
+		return len(w.order) == 2 && w.selected == 1 && w.tabs[w.order[1]].alive
+	})
 	tt.Frame()
 	if err := tt.Click("关闭标签页"); err != nil {
 		t.Fatalf("Click(关闭标签页): %v", err)
@@ -151,7 +169,100 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	if !hasLiveSession(f, fresh) {
 		t.Fatal("closing the tab ended the shell it was watching")
 	}
-	settleTabs(t, w, 1)
+	// The closed tab is gone and the ended one is what is left: it is the tab
+	// whose shell stopped, and the window keeps it.
+	settleTabCount(t, w, 1)
+	if w.tabs[w.order[0]].alive {
+		t.Fatal("the window closed the tab of a running shell and kept the one whose shell had ended")
+	}
+}
+
+// A shell that ends keeps its tab — the tab is where its last output is read —
+// so the row naming it has to carry the way out of that state. It used to be
+// the one row in the panel with no control on it at all: 结束 is hidden once
+// there is nothing to end, and nothing took its place, so a row reading 已退出
+// was a row a person could only stare at.
+func TestAnEndedShellsRowOffersTheWayOut(t *testing.T) {
+	w, _ := newTestShellWindow(t, "gone")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.alive = false
+	tb.finish(3)
+
+	nav := drawNav(t, w)
+	if !nav.HasText("已退出") {
+		t.Fatalf("the row does not say the shell has ended; texts = %v", nav.Texts())
+	}
+	if nav.HasText("结束") {
+		t.Errorf("an ended shell is still offered 结束, which would do nothing; texts = %v", nav.Texts())
+	}
+	if err := nav.Click("关闭 gone"); err != nil {
+		t.Fatalf("the row of an ended shell has no way to close it: %v; texts = %v", err, nav.Texts())
+	}
+	if len(w.order) != 0 || len(w.tabs) != 0 {
+		t.Errorf("the row's 关闭 left %d tabs, want the tab gone", len(w.order))
+	}
+
+	// A shell that is still running keeps its tab until it is closed on purpose:
+	// the same row reads 控制中 and offers 结束, which is the other act.
+	w2, _ := newTestShellWindow(t, "live")
+	w2.fleet = newTestFleet(t)
+	tb2 := w2.tabs[1]
+	tb2.alive = true
+	tb2.setLease(protocol.RoleController, "", 1)
+	nav2 := drawNav(t, w2)
+	if !nav2.HasText("控制中") {
+		t.Errorf("a running shell this window drives does not read 控制中; texts = %v", nav2.Texts())
+	}
+	if !nav2.HasText("结束") {
+		t.Errorf("a running shell is not offered 结束; texts = %v", nav2.Texts())
+	}
+	if nav2.HasText("关闭 live") {
+		t.Errorf("a running shell's row offers 关闭, which is the panel's × to draw")
+	}
+}
+
+// A row for a shell nobody is driving says so. 控制中 is the ordinary case for a
+// row about to be clicked, but it is not this one: it would say a person has a
+// keyboard that nobody has, over a shell whose pane reads 只读 — the same
+// disagreement the pane, the band and the panel are built to avoid.
+func TestARowNamesNobodyWhenNobodyHoldsTheShell(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.alive = true
+	tb.machine = "mac-studio"
+	tb.setLease(protocol.RoleViewer, "", 2)
+	w.remoteSessions = map[string][]protocol.Summary{
+		"mac-studio": {{SessionID: tb.id, Title: "one", Cols: 74, Rows: 24, Alive: true}},
+	}
+	w.machineSel = "mac-studio"
+	w.roster = []tunnel.Machine{{
+		ID: "mac-studio", Name: "mac studio", Online: true,
+		Host: protocol.Host{Platform: "darwin", Arch: "arm64"},
+	}}
+
+	nav := drawNav(t, w)
+	if !nav.HasText("无人控制") {
+		t.Fatalf("the row does not say the shell is nobody's; texts = %v", nav.Texts())
+	}
+	if nav.HasText("控制中") {
+		t.Errorf("the row still claims the shell is being driven; texts = %v", nav.Texts())
+	}
+
+	// And once this window takes it, the row is the ordinary one again: no 只读
+	// badge, and the line says whose it is.
+	tb.setLease(protocol.RoleController, "", 3)
+	nav.Frame()
+	if nav.HasText("无人控制") {
+		t.Errorf("the row still says nobody holds a shell this window drives; texts = %v", nav.Texts())
+	}
+	if !nav.HasText("控制中") {
+		t.Errorf("the row does not read 控制中 for a shell this window drives; texts = %v", nav.Texts())
+	}
+	if nav.HasText("只读") {
+		t.Errorf("a shell this window drives wears 只读; texts = %v", nav.Texts())
+	}
 }
 
 // hasLiveSession reports whether the hub still holds a running session by id.
@@ -189,13 +300,28 @@ func liveCount(f *fleet) int {
 	return n
 }
 
-// settleTabs waits until the window's tabs name the sessions the hub holds:
-// what the links report is posted to the window's thread, and a test applies it
-// by draining.
+// settleTabCount waits until the window holds n tabs, whichever of them are
+// still alive: a tab of a shell that has ended is one the window keeps — the tab
+// is where the shell's last output is read — so a test that has ended a shell
+// counts the window's tabs rather than its live ones.
+func settleTabCount(t *testing.T, w *window, n int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		w.drain()
+		if len(w.order) == n {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("the window holds %d tabs, want %d: order=%v", len(w.order), n, w.order)
+}
+
 // settleTabs waits until the window holds n tabs, each named by the hub and
-// marked alive by its attached frame. Both, not just the name: the panel's 结束
-// button is drawn from `alive`, and a tab that has been named but not yet
-// attached is not a shell the panel will offer to end.
+// marked alive by its attached frame. All of them, not just the count: the
+// panel's 结束 button is drawn from `alive`, and a tab that has been named but
+// not yet attached is not a shell the panel will offer to end. A window with an
+// ended shell in it wants settleTabCount instead.
 func settleTabs(t *testing.T, w *window, n int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

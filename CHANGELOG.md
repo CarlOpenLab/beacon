@@ -4,6 +4,55 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.12
+
+**The lease's edges: this machine's own shell, a shell nobody holds, a shell that is gone**
+
+- **释放控制权 is not offered on a shell of this machine's.** The button was drawn
+  for every shell the window was driving, including the ones running here — and
+  on those there is nobody to hand the lease to. The release drops it and the hub
+  hands it to no one, so the only thing the button did was stop the window in
+  front of the shell from taking the typing of the person sitting at it. It is
+  drawn for the shell this window drives *on another machine*, where the lease
+  goes back to the machine the shell runs on and that machine can type again. The
+  browser client drew it on the same wrong rule and now draws it on the same
+  right one.
+- **A shell that has ended keeps its tab, and the tab finally knows it.** The hub
+  forgets a session the moment its process exits — before the exit frame and
+  before the session list — so no summary ever says `alive=false`, and the
+  desktop tab, which learned liveness from the attach summary, sat over a dead
+  shell offering 结束 for a process that was gone, with no way to close the tab.
+  The exit frame is the only place a tab hears it now: 已退出 arrives with its
+  exit code in the tooltip, the tab dims with the exit's colour on its dot, its
+  row offers 关闭 where a running shell's row offers 结束, and the band offers
+  关闭标签 without repeating the sentence. Nothing is sent to a shell that has
+  ended — no keystrokes, no resize: a resize answered `no_session` was a red toast
+  raised by the act of reading a shell's last lines.
+- **The hub's refusals say who holds the shell, or that nobody does.** A frame
+  that needs the lease was answered "another client controls s1" whatever the
+  state was, including a shell the same client had just let go — a sentence with
+  no client to name, which sends the person reading it looking for somebody who is
+  not there. The hub now tells a free lease from a lost one: the refusal is
+  *nobody holds s1; claim it first* when there is nobody to name, and a frame from
+  a client one handoff behind is told the lease has moved rather than that someone
+  took it. The browser client's 结束 was the case that mattered: it claimed only
+  when somebody else held the lease, so on a released shell the close was refused
+  and 结束 did nothing at all. It claims in every case now, stealing only from a
+  live holder.
+- **A shell nobody holds is marked read-only, in both clients.** A free lease is
+  not the same fact as a taken one, but it is the same answer at the keyboard,
+  and the desktop drew nothing for it: no mark on the pane, no band, and a lease
+  panel that could not be drawn at all. The pane's 只读 chip, the band
+  (只读：当前无人控制, with the way in beside it) and the panel (当前无人控制这个终端,
+  取得控制权后你就能继续输入。) are drawn from one answer now, on shells that have
+  nobody in them as well as shells that have somebody. Rows read 无人控制 where
+  they used to read 控制中 for a shell no one is driving, their holder comes from
+  the tab's own lease frames rather than from a broadcast that can be a push
+  behind, and the tooltip says 控制端 本窗口 for a shell this window drives instead
+  of denying it. A lease the window has not heard about yet is marked with
+  nothing at all: the word arrives in a role frame, and a window that read that
+  silence as 只读 would flash the mark over every shell a person opens.
+
 ## 0.4.11
 
 **Direction C, and a light with one meaning**
