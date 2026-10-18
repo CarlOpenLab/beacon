@@ -187,9 +187,12 @@ falling back to `cmd.exe` only if neither is present.
 Enrolled with a relay *and* holding its client token, the window drives the rest
 of the fleet: the 机器 panel lists every machine on the relay, and a shell on
 another machine opens in a tab here under that machine's own arbitration — one
-writer at a time, on a lease with an epoch. A shell someone else holds glows
-around its pane and offers 拿回控制权; the machine the shell runs on takes it
-back with one click, because it is that machine's shell. The token is the fleet's
+writer at a time, on a lease with an epoch. A shell someone else holds is marked
+只读 in the corner of its pane and offers 拿回控制权 from the header; a shell of
+this machine's that another client is typing into lights up along its edge, so
+the fact reads from across the room. The machine
+the shell runs on takes it back with one click, because it is that machine's
+shell. The token is the fleet's
 client secret, not this machine's device credential: keep it like a password,
 because today it is the whole authority over every machine on the relay.
 `docs/takeover.md` has the design and what is still missing.

@@ -1,9 +1,9 @@
 package main
 
 import (
+	"image"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -11,22 +11,31 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
-// The glow is the one piece of chrome that says a shell is being driven from
-// elsewhere, so it has to be on screen exactly when the lease says so — and
-// absent otherwise, because a window that glows at its own shells is a window
-// nobody can read.
+// The pane's 只读 chip and the tab's dot are the two pieces of chrome that say a
+// shell is being driven from elsewhere, so they have to be on screen exactly when
+// the lease says so — and absent otherwise, because a window that marks its own
+// shells as somebody else's is a window nobody can read.
 func TestLeaseChromeFollowsTheLease(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
 
-	// Held by this window: no glow, no popover, no mark on the tab.
+	// Held by this window: no chip on the pane, no mark on the row.
 	tb := w.tabs[1]
+	tb.alive = true
 	tb.setLease(protocol.RoleController, "", 3)
 	if tb.holder() != "" || !tb.held() {
 		t.Fatalf("a controller should read as holding the lease: holder=%q held=%v", tb.holder(), tb.held())
 	}
+	tb.term = fedTerminal(t, previewScreen())
+	if tt := ui.NewTester(func(c *ui.Context) {
+		applyTheme(c, w.store.Get().Theme)
+		w.body(c)
+	}, 900, 600); tt.HasText("只读") {
+		t.Errorf("a shell this window holds is marked 只读; texts = %v", tt.Texts())
+	}
 
-	// Held by someone else: the holder is named, and this window does not hold.
+	// Held by someone else: the holder is named, this window does not hold, and
+	// the sheet says so in its own corner.
 	tb.setLease(protocol.RoleViewer, "c9", 4)
 	if got := tb.holder(); got != "c9" {
 		t.Fatalf("holder = %q, want c9", got)
@@ -34,8 +43,14 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 	if tb.held() {
 		t.Fatal("a viewer reads as holding the lease")
 	}
+	if tt := ui.NewTester(func(c *ui.Context) {
+		applyTheme(c, w.store.Get().Theme)
+		w.body(c)
+	}, 900, 600); !tt.HasText("只读") {
+		t.Errorf("the sheet does not mark itself 只读; texts = %v", tt.Texts())
+	}
 
-	// The mark is drawn on the tab's row.
+	// The mark is drawn on the tab's row, too.
 	tt := drawNav(t, w)
 	if !tt.HasText("c9") {
 		t.Fatalf("the tab row does not mark the holder; texts = %v", tt.Texts())
@@ -48,21 +63,120 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 	}
 }
 
-// The flow moves with the clock and stands still where the desktop asks for
-// less motion: the same clock, two answers.
-func TestGlowFlowMovesAndStandsStill(t *testing.T) {
-	now := glowEpoch.Add(4 * time.Second)
-	if got := glowFlow(now, false); got != 4 {
-		t.Fatalf("four seconds of glow reads as %v, want 4", got)
+// The light along the pane's edge is drawn under one condition and no other: a
+// shell this machine runs, with another client on its keyboard. It is the one
+// piece of chrome here that is not words — a person reads it from across the
+// room, as "somebody has this machine's terminal" — so lighting up for a shell
+// on a machine they are not sitting at would spend it on a fact they have no
+// stake in, and lighting up for the ordinary case would spend it on nothing.
+func TestTheGlowIsOnlyForThisMachinesTakenShells(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+
+	for _, tc := range []struct {
+		name       string
+		machine    string
+		role       string
+		controller string
+		alive      bool
+		want       bool
+	}{
+		{"this machine's shell, held here", machineLocal, protocol.RoleController, "", true, false},
+		{"this machine's shell, taken from here", machineLocal, protocol.RoleViewer, "c9", true, true},
+		{"this machine's shell, ended while taken", machineLocal, protocol.RoleViewer, "c9", false, false},
+		{"another machine's shell, taken there", "mac-studio", protocol.RoleViewer, "mac-studio", true, false},
+		{"another machine's shell, held here", "mac-studio", protocol.RoleController, "", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tb.machine = tc.machine
+			tb.alive = tc.alive
+			tb.setLease(tc.role, tc.controller, 1)
+			if got := w.drivenElsewhere(tb); got != tc.want {
+				t.Errorf("drivenElsewhere = %v, want %v", got, tc.want)
+			}
+		})
 	}
-	if got := glowFlow(now, true); got != 0 {
-		t.Fatalf("with less motion asked for, the flow is at %v, want 0", got)
+}
+
+// And the condition reaches the picture: the same shell, held by the same client,
+// is lit when it runs here and dark when it runs on another machine. This is read
+// off the pixels because the light is drawn by a shader, which no label and no
+// snapshot can see.
+func TestOnlyThisMachinesTakenShellIsLit(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		machine string
+		lit     bool
+	}{
+		{"this machine's shell, taken from it", machineLocal, true},
+		{"another machine's shell, taken from it", "mac-studio", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w, _ := newTestShellWindow(t, "one")
+			w.fleet = newTestFleet(t)
+			tb := w.tabs[1]
+			tb.machine = tc.machine
+			tb.alive = true
+			tb.term = fedTerminal(t, previewScreen())
+			tb.setLease(protocol.RoleViewer, "c9", 4)
+
+			tt := ui.NewTester(func(c *ui.Context) {
+				applyTheme(c, w.store.Get().Theme)
+				w.body(c)
+			}, 900, 600)
+			tt.Frame()
+			// The fade is the eye's; the state is a step. Run the clock past it so
+			// the picture is of the state and not of the transition into it.
+			tt.Advance(glowFade)
+			tt.Frame()
+
+			if got := paneEdgeLit(tt.Image()); got != tc.lit {
+				t.Errorf("the pane's edge is lit = %v, want %v", got, tc.lit)
+			}
+		})
+	}
+}
+
+// paneEdgeLit is whether a picture has light along the pane's left edge. The band
+// is centred on that edge, so the lit pixel is the edge itself; it counts as lit
+// when it is brighter than the paper around it and bluer than anything either the
+// terminal's black or the window's grey can be, which is what the accent's light
+// looks like as a number.
+func paneEdgeLit(img *image.RGBA) bool {
+	for _, x := range []int{paneInset - 2, paneInset - 1, paneInset, paneInset + 1, paneInset + 2} {
+		r, _, _, _ := img.At(x, 300).RGBA()
+		_, _, b, _ := img.At(x, 300).RGBA()
+		if int(b>>8)-int(r>>8) > 24 && b>>8 > 40 {
+			return true
+		}
+	}
+	return false
+}
+
+// A shell that has ended is marked on the sheet as well, and with its own word:
+// 只读 and 已退出 are different states and a person reading the pane has to be
+// able to tell which one they are looking at.
+func TestAnEndedShellIsMarkedOnTheSheet(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.term = fedTerminal(t, previewScreen())
+	tb.alive = false
+	tb.finish(0)
+
+	tt := ui.NewTester(func(c *ui.Context) {
+		applyTheme(c, w.store.Get().Theme)
+		w.body(c)
+	}, 900, 600)
+	if !tt.HasText("已退出") {
+		t.Fatalf("an ended shell is not marked on the sheet; texts = %v", tt.Texts())
 	}
 }
 
 // A shell taken from this window says so at once — in the panel that names the
-// holder and offers it back, not only in the glow. The person is in the middle
-// of typing; a subtle edge is not an answer.
+// holder and offers it back, not only in a corner of the pane. The person is in
+// the middle of typing; a subtle mark is not an answer.
 func TestLosingTheLeaseOpensThePanelAboutIt(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
@@ -84,7 +198,7 @@ func TestLosingTheLeaseOpensThePanelAboutIt(t *testing.T) {
 	}
 
 	// A shell this window never held — one it opened as a viewer, on another
-	// machine — is not news: it gets the glow and the tab's mark, not a panel in
+	// machine — is not news: it gets the pane's mark and the tab's, not a panel in
 	// its face.
 	w2, _ := newTestShellWindow(t, "two")
 	tb2 := w2.tabs[1]
@@ -137,23 +251,25 @@ func TestRefusedInputOpensThePanelThatExplainsIt(t *testing.T) {
 	}
 }
 
-// The way back has to be where the typing is: the header names the holder of the
-// shell on screen and offers it back in one click, and the machines' panel says
-// how many shells on this machine are somebody else's. Both go away with the
-// lease, because chrome that outlives its reason is chrome nobody can trust.
+// The way back has to be where the typing is: the band at the top names the
+// holder of the shell on screen and offers it back in one click, and the
+// machines' panel says how many shells on this machine are somebody else's. Both
+// go away with the lease, because chrome that outlives its reason is chrome
+// nobody can trust.
 func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
 	tb := w.tabs[1]
 	tb.machine = machineLocal
+	tb.alive = true
 	tb.setLease(protocol.RoleViewer, "c9", 4)
 	w.live = []protocol.Summary{{SessionID: tb.id, Controller: "c9", Alive: true}}
 
 	head := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
-		w.header(c, []string{"one"})
-	}, 640, 52)
-	if !head.HasText("c9 正在控制") {
+		w.header(c)
+	}, 720, headerHeight)
+	if !head.HasText("只读：该会话正被 c9 控制") {
 		t.Fatalf("the header does not name the holder; texts = %v", head.Texts())
 	}
 	if _, ok := head.Find("拿回控制权"); !ok {
@@ -170,7 +286,7 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 	// and neither the header nor the panel has anything left to say.
 	tb.setLease(protocol.RoleController, "", 5)
 	head.Frame()
-	if head.HasText("c9 正在控制") {
+	if head.HasText("只读：该会话正被 c9 控制") {
 		t.Error("the header still names a holder after the lease came back")
 	}
 	if _, ok := head.Find("拿回控制权"); ok {
@@ -191,6 +307,7 @@ func TestAMachineTakingItsShellBackKeepsTheWayBack(t *testing.T) {
 	w.fleet = newTestFleet(t)
 	tb := w.tabs[1]
 	tb.machine = "other-box"
+	tb.alive = true
 	sess := newSession(tb.id, nil, nil)
 	tb.sess = sess
 	w.remote = map[string]*relayLink{}

@@ -149,6 +149,15 @@ export class App {
   private inspectRole!: HTMLElement
   private inspectFields!: HTMLElement
   private inspectToggle?: HTMLButtonElement
+  /** The header's 释放控制权, shown only while this client holds the lease. */
+  private releaseBtn!: HTMLButtonElement
+  /**
+   * Whether the inspector is open. It is the person's choice, so a rerender
+   * never overrides it — and it starts closed, as the desktop window's does: a
+   * 280px column over a terminal is a terminal cut to 900px, and the button in
+   * the header is one click from having it back.
+   */
+  private inspectOpen = false
 
   private observer?: ResizeObserver
   private fitTimer?: number
@@ -313,6 +322,10 @@ export class App {
         mv.sessions = list
         this.renderFleet()
         this.renderHero()
+        // The status line names this machine's session count, so it is a
+        // second reader of the list that just changed: a session created or
+        // ended left the line saying 0 个会话 under a sidebar saying one.
+        this.renderStatus()
         // Reflect host-side truth: an exit we missed, or someone else's control.
         // A tab that has already been told its shell exited is never revived
         // here — the hub broadcasts the roster right after the exit frame, and
@@ -492,17 +505,32 @@ export class App {
     brand.append(this.sideToggle, el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
     this.banner = el('div', 'tf-banner')
     const actions = el('div', 'tf-header-actions')
+    // 释放控制权 belongs here rather than in the banner. Handing a shell back
+    // is an action a client that holds one can always take, not something wrong
+    // that needs answering — and the banner is the line for the second kind. A
+    // banner that announced the ordinary case was a banner a person learns to
+    // stop reading, which is worse than none.
+    this.releaseBtn = el('button', 'tf-btn', '释放控制权') as HTMLButtonElement
+    this.releaseBtn.title = '释放控制权（终端继续运行，改为只读观看）'
+    this.releaseBtn.hidden = true
+    this.releaseBtn.onclick = () => {
+      const tab = this.current()
+      if (!tab?.sessionId) return
+      this.letGo.add(tab.sessionId)
+      this.fleetOf(tab)?.release(tab.sessionId)
+      this.toast('已释放控制权，终端继续运行', 'info')
+    }
     const newBtn = el('button', 'tf-btn tf-btn-primary', `新建终端`)
     newBtn.append(el('kbd', undefined, `${MOD_LABEL}T`))
     newBtn.onclick = () => this.newTab()
-    actions.append(newBtn, this.buildInspectToggle())
+    actions.append(this.releaseBtn, newBtn, this.buildInspectToggle())
     header.append(brand, this.banner, actions)
 
     const body = el('div', 'tf-body')
 
     const aside = el('aside', 'tf-side')
     const sideHead = el('div', 'tf-side-head')
-    sideHead.append(el('span', undefined, '主机会话'), el('span', 'tf-count', '0'))
+    sideHead.append(el('span', undefined, '会话'), el('span', 'tf-count', '0'))
     this.fleetList = el('div', 'tf-side-list')
     aside.append(sideHead, this.fleetList)
     // Tapping outside the drawer closes it on a phone.
@@ -562,16 +590,29 @@ export class App {
     this.observer.observe(this.panes)
   }
 
-  /** Header affordance for the session inspector (desktop only). */
+  /**
+   * Header affordance for the session inspector (desktop only). It draws the
+   * desktop window's icon for the same control — the circled i, not a chevron.
+   * A chevron says "expand this", and what this opens is a column of facts
+   * about the shell on screen; the two clients should not name one control two
+   * ways. The open state is a class, so the button keeps one glyph rather than
+   * swapping between two.
+   */
   private buildInspectToggle(): HTMLElement {
-    const btn = el('button', 'tf-btn tf-btn-icon tf-btn-ghost', '⌄') as HTMLButtonElement
+    const btn = el('button', 'tf-btn tf-btn-icon tf-btn-ghost') as HTMLButtonElement
     btn.title = '会话检视栏'
     btn.setAttribute('aria-label', '切换会话检视栏')
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
+    btn.setAttribute('aria-pressed', String(this.inspectOpen))
     btn.onclick = () => {
       const panel = this.root.querySelector<HTMLElement>('.tf-inspect')
       if (!panel) return
-      panel.hidden = !panel.hidden
-      btn.textContent = panel.hidden ? '›' : '⌄'
+      this.inspectOpen = !this.inspectOpen
+      panel.hidden = !this.inspectOpen
+      btn.setAttribute('aria-pressed', String(this.inspectOpen))
       this.scheduleFit()
     }
     this.inspectToggle = btn
@@ -585,6 +626,7 @@ export class App {
    */
   private buildInspectPanel(): HTMLElement {
     const panel = el('aside', 'tf-inspect')
+    panel.hidden = !this.inspectOpen
     const head = el('div', 'tf-inspect-head')
     head.append(el('h2', undefined, '会话检视'))
     const body = el('div', 'tf-inspect-body')
@@ -612,8 +654,11 @@ export class App {
       if (this.inspectToggle) this.inspectToggle.hidden = true
       return
     }
-    if (panel) panel.hidden = false
-    if (this.inspectToggle) this.inspectToggle.hidden = false
+    if (panel) panel.hidden = !this.inspectOpen
+    if (this.inspectToggle) {
+      this.inspectToggle.hidden = false
+      this.inspectToggle.setAttribute('aria-pressed', String(this.inspectOpen))
+    }
 
     const role = tab.role === ROLE.controller ? '控制中' : tab.role === ROLE.viewer ? '只读' : '—'
     this.inspectRole.className = `tf-inspect-role role-${
@@ -731,22 +776,39 @@ export class App {
         el('span', 'tf-dot'),
         el('span', 'tf-session-name', s.title || basename(s.cwd) || s.sessionId),
       )
-      // The badge is the state; "结束" replaces it on hover.
-      const badge = el('span', 'tf-session-badge')
+      // A badge names a state that is not the ordinary one. Being in control is
+      // the ordinary case for a row someone is about to click, so it wears no
+      // badge — the dot is the accent and the meta line says 控制中 — while the
+      // two states that mean this client cannot type keep one.
       if (!s.alive) {
-        badge.classList.add('b-dead')
-        badge.textContent = '已退出'
-      } else if (mine) {
-        badge.classList.add('b-ctrl')
-        badge.textContent = '控制中'
-      } else if (s.controller) {
-        badge.classList.add('b-view')
-        badge.textContent = '只读'
+        line1.append(el('span', 'tf-session-badge b-dead', '已退出'))
+      } else if (s.controller && !mine) {
+        line1.append(el('span', 'tf-session-badge b-view', '只读'))
       }
 
-      // Only what distinguishes two shells started in the same directory:
-      // the terminal size. The rest lives in the tooltip and the inspector.
-      const meta = el('div', 'tf-session-meta', `${s.cols}×${s.rows}`)
+      if (s.alive) {
+        // 结束 keeps its place on the row and only its ink arrives on hover, so
+        // a name long enough to reach it is not pushed aside by a hand.
+        const kill = el('button', 'tf-kill', '结束')
+        kill.title = '结束该会话（终止主机上的进程）'
+        kill.onclick = (ev) => {
+          ev.stopPropagation()
+          this.killSession(mv, s)
+        }
+        line1.append(kill)
+      }
+
+      // The row's second line: the shell's id, its size, and what it is to this
+      // client — 控制中, 只读 with whoever holds it, or 已退出. It leaves the
+      // where and the pid to the tooltip and the inspector.
+      const standing = !s.alive
+        ? '已退出'
+        : mine
+          ? '控制中'
+          : s.controller
+            ? `只读 ${s.controller}`
+            : '控制中'
+      const meta = el('div', 'tf-session-meta', `${s.sessionId} · ${s.cols}×${s.rows} · ${standing}`)
       row.title = [
         s.sessionId,
         s.cwd,
@@ -757,17 +819,7 @@ export class App {
         .filter(Boolean)
         .join('\n')
 
-      if (s.alive) {
-        const kill = el('button', 'tf-kill', '结束')
-        kill.title = '结束该会话（终止主机上的进程）'
-        kill.onclick = (ev) => {
-          ev.stopPropagation()
-          this.killSession(mv, s)
-        }
-        row.append(kill)
-      }
-
-      row.append(line1, meta, badge)
+      row.append(line1, meta)
       row.onclick = () => this.attachOrFocus(mv.id, s.sessionId)
       host.append(row)
     }
@@ -908,20 +960,13 @@ export class App {
         },
       })
     } else if (tab?.sessionId && tab.alive && tab.role === ROLE.controller) {
-      // This client holds the lease. Letting it go is its own action, not the
-      // absence of one: the shell keeps running, and the machine it belongs to
-      // takes the lease back, so nobody is left looking at a mute terminal.
-      text = '你正在控制这个会话'
-      actions.push({
-        label: '释放控制权',
-        title: '释放控制权（终端继续运行，改为只读观看）',
-        run: () => {
-          this.letGo.add(tab.sessionId)
-          this.fleetOf(tab)?.release(tab.sessionId)
-          this.toast('已释放控制权，终端继续运行', 'info')
-        },
-      })
+      // This client holds the lease: the ordinary state, so the banner stays
+      // empty — the way to give it up is in the header beside 新建终端. Letting
+      // go is its own act rather than the absence of one: the shell keeps
+      // running and the machine it belongs to takes the lease back, so nobody
+      // is left looking at a mute terminal.
     }
+    this.releaseBtn.hidden = !(tab?.sessionId && tab.alive && tab.role === ROLE.controller)
 
     this.banner.classList.toggle('on', Boolean(text))
     if (!text || !tab) return
@@ -1069,7 +1114,12 @@ export class App {
     })
     send.onclick = () => this.submitComposer()
 
-    bar.append(prompt, input, send)
+    // The prompt and the input are one control, drawn as one field: a focus
+    // ring around both is what says "type here", and it is the field that goes
+    // quiet when this client has nothing it may type into.
+    const field = el('div', 'tf-c-field')
+    field.append(prompt, input)
+    bar.append(field, send)
     this.composer = input
     this.sendBtn = send
     return bar
@@ -1100,8 +1150,10 @@ export class App {
   }
 
   private growComposer(): void {
+    // Grows to the CSS max-height and then scrolls: the number here is
+    // .tf-composer-input's max-height, so the two cannot disagree.
     this.composer.style.height = 'auto'
-    this.composer.style.height = `${Math.min(this.composer.scrollHeight, 132)}px`
+    this.composer.style.height = `${Math.min(this.composer.scrollHeight, 120)}px`
   }
 
   /** Mirror the active tab's state onto the composer: what may be typed, and why not. */

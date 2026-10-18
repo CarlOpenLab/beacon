@@ -1,0 +1,85 @@
+// The light along the edge of a shell another client is driving.
+//
+// One family of colours, not six. The accent is the only saturated colour in
+// this window and it means "chosen, or in control" everywhere else it appears,
+// so the glow is that accent and its two neighbours drifting slowly around the
+// edge. The cut this replaces ran the whole spectrum — violet, pink, coral,
+// peach — which was a second and louder vocabulary for the one fact the pane is
+// already stating in words, and it made the terminal itself look like the thing
+// that had changed.
+//
+// It is a glow and not a border: no line anywhere in it, a soft band whose light
+// falls off on both sides of the pane's edge, so the pane reads as lit from
+// around rather than as outlined. Both falloffs are measured in DIPs, so the
+// band is the same width on a wide pane and a narrow one.
+//
+// Time is how far the drift has got, and it stands still where the desktop asks
+// for less motion — a uniform rather than a branch, so the still picture is the
+// moving one, stopped. Pad is how far inside the pane's edge the band is centred
+// and Radius the pane's own corner, which the band follows.
+
+// The three tones, around a loop from 0 to 1: the accent, its light, and its
+// deep, which are the three the chrome's chosen states are drawn in.
+func palette(x float) vec3 {
+	x = fract(x) * 3
+	if x < 1 {
+		return mix(vec3(0.643, 0.545, 0.980), vec3(0.788, 0.737, 1), x)
+	}
+	if x < 2 {
+		return mix(vec3(0.788, 0.737, 1), vec3(0.561, 0.459, 0.949), x-1)
+	}
+	return mix(vec3(0.561, 0.459, 0.949), vec3(0.643, 0.545, 0.980), x-2)
+}
+
+// roundRect returns the distance from p, from the rectangle's middle, to
+// a rectangle of half size half with corners of radius r: below zero
+// inside.
+func roundRect(p, half vec2, r float) float {
+	q := abs(p) - half + r
+	return length(max(q, 0)) + min(max(q.x, q.y), 0) - r
+}
+
+// around returns where p, from the middle of a box of size, lies around
+// its outline, from 0 to 1.
+func around(p, size vec2) float {
+	return atan2(p.y/size.y, p.x/size.x)/6.2831853 + 0.5
+}
+
+var Time float
+var Strength float
+var Pad float
+var Radius float
+
+func Fragment(dst vec4, pos vec2) vec4 {
+	size := rectSize()
+	p := pos - 0.5*size
+	d := roundRect(p, 0.5*size-Pad, max(Radius-Pad, 0.0))
+	a := around(p, size)
+
+	// The light reaches about eighteen DIPs into the pane, which is under the
+	// terminal's own margin and never across a glyph, and about as far back out
+	// again over the sheet and the ground the pane floats on — a light with no
+	// room outside the thing it lights reads as paint on the edge rather than as
+	// light along it. Outside, the smoothstep brings it to nothing at the
+	// overlay's own boundary, so nothing is cut off square.
+	inner := 0.0
+	if d < 0 {
+		inner = exp(d/5.5)*0.46
+	}
+	outer := 0.0
+	if d >= 0 {
+		outer = (exp(-d/9)*0.46 + exp(-d/26)*0.26) * smoothstep(Pad, Pad*0.35, d)
+	}
+
+	// Two periods that do not divide each other, so the edge is alive without
+	// ever repeating exactly: the drift goes round in about half a minute, the
+	// breath in about eleven seconds.
+	flow := a + Time*0.035
+	breath := 0.88 + 0.12*sin(Time*0.55)
+
+	alpha := clamp((inner+outer)*breath*Strength, 0, 1)
+	// The light is a shade paler where it is thinnest, so the band has a
+	// direction rather than being one flat wash of the accent.
+	col := mix(palette(flow), palette(flow+0.18), clamp(outer/(inner+outer+0.0001), 0, 1))
+	return vec4(col*alpha, alpha)
+}

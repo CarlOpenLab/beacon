@@ -331,17 +331,11 @@ func (w *window) followLease() {
 	on.conn.claiming(on.machine != machineLocal)
 }
 
-// view draws the window: a toolbar, a tab per shell, and the shell the user is
-// looking at — drawn by mygo's own terminal, not a webview.
+// view draws the window: a band across the top, a pill per shell, and the shell
+// the user is looking at — drawn by mygo's own terminal, not a webview.
 func (w *window) view(c *ui.Context) {
-	labels := make([]string, 0, len(w.order))
-	for _, id := range w.order {
-		if tb := w.tabs[id]; tb != nil {
-			labels = append(labels, tb.label())
-		}
-	}
-	if w.selected >= len(labels) {
-		w.selected = len(labels) - 1
+	if w.selected >= len(w.order) {
+		w.selected = len(w.order) - 1
 	}
 	if w.selected < 0 {
 		w.selected = 0
@@ -362,14 +356,24 @@ func (w *window) view(c *ui.Context) {
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) {
 		w.stepTab(-1)
 	}
+	// The two keys the window writes on its own controls — ⌘T on the button that
+	// opens a shell, the digits in the shortcut list — so that what the chrome
+	// promises is what the keyboard does.
+	if c.Shortcut(ui.Cmd, ui.KeyT) {
+		w.newTab()
+	}
+	for i, key := range tabDigits {
+		if c.Shortcut(ui.Cmd, key) {
+			w.jumpTab(i)
+		}
+	}
 
 	ui.Row(c).Fill().Background(c.Theme().Background).Children(func() {
-		w.activityRail(c, mode)
 		w.sidebar(c, mode)
 		ui.Column(c).Fill().Children(func() {
-			w.header(c, labels)
-			w.tabStrip(c, labels)
-			w.body(c, labels)
+			w.header(c)
+			w.tabStrip(c)
+			w.body(c)
 			w.historyBar(c)
 			w.commandBarRow(c)
 			w.statusBar(c)
@@ -757,11 +761,11 @@ func (w *window) openTab(machine, sessionID string) *tab {
 			// watches, so the lease comes with the tab. Without this the window
 			// arrived as a spectator of a shell it had just asked to work in: the
 			// machine's own window kept the lease, and this one sat read-only
-			// behind a glow that said someone else was typing.
+			// over a terminal that took none of its keys.
 			//
-			// The machine whose shell it is goes read-only and says so — the
-			// glow, 正在被控制, and 拿回控制权, which the hub always honours for
-			// the machine the shell runs on.
+			// The machine whose shell it is goes read-only and says so — 只读 on
+			// the pane, with the popover naming the holder and offering 拿回控制权,
+			// which the hub always honours for the machine the shell runs on.
 			l.claim(sessionID, true)
 		}
 	} else {
@@ -935,9 +939,9 @@ func (h tabHandlers) Role(role, controller string, epoch uint64) {
 			// still ours.
 		default:
 			// A shell this window was driving has been taken back. The window
-			// keeps watching it and keeps its link to the machine: the glow says
-			// it is not typing right now, the popover explains who is, and the
-			// button in it takes the shell back.
+			// keeps watching it and keeps its link to the machine: the pane says
+			// 只读, the popover explains who is typing, and the button in it takes
+			// the shell back.
 			//
 			// This used to be split — a shell of this machine's kept its link and
 			// opened the popover, while a shell on another machine's dropped the
@@ -1094,7 +1098,8 @@ func (t *tab) bind(id string) {
 }
 
 // held reports whether this window may type into the shell: it holds the lease.
-// The glow and the popover are drawn from the same answer.
+// The popover is drawn from this answer, and the glow is drawn from it for a
+// shell of this machine's — see drivenElsewhere.
 // takeLetGo reports whether the window is waiting for the lease's release to come
 // back, and stops waiting for it.
 func (t *tab) takeLetGo() bool {

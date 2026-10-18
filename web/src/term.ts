@@ -3,28 +3,34 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 
+// The terminal's palette is the chrome's, on the terminal's own terms: the
+// cursor and the ANSI magenta are the violet the accent is, so a prompt and a
+// chosen tab are the same colour. The sheet is dark in both themes — the ANSI
+// sixteen are drawn for a dark ground — which is why these are constants and
+// not CSS variables on <html data-theme>. cmd/tfdesktop/palette.go's
+// terminalTheme carries the same numbers for the desktop shell.
 export const THEME = {
-  background: '#0a0d12',
-  foreground: '#d3dae3',
-  cursor: '#3adfae',
-  cursorAccent: '#0a0d12',
-  selectionBackground: '#24313f',
-  black: '#1b2430',
-  red: '#f0777a',
-  green: '#3adfae',
-  yellow: '#e6bb66',
-  blue: '#7aa7c9',
-  magenta: '#c39ad6',
-  cyan: '#6fc7d8',
-  white: '#d3dae3',
-  brightBlack: '#4b5766',
-  brightRed: '#ff9a9c',
-  brightGreen: '#5cebbb',
-  brightYellow: '#f2cd85',
-  brightBlue: '#93bede',
-  brightMagenta: '#d5b2e6',
-  brightCyan: '#8bd9e7',
-  brightWhite: '#eef2f7',
+  background: '#0d0d12',
+  foreground: '#d7dae2',
+  cursor: '#b6a6ff',
+  cursorAccent: '#0d0d12',
+  selectionBackground: 'rgba(182, 166, 255, 0.28)',
+  black: '#26262e',
+  red: '#ff8b93',
+  green: '#6fd39a',
+  yellow: '#e6c07d',
+  blue: '#9ecbff',
+  magenta: '#b6a6ff',
+  cyan: '#7dd3fc',
+  white: '#d7dae2',
+  brightBlack: '#4a4a56',
+  brightRed: '#ffa3aa',
+  brightGreen: '#8ce3ae',
+  brightYellow: '#f0d095',
+  brightBlue: '#b3d7ff',
+  brightMagenta: '#c9bcff',
+  brightCyan: '#9be0ff',
+  brightWhite: '#eef0f6',
 } as const
 
 const BASE: ITerminalOptions = {

@@ -1,8 +1,8 @@
 // The command bar: the browser client's composer, in this window's own terms.
 //
-// B · Command Deck's input is not the terminal. A person types a command into a
-// composer with a prompt glyph, a recallable history above it, and a button
-// that says what the keystroke does. The terminal shows what the shell said.
+// The input is not the terminal. A person types a command into a composer with a
+// prompt glyph, a recallable history above it, and a button that says what the
+// keystroke does; the terminal shows what the shell said.
 //
 // This matters beyond looks. The terminal is a display surface: it cannot
 // produce Esc, Tab, Ctrl, or an arrow key, because those are what the shell
@@ -12,7 +12,6 @@
 package main
 
 import (
-	"fmt"
 	"runtime"
 	"strings"
 
@@ -20,8 +19,8 @@ import (
 )
 
 // commandBarHeight is what the composer adds over the terminal. The browser
-// client's is two lines tall — the box and the button beside it — so a command
-// fits without the box scrolling.
+// client's is one field and the button beside it, on one line, with room around
+// both.
 const commandBarHeight = 56
 
 // historyBarHeight is the row of chips above the composer. It only appears
@@ -166,9 +165,10 @@ func (w *window) historyBar(c *ui.Context) {
 		})
 }
 
-// commandBarRow is the composer itself: a prompt glyph, the box, and the button
-// that sends. The button names the keystroke, because a text box does not
-// produce the enter key for the terminal.
+// commandBarRow is the composer itself: the browser client's field — a prompt
+// glyph and the box, together inside one rounded border that lights up when the
+// caret is in it — and the button that sends. The button names the keystroke,
+// because a text box does not produce the enter key for the terminal.
 func (w *window) commandBarRow(c *ui.Context) {
 	t := c.Theme()
 	b := w.commandBarFor()
@@ -180,44 +180,63 @@ func (w *window) commandBarRow(c *ui.Context) {
 	sendable := held && alive
 
 	ui.Row(c).
-		Height(commandBarHeight).PaddingX(14).Gap(10).
+		Height(commandBarHeight).PaddingX(12).PaddingY(10).Gap(10).
 		AlignItems(ui.Center).
 		Background(col.pane).
-		BorderWidth(1, 0, 0, 0).BorderColor(col.hairline).
+		BorderWidth(1, 0, 0, 0).BorderColor(col.line).
 		Children(func() {
-			ui.Text(c, "❯").FontSize(15).TextColor(t.Accent)
-
-			box := ui.TextInput(c, &b.draft).
-				Fill().
-				Radius(t.Radius)
-			box.Background(t.Background)
+			// The field is a step *below* the composer it sits in — the window's
+			// own ground — so the box reads as somewhere to type rather than as a
+			// raised button. The border is the field's own, and the accent's ring
+			// while the caret is in it.
+			field := ui.Row(c).Fill().Gap(9).PaddingStart(13).PaddingEnd(8).
+				Radius(radiusLarge).BorderWidth(1).BorderColor(col.line).
+				Background(t.Background)
+			field.AlignItems(ui.Center)
 			if !sendable {
-				box.Disabled(true)
-				box.Placeholder("该会话当前不可输入")
-			} else {
-				box.Placeholder("输入命令，回车发送（Shift+回车换行）")
+				field.Opacity(0.55)
 			}
-			// Enter sends. The composer takes the key so the terminal does not
-			// also see it, and the terminal keeps its caret where it was.
-			if box.Submitted() {
-				if strings.TrimSpace(b.draft) != "" {
-					w.sendCommand(b.draft)
-					b.draft = ""
-				}
-			}
-			// History is recalled by the arrows, the way the browser client's
-			// is. A multi-line command is edited with them instead, so the
-			// arrows only walk history while the draft is one line.
-			if !strings.Contains(b.draft, "\n") {
-				if box.Shortcut(ui.Shift, ui.KeyUp) {
-					b.draft = b.up(b.draft)
-				}
-				if box.Shortcut(ui.Shift, ui.KeyDown) {
-					b.draft = b.down(b.draft)
-				}
-			}
+			field.Children(func() {
+				ui.Text(c, "❯").FontSize(14).TextColor(t.Accent)
 
-			send := ui.Button(c, fmt.Sprintf("发送 %s↵", modLabel()))
+				box := ui.TextInput(c, &b.draft).
+					Fill().
+					Radius(radiusSmall)
+				// The input has no face of its own: the field around it is the
+				// face, and two borders would read as two controls.
+				box.Background(ui.Color{}).BorderWidth(0)
+				if !sendable {
+					box.Disabled(true)
+				}
+				box.Placeholder(composerPlaceholder(tb, sendable))
+				// Enter sends. The composer takes the key so the terminal does not
+				// also see it, and the terminal keeps its caret where it was.
+				if box.Submitted() {
+					if strings.TrimSpace(b.draft) != "" {
+						w.sendCommand(b.draft)
+						b.draft = ""
+					}
+				}
+				// History is recalled by the arrows, the way the browser client's
+				// is. A multi-line command is edited with them instead, so the
+				// arrows only walk history while the draft is one line.
+				if !strings.Contains(b.draft, "\n") {
+					if box.Shortcut(ui.Shift, ui.KeyUp) {
+						b.draft = b.up(b.draft)
+					}
+					if box.Shortcut(ui.Shift, ui.KeyDown) {
+						b.draft = b.down(b.draft)
+					}
+				}
+			})
+
+			send := ui.PrimaryButton(c, "").
+				Height(36).PaddingX(14).Gap(7).
+				Label("发送").Tooltip("把这一行发给终端（" + modLabel() + "↵）")
+			send.Children(func() {
+				ui.Icon(c, iconSend).FontSize(13).TextColor(t.AccentText)
+				ui.Text(c, "发送 "+modLabel()+"↵").FontSize(12.5).FontWeight(600)
+			})
 			if sendable {
 				if send.Clicked() {
 					if strings.TrimSpace(b.draft) != "" {
@@ -229,6 +248,25 @@ func (w *window) commandBarRow(c *ui.Context) {
 				send.Disabled(true)
 			}
 		})
+}
+
+// composerPlaceholder is what the box says when the shell on screen cannot be
+// typed into. It names the reason rather than the state, because the reason is
+// what a person can do something about: a box that only ever said "不可输入"
+// left them looking for the button that turns it back on.
+//
+// These are the browser client's own states, in the same words, so the two
+// clients explain a mute composer the same way.
+func composerPlaceholder(tb *tab, sendable bool) string {
+	switch {
+	case tb == nil:
+		return "尚未创建会话"
+	case !tb.alive:
+		return "会话已退出"
+	case !sendable:
+		return "只读：等待接管"
+	}
+	return "输入命令，回车发送（Shift+回车换行）"
 }
 
 // modLabel is the modifier the keyboard's enter is named by. The browser client

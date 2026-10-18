@@ -27,25 +27,39 @@ the access-control layer, at the bottom of this file.
 The lease is already broadcast to every client, so the "someone else has this"
 state needs no new channel:
 
-* A shell whose holder is not this window paints a soft animated glow around its
-  pane (the `examples/chat-glow` look) plus a popover naming who holds it, with
-  **拿回控制权** / stay read-only. The tab's row in the column carries the
-  holder's name too, and the header of the shell on screen carries the holder and
-  the same offer, so the way back is where the typing is. A shell taken from this
-  window opens that popover by itself, and so does typing into a shell this
-  window does not hold — the hub answers a refused keystroke loudly, and the
-  window says it where the typing went.
+* A shell whose holder is not this window is marked where the shell is: a 只读
+  chip in the corner of its pane, and the pane keeps its own colour rather than
+  gaining a second one. The header of the shell on screen names the holder and
+  offers **拿回控制权** / stay read-only, the tab's row in the column carries the
+  holder's name too, and the composer says 只读：等待接管 where a sendable one
+  says what Enter does — so the way back is where the typing is, stated in the
+  same words the browser client uses. A shell taken from this window opens that
+  offer by itself, and so does typing into a shell this window does not hold —
+  the hub answers a refused keystroke loudly, and the window says it where the
+  typing went. The offer says what pressing it does to the other side — *c9
+  会变成只读，之后仍能看着这个终端。* — because a button that takes a keyboard
+  away from somebody without saying so is one people learn not to press.
+* One of those marks is not words: a light along the pane's edge, and it is
+  drawn under exactly one condition — a shell **this machine runs**, driven by
+  another client. Somebody sitting at their own desk reads it from across the
+  room as "somebody else has my keyboard", which is the one thing none of the
+  words on screen say at that distance. It is deliberately absent on a shell of
+  another machine's: nobody here owns that process, and a light that came on for
+  every shell anyone held would come on for the ordinary case, which is how a
+  signal stops being one. A shell this machine runs and this window drives has
+  no light either — the lease is where it belongs.
+* It is a glow and not a border. The band is the accent's own three tones
+  drifting slowly round the edge, with no line anywhere in it and the light
+  falling off on both sides of the pane's edge, so the pane reads as lit rather
+  than as outlined — an outline reads as something the terminal has become, and
+  the terminal has not changed. Where the desktop asks for less motion the
+  colours simply stop travelling: the light is the state and the drift is not,
+  so the still window is the same window, stopped.
 * Reclaiming is local: the machine with the PTY releases the lease with its own
   epoch bump, and the remote controller drops to read-only in the same frame.
   The machine's own window never needs a confirmation to take its shell back —
   the hub marks that client as the owner and honours its claim over anyone
   else's.
-* The effect is the ring shader from that example, compiled by MyGo for whatever
-  draws the window and interpreted on the CPU where nothing can: it runs only
-  while someone else holds the lease, it is drawn along the pane's edge rather
-  than over the text (no re-layout, no re-shaping of the grid), its fade is an
-  animation so a desktop asking for less motion gets it at once, and its colour
-  flow stands still for the same reason.
 
 ## Latency: two different problems
 

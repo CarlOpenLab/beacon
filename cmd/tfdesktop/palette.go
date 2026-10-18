@@ -5,21 +5,24 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// The window's palette is the same one the browser client is drawn with, so a
-// shell on this machine and a shell in a tab look like the same product.
+// The window's palette is the one the browser client is drawn with, so a shell
+// on this machine and a shell in a tab look like the same product.
 //
-// The source of that shared design lives in the browser client's stylesheet
-// (web/src/style.css, "Command Deck"), where it is a set of CSS custom
-// properties; this file is the same numbers on the ui's terms. The reasoning
-// there applies here too, and is worth restating in one place:
+// The design is "Editor Native": the browser client's stylesheet (web/src/style.css)
+// holds it as CSS custom properties, and this file is the same numbers on the
+// ui's terms. What it says, in one place:
 //
-//   - The ground is cold and near-black rather than blue-black, and hierarchy
-//     comes from layered surfaces and hairlines rather than from borders.
-//   - One accent — a teal — is the only saturated colour in the chrome, so it
+//   - Two grounds: a window that is nearly black (or, in the light appearance,
+//     nearly white), and panels — header, tabs, composer, status — one step off
+//     it, with the sidebar a step below. Hierarchy is that difference and a
+//     hairline, never a heavy border.
+//   - One accent — a violet — is the only saturated colour in the chrome, so it
 //     always means "the thing that is chosen or in control".
-//   - State has its own colours and they mean the same thing everywhere: teal
-//     for live and controlled, amber for read-only, red for gone, grey for
-//     exited.
+//   - State has its own colours and they mean the same thing everywhere: green
+//     for live, amber for read-only, red for gone, grey for exited.
+//   - The terminal keeps a dark sheet in both appearances: the ANSI sixteen are
+//     drawn for a dark ground, and inverting them makes success and failure read
+//     wrong. Only the chrome around the sheet flips.
 //
 // The numbers below are the CSS tokens, one for one. When the browser client's
 // tokens change, these change with them.
@@ -27,16 +30,25 @@ import (
 // chromeMetrics are the layout numbers the two clients share. They are the CSS
 // custom properties of the same names in web/src/style.css.
 const (
-	// headerHeight is the band naming the shell on screen. 44px is what the
-	// browser client uses; 52px was this window's own, and a taller band bought
-	// nothing but distance from the shell.
+	// headerHeight is the band at the top of the window: the brand, what the
+	// window has to say, and the controls that act on the window. It is the
+	// browser client's --h-header, and its window-drag band.
 	headerHeight = 44
-	// statusHeight is the quiet line along the bottom.
-	statusHeight = 30
+	// tabBarHeight is the strip of open shells under it: --tabsbar, a pill row
+	// with room around the pills.
+	tabBarHeight = 44
+	// statusHeight is the quiet line along the bottom: --h-status.
+	statusHeight = 28
 
-	// radius is the corner every panel shares. The CSS scale is 6/9/13px for
-	// small/medium/large; the ui has one Radius, so the medium is used.
-	radius = 9
+	// The corner scale is the CSS one: --radius-s is the small controls, --radius-m
+	// the buttons and rows, --radius-l the sheets and the composer, and a pill is
+	// a pill. The ui has one Radius on its theme for the controls that ask for
+	// nothing in particular, which is the medium.
+	radiusSmall = 6
+	radius      = 10
+	radiusLarge = 14
+	radiusPill  = 999
+
 	// spacing is the ui's base unit, matching the CSS 4px scale's first step.
 	spacing = 4
 
@@ -49,25 +61,25 @@ const (
 func darkTheme() *ui.Theme {
 	return &ui.Theme{
 		Dark:           true,
-		Background:     ui.Hex("#07090c"),
-		Surface:        ui.Hex("#0c1016"),
-		SurfaceHover:   ui.Hex("#121821"),
-		SurfacePressed: ui.Hex("#0b0f15"),
-		Border:         ui.Hex("#1a222e"),
-		Text:           ui.Hex("#d9dfe8"),
-		TextMuted:      ui.Hex("#8b96a5"),
-		Accent:         ui.Hex("#2fd6a3"),
-		AccentHover:    ui.Hex("#27bd90"),
-		AccentPressed:  ui.Hex("#27bd90"),
-		AccentText:     ui.Hex("#04241a"),
-		Danger:         ui.Hex("#ef6b6b"),
-		Warning:        ui.Hex("#e2b258"),
-		Success:        ui.Hex("#2fd6a3"),
-		Selection:      ui.RGBA(0x2f, 0xd6, 0xa3, 0.28),
-		Focus:          ui.Hex("#2fd6a3"),
-		Inverse:        ui.Hex("#d9dfe8"),
-		InverseText:    ui.Hex("#07090c"),
-		Scrollbar:      ui.Hex("#1a222e"),
+		Background:     ui.Hex("#101014"),
+		Surface:        ui.Hex("#16161c"),
+		SurfaceHover:   ui.Hex("#1d1d24"),
+		SurfacePressed: ui.Hex("#23232c"),
+		Border:         ui.Hex("#27272f"),
+		Text:           ui.Hex("#e9e9f0"),
+		TextMuted:      ui.Hex("#b2b2c0"),
+		Accent:         ui.Hex("#a48bfa"),
+		AccentHover:    ui.Hex("#8f75f2"),
+		AccentPressed:  ui.Hex("#8f75f2"),
+		AccentText:     ui.Hex("#16102b"),
+		Danger:         ui.Hex("#f2707a"),
+		Warning:        ui.Hex("#dfa73f"),
+		Success:        ui.Hex("#4cc38a"),
+		Selection:      ui.RGBA(0xa4, 0x8b, 0xfa, 0.32),
+		Focus:          ui.Hex("#a48bfa"),
+		Inverse:        ui.Hex("#e9e9f0"),
+		InverseText:    ui.Hex("#101014"),
+		Scrollbar:      ui.Hex("#27272f"),
 		ScrollbarWidth: 8,
 		Radius:         radius,
 		Spacing:        spacing,
@@ -76,28 +88,30 @@ func darkTheme() *ui.Theme {
 }
 
 // lightTheme is the shell in the set light appearance: the browser client's
-// [data-theme="light"] block, token for token.
+// [data-theme="light"] block, token for token. It is not the dark block
+// inverted: the light appearance has its own ground, its own accent, and its own
+// state colours, which are darker because they have to be read on white.
 func lightTheme() *ui.Theme {
 	return &ui.Theme{
-		Background:     ui.Hex("#f2f4f6"),
-		Surface:        ui.Hex("#fbfcfd"),
-		SurfaceHover:   ui.Hex("#e6ebef"),
-		SurfacePressed: ui.Hex("#eaeef1"),
-		Border:         ui.Hex("#d3dae0"),
-		Text:           ui.Hex("#1b232e"),
-		TextMuted:      ui.Hex("#5a6570"),
-		Accent:         ui.Hex("#0d9e77"),
-		AccentHover:    ui.Hex("#0b8a68"),
-		AccentPressed:  ui.Hex("#0b8a68"),
+		Background:     ui.Hex("#f7f7f8"),
+		Surface:        ui.Hex("#ffffff"),
+		SurfaceHover:   ui.Hex("#eeeef2"),
+		SurfacePressed: ui.Hex("#e8e8ee"),
+		Border:         ui.Hex("#dcdce3"),
+		Text:           ui.Hex("#1b1b22"),
+		TextMuted:      ui.Hex("#4c4c58"),
+		Accent:         ui.Hex("#5f45e6"),
+		AccentHover:    ui.Hex("#4f37d4"),
+		AccentPressed:  ui.Hex("#4f37d4"),
 		AccentText:     ui.Hex("#ffffff"),
-		Danger:         ui.Hex("#cc4347"),
-		Warning:        ui.Hex("#a5761b"),
-		Success:        ui.Hex("#0d9e77"),
-		Selection:      ui.RGBA(0x0d, 0x9e, 0x77, 0.22),
-		Focus:          ui.Hex("#0d9e77"),
-		Inverse:        ui.Hex("#1b232e"),
-		InverseText:    ui.Hex("#f2f4f6"),
-		Scrollbar:      ui.Hex("#d3dae0"),
+		Danger:         ui.Hex("#c2394a"),
+		Warning:        ui.Hex("#8f6410"),
+		Success:        ui.Hex("#177d4b"),
+		Selection:      ui.RGBA(0x5f, 0x45, 0xe6, 0.22),
+		Focus:          ui.Hex("#5f45e6"),
+		Inverse:        ui.Hex("#1b1b22"),
+		InverseText:    ui.Hex("#f7f7f8"),
+		Scrollbar:      ui.Hex("#dcdce3"),
 		ScrollbarWidth: 8,
 		Radius:         radius,
 		Spacing:        spacing,
@@ -106,75 +120,72 @@ func lightTheme() *ui.Theme {
 }
 
 // shellColors are the shades the shell draws that the ui's theme has no name
-// for: the ground of the icon strip, the face of a pane, the hairlines between
-// them, and the tint behind a chosen row. They are the CSS tokens --bg-sunken,
-// --bg-raised, --line and --line-soft, which have no ui.Theme field.
+// for: the ground of the panels, the sidebar's recessed ground, the face of a
+// raised pill, the hairlines between them, the wash behind a chosen row and the
+// quiet of a control that is not on. They are the CSS tokens --bg-raised,
+// --bg-sunken, --tab-on, --line, --line-soft, --active, --kbd-bg and --fg-dim,
+// which have no ui.Theme field.
 type shellColors struct {
-	rail     ui.Color // the icon strip, one step off the window ground
-	pane     ui.Color // the sidebar and the header, one step up
-	sunken   ui.Color // the recessed ground the terminal sits in
-	hairline ui.Color // the line between panes, quieter than a border
-	chosen   ui.Color // the tint behind a chosen row
-	icon     ui.Color // the strip's drawings, a shade off the text
-	quiet    ui.Color // a control that is not on yet
+	pane     ui.Color // the header, the tabs, the composer, the status bar
+	side     ui.Color // the sidebar, one step below the window ground
+	field    ui.Color // chips, keys and pills: --kbd-bg, as a solid
+	tabOn    ui.Color // the raised pill of the tab on screen: --tab-on
+	line     ui.Color // a border that has to be seen: --line
+	hairline ui.Color // the line between panes: --line-soft
+	chosen   ui.Color // the wash behind a chosen row: --active
+	icon     ui.Color // drawings and secondary text: --fg-2
+	quiet    ui.Color // meta and placeholders: --fg-dim
 }
 
 func shellColorsFor(t *ui.Theme) shellColors {
 	if t.Dark {
 		return shellColors{
-			rail:     ui.Hex("#05070a"),
-			pane:     ui.Hex("#0c1016"),
-			sunken:   ui.Hex("#05070a"),
-			hairline: ui.Hex("#131a24"),
-			chosen:   ui.RGBA(0x2f, 0xd6, 0xa3, 0.14),
-			icon:     ui.Hex("#8b96a5"),
-			quiet:    ui.Hex("#5c6875"),
+			pane:     ui.Hex("#16161c"),
+			side:     ui.Hex("#0b0b0e"),
+			field:    ui.Hex("#1e1e24"),
+			tabOn:    ui.Hex("#23232c"),
+			line:     ui.Hex("#27272f"),
+			hairline: ui.Hex("#1c1c22"),
+			chosen:   ui.RGBA(0xa4, 0x8b, 0xfa, 0.10),
+			icon:     ui.Hex("#b2b2c0"),
+			quiet:    ui.Hex("#8c8c9c"),
 		}
 	}
 	return shellColors{
-		rail:     ui.Hex("#eaeef1"),
-		pane:     ui.Hex("#fbfcfd"),
-		sunken:   ui.Hex("#eaeef1"),
-		hairline: ui.Hex("#dfe5ea"),
-		chosen:   ui.RGBA(0x0d, 0x9e, 0x77, 0.10),
-		icon:     ui.Hex("#5a6570"),
-		quiet:    ui.Hex("#8a94a0"),
+		pane:     ui.Hex("#ffffff"),
+		side:     ui.Hex("#eeeef2"),
+		field:    ui.Hex("#ececf0"),
+		tabOn:    ui.Hex("#ffffff"),
+		line:     ui.Hex("#dcdce3"),
+		hairline: ui.Hex("#e8e8ee"),
+		chosen:   ui.RGBA(0x5f, 0x45, 0xe6, 0.07),
+		icon:     ui.Hex("#4c4c58"),
+		quiet:    ui.Hex("#75757f"),
 	}
 }
 
 // The shell's palette on the terminal's own terms, so the pane a shell runs in
 // belongs to the window around it instead of looking like a program that
 // wandered in. The sixteen program colours are the browser client's terminal
-// theme in web/src/term.ts, which is the same set both clients render ANSI
-// with — a violet would clash with the teal chrome, so the terminal's accent is
-// the chrome's.
-func terminalTheme(dark bool) *terminal.Theme {
-	if dark {
-		return &terminal.Theme{
-			Foreground: ui.Hex("#d3dae3"),
-			Background: ui.Hex("#0a0d12"),
-			Cursor:     ui.Hex("#3adfae"),
-			CursorText: ui.Hex("#0a0d12"),
-			Selection:  ui.RGBA(0x3a, 0xdf, 0xae, 0.28),
-			Palette: [16]ui.Color{
-				ui.Hex("#1b2430"), ui.Hex("#f0777a"), ui.Hex("#3adfae"), ui.Hex("#e6bb66"),
-				ui.Hex("#7aa7c9"), ui.Hex("#c39ad6"), ui.Hex("#6fc7d8"), ui.Hex("#d3dae3"),
-				ui.Hex("#4b5766"), ui.Hex("#ff9a9c"), ui.Hex("#5cebbb"), ui.Hex("#f2cd85"),
-				ui.Hex("#93bede"), ui.Hex("#d5b2e6"), ui.Hex("#8bd9e7"), ui.Hex("#eef2f7"),
-			},
-		}
-	}
+// theme in web/src/term.ts, which the two clients render ANSI with: the
+// terminal's accent is the chrome's violet, so a prompt and a chosen tab are the
+// same colour.
+//
+// The sheet is dark in both appearances, so this answers the same thing whichever
+// appearance the window is in. It takes the flag and returns one palette anyway:
+// a caller asking for the light appearance is asking the question this answers.
+func terminalTheme(_ bool) *terminal.Theme {
 	return &terminal.Theme{
-		Foreground: ui.Hex("#d3dae3"),
-		Background: ui.Hex("#0a0d12"),
-		Cursor:     ui.Hex("#3adfae"),
-		CursorText: ui.Hex("#0a0d12"),
-		Selection:  ui.RGBA(0x3a, 0xdf, 0xae, 0.28),
+		Foreground: ui.Hex("#d7dae2"),
+		Background: ui.Hex("#0d0d12"),
+		Cursor:     ui.Hex("#b6a6ff"),
+		CursorText: ui.Hex("#0d0d12"),
+		Selection:  ui.RGBA(0xb6, 0xa6, 0xff, 0.28),
 		Palette: [16]ui.Color{
-			ui.Hex("#1b2430"), ui.Hex("#f0777a"), ui.Hex("#3adfae"), ui.Hex("#e6bb66"),
-			ui.Hex("#7aa7c9"), ui.Hex("#c39ad6"), ui.Hex("#6fc7d8"), ui.Hex("#d3dae3"),
-			ui.Hex("#4b5766"), ui.Hex("#ff9a9c"), ui.Hex("#5cebbb"), ui.Hex("#f2cd85"),
-			ui.Hex("#93bede"), ui.Hex("#d5b2e6"), ui.Hex("#8bd9e7"), ui.Hex("#eef2f7"),
+			ui.Hex("#26262e"), ui.Hex("#ff8b93"), ui.Hex("#6fd39a"), ui.Hex("#e6c07d"),
+			ui.Hex("#9ecbff"), ui.Hex("#b6a6ff"), ui.Hex("#7dd3fc"), ui.Hex("#d7dae2"),
+			ui.Hex("#4a4a56"), ui.Hex("#ffa3aa"), ui.Hex("#8ce3ae"), ui.Hex("#f0d095"),
+			ui.Hex("#b3d7ff"), ui.Hex("#c9bcff"), ui.Hex("#9be0ff"), ui.Hex("#eef0f6"),
 		},
 	}
 }

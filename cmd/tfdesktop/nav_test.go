@@ -32,22 +32,18 @@ func newTestShellWindow(t *testing.T, titles ...string) (*window, string) {
 	return w, dir
 }
 
-// drawNav draws the window's navigation the way its view draws it: the strip of
-// controls, and the column of shells beside it. The appearance comes from the
-// store, and the shells from what the window has open.
+// drawNav draws the window's navigation the way its view draws it: the sidebar
+// of shells and machines. The appearance comes from the store, and the shells
+// from what the window has open.
 func drawNav(t *testing.T, w *window) *ui.Tester {
 	t.Helper()
 	return ui.NewTester(func(c *ui.Context) {
 		mode := w.store.Get().Theme
 		applyTheme(c, mode)
-		// A row, as the window draws them: the strip beside the column, both as
-		// tall as the window. Stacked, the strip's controls would land where no
-		// window ever puts them.
 		ui.Row(c).Fill().Children(func() {
-			w.activityRail(c, mode)
 			w.sidebar(c, mode)
 		})
-	}, activityWidth+sidebarWidth, 420)
+	}, sidebarWidth, 420)
 }
 
 func TestSessionPanelListsTheOpenShellsAndPicksOne(t *testing.T) {
@@ -58,9 +54,6 @@ func TestSessionPanelListsTheOpenShellsAndPicksOne(t *testing.T) {
 		if !tt.HasText(want) {
 			t.Fatalf("the column does not show %q; it shows %v", want, tt.Texts())
 		}
-	}
-	if _, ok := tt.Find("设置"); !ok {
-		t.Fatalf("the strip has no settings entry")
 	}
 
 	if err := tt.Click("two"); err != nil {
@@ -326,7 +319,12 @@ func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
 
 func TestSidebarAppearanceSwitchesTheThemeAndSavesIt(t *testing.T) {
 	w, dir := newTestShellWindow(t)
-	tt := drawNav(t, w)
+	// The appearance control is in the band across the top, which is the only
+	// place the window itself can be changed from.
+	tt := ui.NewTester(func(c *ui.Context) {
+		applyTheme(c, w.store.Get().Theme)
+		ui.Row(c).Fill().Children(func() { w.header(c) })
+	}, 900, headerHeight)
 	tt.SetDark(false) // the system is showing its light appearance
 
 	light := tt.Image().RGBAAt(2, 2)

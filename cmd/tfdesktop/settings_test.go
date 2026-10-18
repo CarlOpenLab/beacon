@@ -482,13 +482,13 @@ func TestSettingsToolbarShowsPendingChangesAndClearsThem(t *testing.T) {
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
 
-	if _, ok := tt.Find("● 有未保存的改动"); ok {
+	if _, ok := tt.Find("有未保存的改动"); ok {
 		t.Fatal("the pending-changes marker is shown before anything was edited")
 	}
 
 	sw.relay = "wss://relay.example/relay/agent"
 	tt.Frame()
-	if _, ok := tt.Find("● 有未保存的改动"); !ok {
+	if _, ok := tt.Find("有未保存的改动"); !ok {
 		t.Fatalf("no pending-changes marker after editing; texts = %v", tt.Texts())
 	}
 
@@ -496,7 +496,7 @@ func TestSettingsToolbarShowsPendingChangesAndClearsThem(t *testing.T) {
 		t.Fatalf("Click(应用): %v", err)
 	}
 	tt.Frame()
-	if _, ok := tt.Find("● 有未保存的改动"); ok {
+	if _, ok := tt.Find("有未保存的改动"); ok {
 		t.Fatalf("the pending-changes marker survived 应用; texts = %v", tt.Texts())
 	}
 }

@@ -4,6 +4,69 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.11
+
+**Direction C, and a light with one meaning**
+
+`designs/ui-redesign/` held three directions and C — Editor Native — is the one
+that was picked, so both clients are drawn from it now rather than from the
+system they happened to share: one violet accent for what is chosen or in
+control, paper-flat surfaces at 6/10/14px, pills instead of underlines, and the
+same near-black terminal sheet in both appearances. The one piece of chrome that
+is not words — the light along a shell somebody else is typing into — now means
+one thing only.
+
+- **Both clients take the C direction.** The accent moves from teal to violet:
+  0.4.9 had moved the desktop off its violet onto the browser's teal so the two
+  would match, and the direction that was then chosen is violet, so both are
+  violet now. Tabs are pills on a raised strip instead of underlines, the
+  composer is one bordered field that lights around the caret rather than a card
+  with three controls in it, the key bar is one row of equal keys grouped by
+  hairlines, and the sidebar, the session inspector and the settings window are
+  redrawn on the same tokens. Colour means one thing each — accent for chosen,
+  amber for read-only, red for gone, grey for exited — and where the desktop
+  drew decoration that carried nothing, it draws nothing.
+- **The terminal's sixteen colours are the app's.** The browser client's theme
+  and the desktop's carry the same numbers now: the cursor and the ANSI magenta
+  are the accent's violet, the selection is that violet at 28%, and the sheet is
+  the same `#0d0d12` in both appearances. A shell should look like it belongs to
+  the window around it, and ANSI's sixteen are drawn for a dark ground — which is
+  why the light appearance keeps a dark terminal rather than inverting one.
+- **The light along a taken shell is drawn under one condition, and it reads as
+  light.** It used to come on for any shell another client held, including one on
+  a machine the person is not sitting at — a light for a process that is
+  nobody-here's, which is the ordinary case rather than news. It is drawn only
+  for a shell *this* machine runs with somebody else on its keyboard, which is
+  the one thing the words on screen do not say from across the room; a shell on
+  another machine keeps its 只读 chip, because that is a fact about the pane you
+  are looking at. The effect is one family of colours instead of a spectrum (the
+  old cut ran violet, pink, coral and peach around the edge — a second and louder
+  vocabulary for a fact the pane was already stating in words) and it is a band
+  with no line anywhere in it, falling off on both sides of the pane's edge, the
+  way the platform's own agent-takeover glow is drawn, rather than a coloured
+  border painted on the pane. Where the desktop asks for less motion the colours
+  stop travelling and the light stays.
+- **The takeover offer says what pressing it does to the other side.** The panel
+  under a shell that is not yours names the holder, says that your typing is not
+  reaching the shell, and now says what happens to *them*: they go read-only and
+  keep watching the terminal afterwards. A button that takes a keyboard away
+  from somebody without saying so is one people learn not to press.
+
+**Fixed**
+
+- **释放控制权 was offered by a window that held nothing.** The browser client
+  sets `hidden` on the button, and `hidden` is a bare `display: none` from the
+  browser's own stylesheet, which loses to any class that sets a display — and
+  every control in that client does. The button sat in the header of a window
+  with no session at all. The per-class workarounds the stylesheet had
+  accumulated (`.tf-hero[hidden]`, `.tf-inspect[hidden]`, …) are one `[hidden]`
+  rule now, so the next control that hides itself stays hidden.
+- **The browser client's status line went stale** after the session list changed,
+  counting sessions the sidebar no longer showed, and the session inspector could
+  not be closed — the button that dismissed it reopened it on the next render.
+  Both follow the person now: the count follows the roster, and whether the
+  inspector is open is a choice that is remembered while the page is.
+
 ## 0.4.10
 
 **Four separate acts, and the ones that were missing**

@@ -270,7 +270,7 @@ func (s *settingsWindow) view(c *ui.Context) {
 			ui.Text(c, "设置")
 			ui.Spacer(c)
 			if dirty {
-				ui.Text(c, "● 有未保存的改动").TextColor(t.Warning)
+				ui.Text(c, "有未保存的改动").FontSize(12).TextColor(t.Warning)
 			}
 			if ui.Button(c, "恢复默认").Clicked() {
 				s.restoreDefaults()
@@ -279,7 +279,7 @@ func (s *settingsWindow) view(c *ui.Context) {
 				s.commit()
 			}
 		})
-		ui.Tabs(c, &s.pane, "终端", "远程", "服务", "更新", "外观")
+		paneTabs(c, &s.pane, "终端", "远程", "服务", "更新", "外观")
 		// The pane is the whole window, so it scrolls rather than clips: a short
 		// window must not hide the 接入 switch under the fold.
 		ui.Scroll(c).Fill().Children(func() {
@@ -306,6 +306,53 @@ func (s *settingsWindow) view(c *ui.Context) {
 			} else {
 				line.TextColor(t.Success)
 			}
+		}
+	})
+}
+
+// paneTabs is the strip that chooses a pane, drawn the way the window's session
+// tabs are: pills, with the one that is chosen raised. Two idioms for the same
+// act — an underline here, a pill there — was the window telling a person that
+// its two tab strips were two different things.
+//
+// TabsBase is what draws it rather than a row of boxes, so the arrows, Home and
+// End keep choosing a pane, and the choice keeps following the keyboard.
+func paneTabs(c *ui.Context, selected *int, names ...string) {
+	t := c.Theme()
+	col := shellColorsFor(t)
+
+	tabs := ui.TabsBase(c, selected, len(names))
+	tabs.List.
+		Height(tabBarHeight).PaddingX(10).Gap(4).
+		AlignItems(ui.Center).
+		Background(col.pane).
+		BorderWidth(0, 0, 1, 0).BorderColor(col.line)
+	tabs.List.Children(func() {
+		for i, name := range names {
+			chosen := i == *selected
+			pill := tabs.Tab(i).
+				Height(30).PaddingX(13).Gap(7).
+				Radius(radiusPill).
+				AlignItems(ui.Center).
+				Label(name)
+			switch {
+			case chosen:
+				// The same treatment as the shell on screen in the window's own
+				// tab strip: the raised face, and the light that falls on it.
+				pill.Background(col.tabOn).
+					BorderWidth(1).BorderColor(col.line).
+					Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.35))
+			case pill.Hovered():
+				pill.Background(col.field)
+			}
+			pill.Children(func() {
+				label := ui.Text(c, name).FontSize(12.5)
+				if chosen {
+					label.TextColor(t.Text)
+				} else {
+					label.TextColor(t.TextMuted)
+				}
+			})
 		}
 	})
 }
@@ -612,7 +659,7 @@ func (s *settingsWindow) fail(message string) {
 }
 
 func (s *settingsWindow) summary(stored settings.Settings) string {
-	parts := []string{"已保存 ✓ " + s.savedAt.Format("15:04:05")}
+	parts := []string{"已保存 " + s.savedAt.Format("15:04:05")}
 	if url := s.fleet.BaseURL(); url != "" {
 		parts = append(parts, "本机服务 "+url)
 	} else {

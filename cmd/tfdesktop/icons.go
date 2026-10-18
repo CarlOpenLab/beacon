@@ -34,4 +34,7 @@ var (
 	// iconMonitor stands for another machine, which a shell can be taken from.
 	iconMonitor = lucide(`<rect width="20" height="14" x="2" y="3" rx="2"/>` +
 		`<path d="M8 21h8"/><path d="M12 17v4"/>`)
+	// iconSend is the composer's send button: the command leaving this window.
+	iconSend = lucide(`<path d="M14.5 21.7a.5.5 0 0 0 .9 0l6.5-19a.5.5 0 0 0-.6-.6l-19 6.5a.5.5 0 0 0 0 .9l7.9 3.2a2 2 0 0 1 1.1 1.1z"/>` +
+		`<path d="m21.9 2.1-10.9 10.9"/>`)
 )

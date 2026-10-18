@@ -16,7 +16,7 @@ const (
 	// sidebarWidth is the browser client's --w-side. The two clients list the
 	// same shells in the same order with the same badges, so the column they sit
 	// in is the same width too.
-	sidebarWidth = 248
+	sidebarWidth = 288
 
 	// The room the machines' panel needs before the shells' panel takes the rest
 	// of the column, and the least the shells' panel will accept. The line
@@ -53,7 +53,7 @@ func (w *window) sidebar(c *ui.Context, mode string) {
 
 	ui.Column(c).
 		Width(sidebarWidth).FillHeight().
-		Background(col.pane).
+		Background(col.side).
 		BorderWidth(0, 1, 0, 0).BorderColor(col.hairline).
 		Children(func() {
 			// The column fills the window, so the window's height is the room
@@ -109,15 +109,17 @@ func (w *window) sessionPanel(c *ui.Context) {
 		})
 
 		if len(entries) == 0 {
-			ui.Column(c).Gap(6).Padding(12, 10).Children(func() {
+			col := shellColorsFor(t)
+			ui.Column(c).Gap(4).Padding(14, 10).Children(func() {
 				if remote {
 					// Saying nothing here would leave a machine that is running
 					// nothing looking like a machine that cannot be read.
-					ui.Text(c, "这台机器上没有活着的终端。").FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, "点标题行的 ＋ 在它上面开一个。").FontSize(11).TextColor(t.TextMuted)
+					ui.Text(c, "这台机器上还没有会话").FontSize(12.5).TextColor(col.quiet)
+					ui.Text(c, "点标题行的 ＋ 在它上面开一个。").FontSize(11).TextColor(col.quiet)
 					return
 				}
-				ui.Text(c, "还没有终端").FontSize(12).TextColor(t.TextMuted)
+				ui.Text(c, "主机上还没有会话").FontSize(12.5).TextColor(col.quiet)
+				ui.Text(c, "点标题行的 ＋，或直接 ⌘T。").FontSize(11).TextColor(col.quiet)
 			})
 			return
 		}
@@ -217,76 +219,105 @@ func (w *window) sessionEntries() []sessionEntry {
 // sessionRow is one shell in the 会话 panel, drawn the same way whether it runs
 // on this machine or another one.
 //
-// The row carries a badge naming its state — 控制中 / 只读 — rather than a bare
-// dot and a holder's name in the corner: the browser client's rows read that
-// way, and a badge says the same thing without needing the colour to be
-// distinguishable. The meta line keeps only the terminal size, which is the one
-// number that tells two look-alike shells apart; the rest is in the tooltip.
+// The row is the browser client's: the shell's name on the first line with a
+// badge when something is wrong with it — 只读, 已退出 — and the facts on the
+// second in one quiet line. The name is what a person scans for, so nothing else
+// shares its line; the numbers are what tells two look-alike shells apart, so
+// they share theirs.
 func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 	t := c.Theme()
+	col := shellColorsFor(t)
 
-	row := ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius)
+	row := ui.Column(c).Gap(2).Padding(7, 9).Radius(radius).BorderWidth(1)
 	if e.active {
-		row.Background(t.SurfacePressed).BorderWidth(0, 0, 0, 2).BorderColor(t.Accent)
+		// The shell on screen is the one row that is chosen, and it is chosen the
+		// way the browser client chooses it: the accent's wash, and a line of the
+		// same accent around it.
+		row.Background(col.chosen).BorderColor(t.Accent.Alpha(0.42))
 	} else if row.Hovered() {
-		row.Background(t.SurfaceHover)
+		row.Background(col.field)
 	}
 	row.Tooltip(w.sessionTooltip(e))
 	row.Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(7, 7).Radius(3.5).
-				Background(w.leaseColor(t, e.machine, e.session, e.holder))
-			ui.Text(c, e.label).FontSize(12)
+				Background(w.leaseColor(t, e.machine, e.session, e.holder, e.alive))
+			name := ui.Text(c, e.label).FontSize(12.5)
+			if e.active {
+				name.TextColor(t.Text)
+			}
 			if badge, color, ok := w.leaseBadge(t, e); ok {
 				badgeChip(c, badge, color)
-			}
-			// The holder's name is the one thing the badge cannot say: 只读 says
-			// someone else is typing, not who. So it stays, in the state's own
-			// colour, after the badge rather than instead of it.
-			if e.holder != "" {
-				ui.Text(c, e.holder).FontSize(10).TextColor(t.Warning)
 			}
 			// 结束, on the row it ends. It is the one action here that kills a
 			// process, so it sits apart from picking the row — a click anywhere
 			// else on the row selects it — and it says what it does in its
 			// tooltip, because the word alone does not distinguish it from
 			// 关闭标签页.
+			//
+			// It stays drawn rather than appearing under the pointer: the browser
+			// client can afford a button that shows up on hover because a pointer
+			// is how a browser is used, and this window is not always used that
+			// way — and a control that is not on screen is a control nobody looks
+			// for. It is quiet instead: a hairline of the state's colour, no wash
+			// until the pointer is on it.
 			if e.alive {
 				ui.Spacer(c)
 				kill := ui.Box(c).
-					Width(38).Height(20).Radius(4).
+					Width(38).Height(20).Radius(radiusSmall).
 					AlignItems(ui.Center).Justify(ui.Center).
 					Label("结束会话").Tooltip("结束会话：终止这台机器上的进程，对所有客户端生效（不会关闭标签）")
+				kill.BorderWidth(1).BorderColor(t.Danger.Alpha(0.35))
 				if kill.Hovered() {
-					kill.Background(t.Danger.Alpha(0.12))
+					kill.Background(t.Danger.Alpha(0.14))
 				}
 				kill.Children(func() {
-					ui.Text(c, "结束").FontSize(11).TextColor(t.Danger)
+					ui.Text(c, "结束").FontSize(10.5).TextColor(t.Danger)
 				})
 				if kill.Clicked() {
 					e.end()
 				}
 			}
 		})
-		if e.meta != "" {
-			ui.Text(c, e.meta).FontSize(10).TextColor(t.TextMuted)
-		}
+		ui.Text(c, w.sessionMeta(e)).FontSize(10.5).TextColor(col.quiet).SingleLine()
 	})
 	if row.Clicked() {
 		e.pick()
 	}
 }
 
-// leaseBadge is the row's state in words: what this window holds, what someone
-// else holds, or nothing at all when the shell is unclaimed. The colour is the
-// same one the dot beside it already uses, so the two never disagree.
+// sessionMeta is the row's second line: the shell's id, its size, and what it is
+// to this window — 控制中, 只读 with the name of whoever holds it, or 已退出. It
+// is the browser client's line, field for field, so the same shell reads the
+// same in both clients.
+func (w *window) sessionMeta(e sessionEntry) string {
+	parts := []string{or(e.session, "待创建")}
+	if e.meta != "" {
+		parts = append(parts, e.meta)
+	}
+	switch {
+	case !e.alive:
+		parts = append(parts, "已退出")
+	case e.holder != "":
+		parts = append(parts, "只读 "+e.holder)
+	default:
+		parts = append(parts, "控制中")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// leaseBadge is the row's state in words, for the states worth a badge: the two
+// that mean the person at the keyboard cannot type, or that there is nothing
+// left to type into. 控制中 is the ordinary case and wears no badge — a row that
+// badges everything says nothing. The colour is the same one the dot beside it
+// already uses, so the two never disagree.
 func (w *window) leaseBadge(t *ui.Theme, e sessionEntry) (string, ui.Color, bool) {
 	if tb := w.tabOf(e.machine, e.session); tb != nil {
 		if !tb.alive {
-			return "已退出", shellColorsFor(t).quiet, true
+			return "已退出", t.Danger, true
 		}
 		if tb.held() {
-			return "控制中", t.Success, true
+			return "", t.Success, false
 		}
 		if e.holder != "" {
 			return "只读", t.Warning, true
@@ -314,14 +345,14 @@ func (w *window) sessionTooltip(e sessionEntry) string {
 	return strings.Join(lines, "\n")
 }
 
-// badgeChip is a state in a small rounded wash: the browser client's badge, on
-// the ui's terms. The wash is the state's colour at a tenth, with a border a
-// third of the way up, so the chip is legible without shouting.
+// badgeChip is a state in a small outlined chip: the browser client's badge, on
+// the ui's terms. It is a word in the state's own colour inside a hairline of the
+// same colour and nothing else — a state that is worth saying is worth saying
+// quietly, and a row wearing a wash for every state is a row nobody can scan.
 func badgeChip(c *ui.Context, text string, color ui.Color) {
 	chip := ui.Row(c).Gap(4).AlignItems(ui.Center).
-		PaddingX(6).Height(16).Radius(4).
-		Background(color.Alpha(0.10)).
-		BorderWidth(1).BorderColor(color.Alpha(0.35))
+		PaddingX(6).Height(16).Radius(radiusSmall).
+		BorderWidth(1).BorderColor(color.Alpha(0.42))
 	chip.Children(func() {
 		ui.Text(c, text).FontSize(10).TextColor(color)
 	})
@@ -394,6 +425,27 @@ func (w *window) stepTab(delta int) {
 		next += len(w.order)
 	}
 	if tb := w.tabs[w.order[next]]; tb != nil {
+		w.selectTab(tb)
+	}
+}
+
+// tabDigits are the keys ⌘1…⌘9 answer to, in the order the numbers run. They are
+// the browser client's own shortcut, and the shortcut list the empty window
+// prints promises them, so the window has to keep the promise.
+var tabDigits = []ui.Key{
+	ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5,
+	ui.Key6, ui.Key7, ui.Key8, ui.Key9,
+}
+
+// jumpTab puts the nth tab on screen, counting from zero. A number past the last
+// tab does nothing rather than wrapping: a person pressing ⌘7 with three shells
+// open is asking for a tab that is not there, and the nearest one is not what
+// they asked for.
+func (w *window) jumpTab(n int) {
+	if n < 0 || n >= len(w.order) {
+		return
+	}
+	if tb := w.tabs[w.order[n]]; tb != nil {
 		w.selectTab(tb)
 	}
 }
@@ -494,6 +546,7 @@ func (w *window) localEntry() tunnel.Machine {
 // left bar in the accent, a raised ground, and the hover a plain row has.
 func (w *window) machineChoice(c *ui.Context, m tunnel.Machine) {
 	t := c.Theme()
+	col := shellColorsFor(t)
 	local := m.ID == machineLocal
 	selected := w.selectedMachine() == m.ID
 
@@ -506,21 +559,21 @@ func (w *window) machineChoice(c *ui.Context, m tunnel.Machine) {
 		tooltip = w.serviceLine()
 	}
 
-	row := ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius)
+	row := ui.Column(c).Gap(2).Padding(7, 9).Radius(radius).BorderWidth(1)
 	if selected {
-		row.Background(t.SurfacePressed).BorderWidth(0, 0, 0, 2).BorderColor(t.Accent)
+		row.Background(col.chosen).BorderColor(t.Accent.Alpha(0.42))
 	} else if row.Hovered() {
-		row.Background(t.SurfaceHover)
+		row.Background(col.field)
 	}
 	row.Tooltip(tooltip).Children(func() {
 		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(8, 8).Radius(4).Background(dot)
-			ui.Text(c, m.Name).FontSize(12)
+			ui.Text(c, m.Name).FontSize(12.5)
 			if !m.Online {
-				ui.Text(c, "离线").FontSize(10).TextColor(t.TextMuted)
+				badgeChip(c, "离线", t.TextMuted)
 			}
 		})
-		ui.Text(c, meta).FontSize(11).TextColor(t.TextMuted)
+		ui.Text(c, meta).FontSize(10.5).TextColor(col.quiet).SingleLine()
 	})
 	if row.Clicked() {
 		w.selectMachine(m)
@@ -576,18 +629,27 @@ func machineState(m tunnel.Machine) string {
 	return "离线"
 }
 
-// leaseColor is a shell's dot in the panel: green while a tab of this window
-// holds the lease, amber while another client does, quiet while nobody does. A
-// controller that is not one of this window's tabs is somebody else's by
-// definition.
-func (w *window) leaseColor(t *ui.Theme, machine, sessionID, controller string) ui.Color {
-	if controller == "" {
-		return shellColorsFor(t).quiet
+// leaseColor is a shell's dot: the same three states the row's words and badge
+// name, in one colour each. Green is the ordinary case — this window drives the
+// shell, or nobody is named and the machine in front of the PTY has it. Grey is
+// a shell another client is typing into: a state, not a fault, and the one the
+// pane's 只读 chip and the composer's placeholder already say in words. Red is a
+// shell that is gone.
+//
+// Amber is deliberately not among them. It is the read-only colour on the chip
+// and the badge, and a dot that also carried it would be the second place saying
+// the same thing in a different vocabulary.
+func (w *window) leaseColor(t *ui.Theme, machine, sessionID, controller string, alive bool) ui.Color {
+	if !alive {
+		return t.Danger
 	}
 	if tb := w.tabOf(machine, sessionID); tb != nil && tb.held() {
 		return t.Success
 	}
-	return t.Warning
+	if controller != "" {
+		return shellColorsFor(t).quiet
+	}
+	return t.Success
 }
 
 // localMachine is this machine's row: its name, and the line under it. A window
@@ -659,17 +721,24 @@ func relayColor(t *ui.Theme, connected, connecting bool) ui.Color {
 }
 
 // panelHead is a panel's title row: the name, a count of what it holds, and
-// whatever controls the panel needs on the right.
+// whatever controls the panel needs on the right. The name is a small quiet
+// capital — the browser client's .side-title — so the panels read as headings
+// over the rows rather than as rows themselves.
 func panelHead(c *ui.Context, title string, count int, controls func()) {
 	t := c.Theme()
 	col := shellColorsFor(t)
 	ui.Row(c).
-		Height(30).PaddingX(10).PaddingY(4).Gap(6).
+		Height(34).PaddingX(10).Gap(7).
 		AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
 		Children(func() {
-			ui.Text(c, title).FontSize(11).FontWeight(600).TextColor(t.TextMuted)
-			ui.Text(c, strconv.Itoa(count)).FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(0.4).TextColor(col.quiet)
+			count2 := ui.Box(c).Height(17).PaddingX(7).Radius(radiusPill).
+				AlignItems(ui.Center).Justify(ui.Center).
+				Background(col.field).BorderWidth(1).BorderColor(col.line)
+			count2.Children(func() {
+				ui.Text(c, strconv.Itoa(count)).FontSize(10.5).TextColor(t.TextMuted)
+			})
 			ui.Spacer(c)
 			if controls != nil {
 				controls()

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   fleet (M3) + inspector + connect screen + phone layout — Command Deck
+   fleet (M3) + inspector + connect screen + phone layout — Editor Native
 
    These are the pieces the relay and the phone bring, on top of the base
    system in style.css. The phone is a drawer + a bigger key bar, not a
@@ -8,8 +8,8 @@
 
 .tf-side-toggle {
   display: none;
-  border: 1px solid var(--line);
-  background: var(--bg-block);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--fg-dim);
   border-radius: var(--radius-s);
   font-size: 14px;
@@ -20,12 +20,14 @@
 }
 
 .tf-side-toggle:hover {
+  background: var(--tab-hover);
   color: var(--fg);
-  border-color: var(--fg-faint);
 }
 
+/* A machine that answers is live, which is green; a machine that does not is
+   gone and says so in the one colour that means it. */
 .tf-dot.on {
-  background: var(--accent);
+  background: var(--ok);
 }
 
 .tf-dot.off {
@@ -42,25 +44,6 @@
   font-size: var(--fs-11);
 }
 
-.tf-tab-machine {
-  font-size: 10px;
-  color: var(--fg-dim);
-  background: var(--bg-sunken);
-  border: 1px solid var(--line-soft);
-  border-radius: 4px;
-  padding: 0 4px;
-  margin-right: 5px;
-  max-width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 0 0 auto;
-}
-
-.tf-tab.active .tf-tab-machine {
-  color: var(--fg);
-}
-
 .tf-chip-relay {
   color: var(--warn);
   border-color: var(--warn-bd);
@@ -72,7 +55,7 @@
 .tf-connect {
   position: fixed;
   inset: 0;
-  background: rgba(4, 6, 9, 0.86);
+  background: var(--scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -94,7 +77,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-weight: 650;
+  font-weight: 600;
   color: var(--fg-dim);
   margin-bottom: var(--space-3);
 }
@@ -102,19 +85,19 @@
 .tf-connect-brand .tf-dot {
   width: 8px;
   height: 8px;
-  border-radius: 3px;
+  border-radius: 50%;
   background: var(--accent);
 }
 
 .tf-connect-card h1 {
   margin: 0 0 var(--space-1);
-  font-size: 17px;
-  font-weight: 650;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .tf-connect-note {
   margin: 0 0 var(--space-4);
-  color: var(--warn);
+  color: var(--fg-dim);
   font-size: var(--fs-12);
 }
 
@@ -133,28 +116,29 @@
 }
 
 .tf-input {
-  background: var(--bg-sunken);
+  background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: var(--radius-s);
+  border-radius: var(--radius-m);
   color: var(--fg);
   font-family: var(--font-mono);
   font-size: var(--fs-12);
-  padding: 8px 11px;
+  padding: 9px 11px;
   outline: none;
+  transition: border-color var(--dur) ease;
 }
 
 .tf-input:focus {
   border-color: var(--accent);
 }
 
+.tf-input::placeholder {
+  color: var(--fg-faint);
+}
+
 .tf-connect-err {
   margin: 0;
   color: var(--err);
   font-size: var(--fs-12);
-}
-
-.tf-connect-err[hidden] {
-  display: none;
 }
 
 .tf-connect-hint {
@@ -170,15 +154,14 @@
    half the footprint. */
 @media (pointer: fine) {
   .tf-keys {
-    gap: var(--space-2);
-    padding: 5px 12px 6px;
+    padding: 4px 10px;
   }
 
   .tf-key {
-    min-width: 30px;
-    height: 24px;
-    padding: 0 7px;
-    font-size: 11px;
+    min-width: 26px;
+    height: 20px;
+    padding: 0 6px;
+    font-size: 10.5px;
   }
 }
 
@@ -203,11 +186,16 @@
   }
 
   .tf-tab {
-    height: 46px;
+    height: 36px;
+  }
+
+  /* There is no hover to bring these out, so they are out. */
+  .tf-tab-close {
+    opacity: 0.85;
   }
 
   .tf-kill {
-    display: inline-flex;
+    visibility: visible;
   }
 }
 
@@ -272,14 +260,12 @@
     font-size: var(--fs-11);
   }
 
-  .tf-composer,
-  .tf-keys,
-  .tf-hist {
-    margin: 0 var(--space-2);
+  .tf-panes {
+    margin: 6px;
   }
 
-  .tf-pane::after {
-    inset: 6px;
+  .tf-pane .xterm {
+    padding: 6px 8px;
   }
 
   .tf-toasts {

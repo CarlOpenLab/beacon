@@ -51,31 +51,40 @@ func TestRenderShellPreviews(t *testing.T) {
 		// onRemote puts another machine's shell on screen: its row in the 会话
 		// panel is the active one, which is what a tab list has to show.
 		onRemote bool
+		// remoteTaken is that shell, driven by the machine it runs on: the state
+		// the light along the pane's edge is deliberately not drawn for.
+		remoteTaken bool
 	}{
-		{"shell-dark", themeDark, true, false, false, false, false, false},
-		{"shell-light", themeLight, true, false, false, false, false, false},
-		{"empty-dark", themeDark, false, false, false, false, false, false},
-		{"empty-light", themeLight, false, false, false, false, false, false},
-		// A shell another client holds: the glow around the terminal, the
-		// popover under it, and the mark on its row.
-		{"taken-dark", themeDark, true, true, false, false, false, false},
-		{"taken-light", themeLight, true, true, false, false, false, false},
+		{"shell-dark", themeDark, true, false, false, false, false, false, false},
+		{"shell-light", themeLight, true, false, false, false, false, false, false},
+		{"empty-dark", themeDark, false, false, false, false, false, false, false},
+		{"empty-light", themeLight, false, false, false, false, false, false, false},
+		// A shell of this machine's, another client driving it: the light along
+		// the pane's edge, the panel under it, and the mark on its row.
+		{"taken-dark", themeDark, true, true, false, false, false, false, false},
+		{"taken-light", themeLight, true, true, false, false, false, false, false},
 		// A fleet: the 机器 panel as a list you switch between, with this machine
 		// and one other.
-		{"fleet-dark", themeDark, true, false, true, false, false, false},
-		{"fleet-light", themeLight, true, false, true, false, false, false},
+		{"fleet-dark", themeDark, true, false, true, false, false, false, false},
+		{"fleet-light", themeLight, true, false, true, false, false, false, false},
 		// Another machine picked: its row carries the selection, and the 会话 panel
 		// below shows the shells that machine is running rather than this one's.
-		{"fleet-picked-dark", themeDark, true, false, true, true, false, false},
-		{"fleet-picked-light", themeLight, true, false, true, true, false, false},
+		{"fleet-picked-dark", themeDark, true, false, true, true, false, false, false},
+		{"fleet-picked-light", themeLight, true, false, true, true, false, false, false},
 		// Picking an unreachable machine: the dialog that asks the relay for a
 		// short-lived credential first.
-		{"fleet-ask-dark", themeDark, true, false, true, false, true, false},
-		{"fleet-ask-light", themeLight, true, false, true, false, true, false},
+		{"fleet-ask-dark", themeDark, true, false, true, false, true, false, false},
+		{"fleet-ask-light", themeLight, true, false, true, false, true, false, false},
 		// The other machine's shell on screen: its row carries the accent bar the
 		// picked machine carries, and this machine's shell is a tab behind it.
-		{"fleet-remote-dark", themeDark, true, false, true, true, false, true},
-		{"fleet-remote-light", themeLight, true, false, true, true, false, true},
+		{"fleet-remote-dark", themeDark, true, false, true, true, false, true, false},
+		{"fleet-remote-light", themeLight, true, false, true, true, false, true, false},
+		// That same shell driven by the machine it runs on: 只读 on the pane and on
+		// the row, and no light. A pane that lit up for a process on a machine the
+		// person here is not sitting at would be spending the light on a fact they
+		// have no stake in.
+		{"fleet-taken-remote-dark", themeDark, true, false, true, true, false, true, true},
+		{"fleet-taken-remote-light", themeLight, true, false, true, true, false, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := previewWindow(t, tc.mode, tc.shell)
@@ -101,6 +110,9 @@ func TestRenderShellPreviews(t *testing.T) {
 				}
 				w.tabs[2] = remote
 				w.order = append(w.order, 2)
+				if tc.remoteTaken {
+					remote.setLease(protocol.RoleViewer, "mac-studio", 1)
+				}
 				w.selectTab(remote)
 			}
 			tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, previewWidth, previewHeight)
@@ -188,6 +200,13 @@ func previewWindow(t *testing.T, mode string, shell bool) *window {
 	if !shell {
 		return w
 	}
+	// The shell in the picture is a live one this window is driving: a preview
+	// drawn from a shell that has ended, or from one nobody holds the lease of,
+	// would show the locked-down composer and the ended marks on every screen,
+	// which are the two states the window is least often in.
+	w.tabs[1].id = "s2"
+	w.tabs[1].alive = true
+	w.tabs[1].setLease(protocol.RoleController, "", 1)
 	w.tabs[1].term = fedTerminal(t, previewScreen())
 	return w
 }
@@ -224,18 +243,21 @@ func previewFleet(w *window) {
 }
 
 // previewScreen is what the pane in the pictures is showing: a session's worth
-// of a person's day, so the preview has something to render.
+// of a person's day, so the preview has something to render. The colours are the
+// terminal palette in palette.go — the violet the chrome is drawn in, the green
+// of a pass, the amber of a modified file — so the picture shows the sheet a
+// real shell gets rather than a second, prettier one.
 func previewScreen() string {
-	return "\x1b[38;2;164;75;240m~/carl-github/term-fleet\x1b[0m \x1b[38;2;138;147;168mon \x1b[0m\x1b[38;2;62;216;121mfeat/desktop-shell\x1b[0m\r\n" +
-		"\x1b[38;2;138;147;168m$\x1b[0m git status --short\r\n" +
-		" \x1b[38;2;240;168;60mM\x1b[0m cmd/tfdesktop/app.go\r\n" +
-		" \x1b[38;2;240;168;60mM\x1b[0m cmd/tfdesktop/nav.go\r\n" +
-		"\x1b[38;2;62;216;121m??\x1b[0m cmd/tfdesktop/palette.go\r\n" +
-		"\x1b[38;2;62;216;121m??\x1b[0m cmd/tfdesktop/shell.go\r\n" +
-		"\x1b[38;2;138;147;168m$\x1b[0m go test ./...\r\n" +
+	return "\x1b[38;2;182;166;255m~/carl-github/term-fleet\x1b[0m \x1b[38;2;139;144;162mon \x1b[0m\x1b[38;2;111;211;154mfeat/desktop-shell\x1b[0m\r\n" +
+		"\x1b[38;2;139;144;162m$\x1b[0m git status --short\r\n" +
+		" \x1b[38;2;230;192;125mM\x1b[0m cmd/tfdesktop/app.go\r\n" +
+		" \x1b[38;2;230;192;125mM\x1b[0m cmd/tfdesktop/nav.go\r\n" +
+		"\x1b[38;2;111;211;154m??\x1b[0m cmd/tfdesktop/palette.go\r\n" +
+		"\x1b[38;2;111;211;154m??\x1b[0m cmd/tfdesktop/shell.go\r\n" +
+		"\x1b[38;2;139;144;162m$\x1b[0m go test ./...\r\n" +
 		"ok  \tgithub.com/CarlOpenLab/term-fleet/cmd/tfdesktop\t0.6s\r\n" +
 		"ok  \tgithub.com/CarlOpenLab/term-fleet/internal/settings\t0.1s\r\n" +
-		"\x1b[38;2;138;147;168m$\x1b[0m "
+		"\x1b[38;2;139;144;162m$\x1b[0m "
 }
 
 // nopConn is a terminal's connection to nothing: reads block, so the shell it
