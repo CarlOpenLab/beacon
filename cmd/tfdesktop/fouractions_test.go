@@ -187,7 +187,12 @@ func TestEndingAShellLeavesTheTabToReadIt(t *testing.T) {
 	drainFor(t, w, func() bool { return tb.held() })
 	w.killSessionOn(machineLocal, tb.id)
 	settleTabs(t, w, 1)
-	drainFor(t, w, func() bool { return liveCount(f) == 0 })
+	// Both, and in one wait. The hub's own count drops the moment the process
+	// exits, while the exit frame still has to travel to the window and be
+	// drained; stopping at the count alone reads the tab before its word has
+	// arrived, which is how this test passed on two platforms and failed on the
+	// third.
+	drainFor(t, w, func() bool { return liveCount(f) == 0 && !tb.alive })
 
 	if got := liveCount(f); got != 0 {
 		t.Fatalf("结束 left %d live shells, want the process gone", got)
