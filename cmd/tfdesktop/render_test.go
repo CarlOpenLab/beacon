@@ -168,12 +168,10 @@ func TestRenderSettingsPreviews(t *testing.T) {
 		{"settings-dark-relay", themeDark, paneRelay, "远程"},
 		{"settings-dark-server", themeDark, paneServer, "服务"},
 		{"settings-dark-updates", themeDark, paneUpdates, "更新"},
-		{"settings-dark-appearance", themeDark, paneAppearance, "外观"},
 		{"settings-light-terminal", themeLight, paneTerminal, "终端"},
 		{"settings-light-relay", themeLight, paneRelay, "远程"},
 		{"settings-light-server", themeLight, paneServer, "服务"},
 		{"settings-light-updates", themeLight, paneUpdates, "更新"},
-		{"settings-light-appearance", themeLight, paneAppearance, "外观"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := settings.Open(t.TempDir())
@@ -182,7 +180,7 @@ func TestRenderSettingsPreviews(t *testing.T) {
 			}
 			sw := newSettingsWindow(&window{}, store, newTestFleet(t))
 			sw.pane = tc.pane
-			tt := ui.NewTester(sw.view, 540, 440)
+			tt := ui.NewTester(sw.view, 720, 560)
 			out := filepath.Join(dir, tc.name+".png")
 			file, err := os.Create(out)
 			if err != nil {

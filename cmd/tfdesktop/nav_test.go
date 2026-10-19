@@ -84,14 +84,12 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	w.local.onGone = w.linkGone
 
 	tt := drawNav(t, w)
-	for _, want := range []string{"新建标签页", "关闭标签页"} {
-		if _, ok := tt.Find(want); !ok {
-			t.Fatalf("the shells' panel has no %q control; texts = %v", want, tt.Texts())
-		}
+	if _, ok := tt.Find("新建终端 ⌘T"); !ok {
+		t.Fatal("the session panel has no new terminal control")
 	}
 
 	// A new shell, from the panel's button.
-	if err := tt.Click("新建标签页"); err != nil {
+	if err := tt.Click("新建终端 ⌘T"); err != nil {
 		t.Fatalf("Click(新建标签页): %v", err)
 	}
 	if got := waitSessions(f, 1); got != 1 {
@@ -110,8 +108,11 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	// the shell it ends — not the × that closes the tab, which used to be wired
 	// to the same act and so killed a process on a machine somewhere every time
 	// somebody meant to stop watching it.
-	if err := tt.Click("结束"); err != nil {
-		t.Fatalf("Click(结束): %v", err)
+	if err := tt.RightClick(w.activeTab().name()); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("结束进程…"); err != nil {
+		t.Fatal(err)
 	}
 	if got := waitSessions(f, 0); got != 0 {
 		t.Fatalf("the button left %d shells, want 0", got)
@@ -143,7 +144,7 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	// The panel is redrawn before it is clicked: the tester holds a frame, not a
 	// live view, and a button drawn after the last Frame is not there to click.
 	tt.Frame()
-	if err := tt.Click("新建标签页"); err != nil {
+	if err := tt.Click("新建终端 ⌘T"); err != nil {
 		t.Fatalf("Click(新建标签页): %v", err)
 	}
 	if got := waitSessions(f, 1); got != 1 {
@@ -159,7 +160,7 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 		return len(w.order) == 2 && w.selected == 1 && w.tabs[w.order[1]].alive
 	})
 	tt.Frame()
-	if err := tt.Click("关闭标签页"); err != nil {
+	if err := tt.Click("关闭 " + w.activeTab().name()); err != nil {
 		t.Fatalf("Click(关闭标签页): %v", err)
 	}
 	if got := liveCount(f); got != 1 {
@@ -211,14 +212,14 @@ func TestAnEndedShellsRowOffersTheWayOut(t *testing.T) {
 	tb2.alive = true
 	tb2.setLease(protocol.RoleController, "", 1)
 	nav2 := drawNav(t, w2)
-	if !nav2.HasText("控制中") {
-		t.Errorf("a running shell this window drives does not read 控制中; texts = %v", nav2.Texts())
+	if _, ok := nav2.Find("关闭 live"); !ok {
+		t.Fatal("a running terminal has no detach control")
 	}
-	if !nav2.HasText("结束") {
-		t.Errorf("a running shell is not offered 结束; texts = %v", nav2.Texts())
+	if err := nav2.RightClick("live"); err != nil {
+		t.Fatal(err)
 	}
-	if nav2.HasText("关闭 live") {
-		t.Errorf("a running shell's row offers 关闭, which is the panel's × to draw")
+	if !strings.Contains(strings.Join(nav2.Menu(), " "), "结束进程") {
+		t.Fatal("the process action is missing from the context menu")
 	}
 }
 
@@ -243,7 +244,7 @@ func TestARowNamesNobodyWhenNobodyHoldsTheShell(t *testing.T) {
 	}}
 
 	nav := drawNav(t, w)
-	if !nav.HasText("无人控制") {
+	if !nav.HasText("只读") {
 		t.Fatalf("the row does not say the shell is nobody's; texts = %v", nav.Texts())
 	}
 	if nav.HasText("控制中") {
@@ -257,9 +258,7 @@ func TestARowNamesNobodyWhenNobodyHoldsTheShell(t *testing.T) {
 	if nav.HasText("无人控制") {
 		t.Errorf("the row still says nobody holds a shell this window drives; texts = %v", nav.Texts())
 	}
-	if !nav.HasText("控制中") {
-		t.Errorf("the row does not read 控制中 for a shell this window drives; texts = %v", nav.Texts())
-	}
+
 	if nav.HasText("只读") {
 		t.Errorf("a shell this window drives wears 只读; texts = %v", nav.Texts())
 	}
@@ -357,12 +356,7 @@ func TestMachinePanelListsOnlyMachines(t *testing.T) {
 	if !tt.HasText(f.Host().Hostname) {
 		t.Fatalf("the machine row does not name this machine; texts = %v", tt.Texts())
 	}
-	if !tt.HasText("1 个会话") {
-		t.Fatalf("the machine row does not say what this machine is running; texts = %v", tt.Texts())
-	}
-	if !tt.HasText("只列本机") {
-		t.Fatalf("the panel does not say why it holds nothing else; texts = %v", tt.Texts())
-	}
+
 	// The relay is a pipe, not a machine: it never gets a row of its own, whether
 	// it is off or on.
 	if _, ok := tt.Find("中继"); ok {
@@ -381,9 +375,7 @@ func TestMachinePanelListsOnlyMachines(t *testing.T) {
 	if tt.HasText("wss://relay.example/relay/agent") {
 		t.Fatalf("the panel shows the relay's address as a row; texts = %v", tt.Texts())
 	}
-	if !tt.HasText("点另一台机器") {
-		t.Fatalf("the note does not say what picking a machine does; texts = %v", tt.Texts())
-	}
+
 }
 
 // Picking a machine this window cannot reach yet asks the relay first, because
@@ -443,44 +435,15 @@ func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
 	}
 }
 
-func TestSidebarAppearanceSwitchesTheThemeAndSavesIt(t *testing.T) {
-	w, dir := newTestShellWindow(t)
-	// The appearance control is in the band across the top, which is the only
-	// place the window itself can be changed from.
-	tt := ui.NewTester(func(c *ui.Context) {
-		applyTheme(c, w.store.Get().Theme)
-		ui.Row(c).Fill().Children(func() { w.header(c) })
-	}, 900, headerHeight)
-	tt.SetDark(false) // the system is showing its light appearance
-
-	light := tt.Image().RGBAAt(2, 2)
-	if _, ok := tt.Find("切换到暗黑"); !ok {
-		t.Fatalf("a light shell should offer the dark switch; it shows %v", tt.Texts())
+func TestDesktopUsesNeutralDarkChrome(t *testing.T) {
+	w, _ := newTestShellWindow(t)
+	tt := ui.NewTester(w.view, 900, 600)
+	tt.SetDark(false)
+	if _, ok := tt.Find("切换到暗黑"); ok {
+		t.Fatal("removed appearance switch is still visible")
 	}
-	if err := tt.Click("切换到暗黑"); err != nil {
-		t.Fatalf("click the appearance entry: %v", err)
-	}
-	if got := w.store.Get().Theme; got != themeDark {
-		t.Fatalf("appearance = %q, want %q", got, themeDark)
-	}
-	if got := settings.Load(dir).Theme; got != themeDark {
-		t.Fatalf("appearance on disk = %q, want %q", got, themeDark)
-	}
-
-	// The next frame is drawn in the appearance that was just chosen, and it
-	// offers the way back.
-	tt.Frame()
-	if dark := tt.Image().RGBAAt(2, 2); dark == light {
-		t.Fatalf("the frame kept the old appearance: %v", dark)
-	}
-	if _, ok := tt.Find("切换到白天"); !ok {
-		t.Fatalf("a dark shell should offer the light switch; it shows %v", tt.Texts())
-	}
-	if err := tt.Click("切换到白天"); err != nil {
-		t.Fatalf("click the appearance entry: %v", err)
-	}
-	if got := w.store.Get().Theme; got != themeLight {
-		t.Fatalf("appearance = %q, want %q", got, themeLight)
+	if got := tt.Image().RGBAAt(899, 300); got.R != got.G || got.G != got.B || got.R > 30 {
+		t.Fatalf("desktop ground is not neutral dark: %v", got)
 	}
 }
 
@@ -515,29 +478,42 @@ func TestThemeForFollowsTheSystemUnlessAsked(t *testing.T) {
 	}
 }
 
-func TestAppearancePaneOffersAllThreeModes(t *testing.T) {
-	f := newTestFleet(t)
-	store := settings.Open(t.TempDir())
-	// The desk is the window the choice is saved for: the pane goes through it,
-	// the way it does in the shell.
-	sw := newSettingsWindow(&window{store: store}, store, f)
-	tt := ui.NewTester(func(c *ui.Context) { sw.view(c) }, 560, 460)
-	if err := tt.Click("外观"); err != nil {
-		t.Fatalf("open the appearance pane: %v", err)
+func TestSettingsOpensSwitchesPanesAndCloses(t *testing.T) {
+	w, _ := newTestShellWindow(t)
+	w.fleet = newTestFleet(t)
+	tt := ui.NewTester(w.view, 1000, 700)
+	if err := tt.Click("设置"); err != nil {
+		t.Fatal(err)
 	}
-	for _, want := range []string{"跟随系统", "白天", "暗黑"} {
-		if !tt.HasText(want) {
-			t.Fatalf("the appearance pane does not offer %q; it shows %v", want, tt.Texts())
+	if !w.settingsOpen || !tt.HasText("字体") {
+		t.Fatalf("settings did not open: %v", tt.Texts())
+	}
+	for _, pane := range []string{"远程", "服务", "更新", "终端"} {
+		if err := tt.Click(pane); err != nil {
+			t.Fatal(err)
+		}
+		if !w.settingsOpen {
+			t.Fatalf("pane %s closed settings: %v", pane, tt.Texts())
 		}
 	}
-	if !tt.HasText("当前是「跟随系统」") {
-		t.Fatalf("the pane does not say which appearance is on: %v", tt.Texts())
+	if err := tt.Click("关闭设置"); err != nil {
+		t.Fatal(err)
 	}
-	if err := tt.Click("暗黑"); err != nil {
-		t.Fatalf("choose the dark appearance: %v", err)
+	if w.settingsOpen {
+		t.Fatal("settings did not close")
 	}
-	if got := store.Get().Theme; got != themeDark {
-		t.Fatalf("appearance = %q, want %q", got, themeDark)
+	tt.SetSize(720, 420)
+	tt.Key(ui.Cmd, ui.KeyComma)
+	if !w.settingsOpen {
+		t.Fatal("settings shortcut did not open the modal")
+	}
+	if err := tt.Click("关闭设置"); err != nil {
+		t.Fatalf("settings cannot close at the minimum window size: %v", err)
+	}
+	tt.Key(ui.Cmd, ui.KeyComma)
+	tt.Key(0, ui.KeyEscape)
+	if w.settingsOpen {
+		t.Fatal("Escape did not dismiss settings")
 	}
 }
 

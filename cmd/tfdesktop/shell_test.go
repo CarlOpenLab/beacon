@@ -13,52 +13,21 @@ import (
 
 // The header is the only way to change the window itself, so both of its
 // controls have to be on it and both have to work.
-func TestTheHeaderSwitchesTheAppearanceAndOpensSettings(t *testing.T) {
-	w, _ := newTestShellWindow(t)
-	tt := ui.NewTester(func(c *ui.Context) {
-		mode := w.store.Get().Theme
-		applyTheme(c, mode)
-		w.header(c)
-	}, 900, headerHeight)
-
-	if _, ok := tt.Find("切换到暗黑"); !ok {
-		t.Fatalf("a light shell should offer the dark switch")
-	}
-	tt.Click("切换到暗黑")
-	tt.Frame()
-	if got := w.store.Get().Theme; got != themeDark {
-		t.Fatalf("the header wrote %q to the settings, want %q", got, themeDark)
-	}
-	if _, ok := tt.Find("切换到白天"); !ok {
-		t.Fatalf("a dark shell should offer the light switch")
-	}
-	if _, ok := tt.Find("设置"); !ok {
-		t.Fatalf("the header has no settings entry")
+func TestTheHeaderNamesTheActiveTerminalAndOffersNewTerminal(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.tabs[1].alive = true
+	tt := ui.NewTester(w.view, 900, 600)
+	if !tt.HasText("本机 / one") {
+		t.Fatalf("missing terminal title: %v", tt.Texts())
 	}
 	if _, ok := tt.Find("新建终端"); !ok {
-		t.Fatalf("the header has no way to open a shell; texts = %v", tt.Texts())
+		t.Fatal("missing new terminal action")
 	}
-}
-
-// The band names the product rather than the shell on screen, and it is the only
-// place the window itself can be changed from. The shell on screen is named by
-// the pill that carries it, the row that lists it and the line along the bottom;
-// the band is for the one sentence the window has to say, and for the controls
-// that are about the window.
-func TestTheHeaderNamesTheProductAndCarriesTheWindowControls(t *testing.T) {
-	w, _ := newTestShellWindow(t, "one")
-	tt := ui.NewTester(func(c *ui.Context) {
-		applyTheme(c, w.store.Get().Theme)
-		w.header(c)
-	}, 900, headerHeight)
-
-	if !tt.HasText("term-fleet") {
-		t.Fatalf("the band does not name the product; it shows %v", tt.Texts())
+	if _, ok := tt.Find("设置"); !ok {
+		t.Fatal("missing settings action")
 	}
-	for _, want := range []string{"会话检视", "设置", "新建终端"} {
-		if _, ok := tt.Find(want); !ok {
-			t.Fatalf("the band has no %q; texts = %v", want, tt.Texts())
-		}
+	if tt.HasText("会话检视") {
+		t.Fatal("removed inspector is still visible")
 	}
 }
 
@@ -113,56 +82,18 @@ func TestTheMarkIsEmbedded(t *testing.T) {
 // off the window ground, and a terminal that is part of the window rather than a
 // program that wandered into it.
 func TestTheShellBringsItsOwnPalette(t *testing.T) {
-	dark := themeFor(themeDark)
-	if dark == nil || !dark.Dark {
-		t.Fatal("the set dark appearance is not dark")
+	dark := darkTheme()
+	if !dark.Dark || dark.Background != ui.Hex("#111111") {
+		t.Fatal("wrong desktop ground")
 	}
-	if got, want := dark.Background, ui.Hex("#101014"); got != want {
-		t.Fatalf("the dark window ground is %v, want %v", got, want)
+	if dark.Accent != ui.Hex("#d0d0d0") {
+		t.Fatal("chrome accent is not neutral")
 	}
-	if got, want := dark.Accent, ui.Hex("#a48bfa"); got != want {
-		t.Fatalf("the dark accent is %v, want the design's violet %v", got, want)
+	term := terminalTheme(true)
+	if term.Background != terminalGround || term.Cursor != ui.Hex("#dedede") {
+		t.Fatal("terminal does not match desktop")
 	}
-	lightTheme := themeFor(themeLight)
-	if lightTheme == nil || lightTheme.Dark {
-		t.Fatal("the set light appearance is not light")
-	}
-	if got, want := lightTheme.Background, ui.Hex("#f7f7f8"); got != want {
-		t.Fatalf("the light window ground is %v, want %v", got, want)
-	}
-	if got, want := lightTheme.Accent, ui.Hex("#5f45e6"); got != want {
-		t.Fatalf("the light accent is %v, want %v", got, want)
-	}
-	// The light appearance is not the dark one inverted: every surface has to be
-	// its own answer, or the window ends up with a panel it cannot separate from
-	// its ground.
-	for _, pair := range [][2]ui.Color{
-		{lightTheme.Background, lightTheme.Surface},
-		{lightTheme.Background, lightTheme.SurfaceHover},
-		{lightTheme.Surface, lightTheme.SurfaceHover},
-	} {
-		if pair[0] == pair[1] {
-			t.Fatalf("the light appearance draws %v and %v the same", pair[0], pair[1])
-		}
-	}
-	if got := shellColorsFor(dark).side; got == dark.Background {
-		t.Fatal("the sidebar sits on the window ground, so it is invisible")
-	}
-	if got := shellColorsFor(lightTheme).side; got == lightTheme.Background {
-		t.Fatal("the light sidebar sits on the window ground, so it is invisible")
-	}
-	// The terminal keeps its own dark ground in both appearances: the ANSI 16
-	// are designed for a dark ground, and inverting them makes success and
-	// failure read wrong. The window's chrome flips; the sheet does not.
-	if got, want := terminalTheme(true).Background, ui.Hex("#0d0d12"); got != want {
-		t.Fatalf("the dark pane ground is %v, want %v", got, want)
-	}
-	if got := terminalTheme(false).Background; got != terminalTheme(true).Background {
-		t.Fatal("the light appearance gives the terminal a different ground")
-	}
-	// The accent is the one saturated colour in the chrome, and the terminal
-	// shares it: a shell that wandered in would have brought its own.
-	if got, want := terminalTheme(true).Cursor, ui.Hex("#b6a6ff"); got != want {
-		t.Fatalf("the terminal cursor is %v, want the chrome's own accent %v", got, want)
+	if term.Palette[1] == term.Palette[2] || term.Palette[2] == term.Palette[4] {
+		t.Fatal("ANSI colors lost their distinction")
 	}
 }

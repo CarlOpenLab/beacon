@@ -37,6 +37,30 @@ func TestASessionListNeverOpensATabForAnEndedShell(t *testing.T) {
 	}
 }
 
+func TestLocalRosterKeepsRemoteTabs(t *testing.T) {
+	w, _ := newTestShellWindow(t, "remote")
+	w.tabs[1].machine = "other-machine"
+	w.reconcile(nil)
+	if len(w.order) != 1 || w.tabs[1] == nil {
+		t.Fatal("the local roster removed a remote terminal")
+	}
+}
+
+func TestClosedRemoteTabDisappearsFromTheSessionList(t *testing.T) {
+	w, _ := newTestShellWindow(t, "remote")
+	tb := w.tabs[1]
+	tb.machine = "other-machine"
+	w.machineSel = tb.machine
+	w.remoteSessions = map[string][]protocol.Summary{
+		tb.machine: {{SessionID: tb.id, Title: "remote", Alive: true}},
+	}
+	w.removeTab(tb)
+	w.reconcile(nil)
+	if entries := w.sessionEntries(); len(entries) != 0 {
+		t.Fatal("the closed remote terminal is still listed")
+	}
+}
+
 func TestProgramName(t *testing.T) {
 	cases := map[string]string{
 		"/bin/zsh":                    "zsh",

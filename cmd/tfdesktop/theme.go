@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
@@ -68,14 +67,8 @@ func themeFor(mode string) *ui.Theme {
 	return nil
 }
 
-// applyTheme puts the saved appearance on the frame. Every window asks for it
-// on every frame: the ui reads the theme per frame, so this is a decision and
-// not a one-off setting.
-func applyTheme(c *ui.Context, mode string) {
-	if theme := themeFor(mode); theme != nil {
-		c.SetTheme(theme)
-	}
-}
+// Desktop chrome stays dark regardless of older saved appearance preferences.
+func applyTheme(c *ui.Context, _ string) { c.SetTheme(darkTheme()) }
 
 // flipTheme is what the rail's appearance entry does: it names the mode a click
 // switches to. From the system default it picks the opposite of what is on
@@ -115,20 +108,5 @@ func (w *window) setTheme(mode string) {
 	w.invalidateSettings()
 }
 
-// windowGround is the colour a window is filled with until its first frame
-// paints. It has to agree with the appearance that frame will ask for: a dark
-// flash in front of a light window is the one piece of the dark theme a
-// light-mode user sees. The system's own answer is read from the app, which is
-// running by the time any window is opened.
-func windowGround(mode string) string {
-	switch normalizeTheme(mode) {
-	case themeLight:
-		return "#f7f7f8"
-	case themeDark:
-		return "#101014"
-	}
-	if mygo.Theme.IsDark() {
-		return "#101014"
-	}
-	return "#f7f7f8"
-}
+// Match the first native frame to the desktop ground.
+func windowGround(_ string) string { return "#111111" }

@@ -4,6 +4,35 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.13
+
+**Desktop: a quieter terminal, with its colors intact — 桌面终端界面重构**
+
+- **Neutral black and gray chrome, colorful terminal output.** Remove the violet
+  theme accent while preserving the terminal's ANSI palette and TrueColor output.
+  The embedded application logo remains visible in the sidebar.
+  — 黑灰界面保留彩色终端输出，侧栏显示应用 Logo。
+- **More room for the terminal.** Remove the duplicate tab strip, command composer,
+  history strip and inspector entry. Type directly in the native Mygo terminal;
+  switch sessions in the compact sidebar or with keyboard shortcuts.
+  — 移除重复导航和底部命令输入栏，直接在终端内输入。
+- **Compact navigation.** Session and machine rows use a single line; long labels
+  truncate, and the header and status line stay on one line. `Cmd/Ctrl+B` toggles
+  the sidebar and `Cmd/Ctrl+W` closes the current tab.
+  — 压缩会话、机器和顶部布局，支持隐藏侧栏及关闭当前标签。
+- **Working settings dialog.** Sidebar settings and `Cmd/Ctrl+,` open the same
+  Mygo dialog, with Terminal, Remote, Service and Updates sections. Font controls,
+  relay credentials and CA, service and control switches, and updates remain
+  available. The dialog fits the minimum desktop window size.
+  — 设置整合为四分类弹窗，保留字体、远程连接、证书、服务及更新功能。
+- **Closed tabs stay closed.** Closing a tab removes its session row without
+  ending the process. Local roster refreshes do not reopen dismissed tabs or
+  remove remote tabs. Takeover and release behavior is preserved; exited sessions
+  keep their final output until explicitly closed.
+  — 关闭后不再显示或被刷新重新打开，保留接管、释放及退出前最后输出。
+
+Browser UI remains unchanged in this release. — 本版本仅重构桌面端界面。
+
 ## 0.4.12
 
 **The lease's edges: this machine's own shell, a shell nobody holds, a shell that is gone**

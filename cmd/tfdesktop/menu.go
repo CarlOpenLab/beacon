@@ -37,7 +37,13 @@ func appMenu(w *window) *mygo.Menu {
 			{
 				Label:       "设置…",
 				Accelerator: "CmdOrCtrl+,",
-				Click:       func(*mygo.MenuItem, *mygo.Window) { go w.openSettings() },
+				Click: func(*mygo.MenuItem, *mygo.Window) {
+					if w.win != nil {
+						w.win.Update(w.openSettings)
+					} else {
+						w.openSettings()
+					}
+				},
 			},
 			mygo.Separator(),
 			{Role: mygo.RoleQuit},

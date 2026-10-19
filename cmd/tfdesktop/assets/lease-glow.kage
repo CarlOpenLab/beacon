@@ -1,12 +1,7 @@
 // The light along the edge of a shell another client is driving.
 //
-// One family of colours, not six. The accent is the only saturated colour in
-// this window and it means "chosen, or in control" everywhere else it appears,
-// so the glow is that accent and its two neighbours drifting slowly around the
-// edge. The cut this replaces ran the whole spectrum — violet, pink, coral,
-// peach — which was a second and louder vocabulary for the one fact the pane is
-// already stating in words, and it made the terminal itself look like the thing
-// that had changed.
+// Muted amber indicates another client is driving this machine's shell.
+// Terminal program colors are independent of this state indicator.
 //
 // It is a glow and not a border: no line anywhere in it, a soft band whose light
 // falls off on both sides of the pane's edge, so the pane reads as lit from
@@ -23,12 +18,12 @@
 func palette(x float) vec3 {
 	x = fract(x) * 3
 	if x < 1 {
-		return mix(vec3(0.643, 0.545, 0.980), vec3(0.788, 0.737, 1), x)
+		return mix(vec3(0.72, 0.61, 0.40), vec3(0.82, 0.74, 0.58), x)
 	}
 	if x < 2 {
-		return mix(vec3(0.788, 0.737, 1), vec3(0.561, 0.459, 0.949), x-1)
+		return mix(vec3(0.82, 0.74, 0.58), vec3(0.60, 0.52, 0.36), x-1)
 	}
-	return mix(vec3(0.561, 0.459, 0.949), vec3(0.643, 0.545, 0.980), x-2)
+	return mix(vec3(0.60, 0.52, 0.36), vec3(0.72, 0.61, 0.40), x-2)
 }
 
 // roundRect returns the distance from p, from the rectangle's middle, to
@@ -67,7 +62,7 @@ func Fragment(dst vec4, pos vec2) vec4 {
 		inner = exp(d/5.5)*0.46
 	}
 	outer := 0.0
-	if d >= 0 {
+	if d >= 0 && Pad > 0 {
 		outer = (exp(-d/9)*0.46 + exp(-d/26)*0.26) * smoothstep(Pad, Pad*0.35, d)
 	}
 

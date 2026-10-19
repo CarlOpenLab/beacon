@@ -51,7 +51,6 @@ const (
 	paneRelay
 	paneServer
 	paneUpdates
-	paneAppearance
 )
 
 // termFont turns stored settings into the terminal plugin's font.
@@ -91,17 +90,7 @@ type settingsWindow struct {
 	store *settings.Store
 	fleet *fleet
 
-	// win is the window this pane is drawn in. Async work (fetching a
-	// certificate, opening the file chooser) finishes off the UI thread and
-	// reports back through it.
-	win *mygo.Window
-
 	pane int
-
-	// themeSel is the appearance pane's segmented control; it is seeded from the
-	// saved preference on every frame, and the control writes a new index here
-	// while the frame it was clicked in is still being drawn.
-	themeSel int
 
 	family  string
 	size    float64
@@ -278,8 +267,11 @@ func (s *settingsWindow) view(c *ui.Context) {
 			if dirty && ui.PrimaryButton(c, "应用").Clicked() {
 				s.commit()
 			}
+			if iconButton(c, iconClose, "关闭设置", 28).Clicked() && s.desk != nil {
+				s.desk.settingsOpen = false
+			}
 		})
-		paneTabs(c, &s.pane, "终端", "远程", "服务", "更新", "外观")
+		paneTabs(c, &s.pane, "终端", "远程", "服务", "更新")
 		// The pane is the whole window, so it scrolls rather than clips: a short
 		// window must not hide the 接入 switch under the fold.
 		ui.Scroll(c).Fill().Children(func() {
@@ -291,8 +283,6 @@ func (s *settingsWindow) view(c *ui.Context) {
 					s.relayPane(c)
 				case paneServer:
 					s.serverPane(c)
-				case paneAppearance:
-					s.appearancePane(c)
 				default:
 					s.updatesPane(c)
 				}
@@ -536,8 +526,12 @@ func (s *settingsWindow) pinCA(path string) {
 // native and blocks until dismissed, so it runs off the UI thread.
 func (s *settingsWindow) pickCA() {
 	go func() {
+		var parent *mygo.Window
+		if s.desk != nil {
+			parent = s.desk.win
+		}
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Parent: s.win,
+			Parent: parent,
 			Title:  "选择 CA 证书（PEM）",
 			Filters: []mygo.FileFilter{
 				{Name: "证书文件", Extensions: []string{"pem", "crt", "cer"}},
@@ -553,11 +547,11 @@ func (s *settingsWindow) pickCA() {
 // set runs fn on the UI thread and redraws, so async work can put its result
 // on screen.
 func (s *settingsWindow) set(fn func()) {
-	if s.win == nil {
-		fn()
+	if s.desk != nil && s.desk.win != nil {
+		s.desk.win.Update(fn)
 		return
 	}
-	s.win.Update(fn)
+	fn()
 }
 
 // setNote replaces the line under the CA field, without touching the saved
@@ -686,24 +680,4 @@ func (s *settingsWindow) restoreDefaults() {
 	s.server = true
 	s.control = true
 	s.commit()
-}
-
-// appearancePane is the shell's own look, spelled out as the three modes the
-// rail's appearance entry flips through. Naming them here is what makes
-// "follow the system" reachable again once the rail has settled on an explicit
-// mode; the choice applies as soon as it is made, like the switch on the
-// service pane, so there is nothing to save.
-func (s *settingsWindow) appearancePane(c *ui.Context) {
-	t := c.Theme()
-	mode := s.store.Get().Theme
-	ui.Form(c, func() {
-		ui.Field(c, "界面外观", func() {
-			s.themeSel = themeIndex(mode)
-			if ui.Segmented(c, &s.themeSel, themeChoices[0].label, themeChoices[1].label, themeChoices[2].label).Changed() {
-				s.desk.setTheme(themeChoices[s.themeSel].id)
-			}
-		})
-	})
-	ui.Text(c, "当前是「"+themeName(mode)+"」。跟随系统会跟着系统的浅色/深色设置走；另外两项是固定选择，切换立即生效。").
-		FontSize(11).TextColor(t.TextMuted)
 }

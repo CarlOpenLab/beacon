@@ -164,6 +164,10 @@ func TestClosingATabDoesNotEndTheShell(t *testing.T) {
 	if len(w.order) != 0 {
 		t.Fatalf("closing the tab left %d tabs, want none", len(w.order))
 	}
+	w.reconcile(f.Hub().Sessions())
+	if len(w.order) != 0 {
+		t.Fatal("a roster refresh reopened the dismissed terminal")
+	}
 }
 
 // 结束 kills the process and leaves the tab: the tab is where the shell's last

@@ -5,27 +5,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// The window's palette is the one the browser client is drawn with, so a shell
-// on this machine and a shell in a tab look like the same product.
-//
-// The design is "Editor Native": the browser client's stylesheet (web/src/style.css)
-// holds it as CSS custom properties, and this file is the same numbers on the
-// ui's terms. What it says, in one place:
-//
-//   - Two grounds: a window that is nearly black (or, in the light appearance,
-//     nearly white), and panels — header, tabs, composer, status — one step off
-//     it, with the sidebar a step below. Hierarchy is that difference and a
-//     hairline, never a heavy border.
-//   - One accent — a violet — is the only saturated colour in the chrome, so it
-//     always means "the thing that is chosen or in control".
-//   - State has its own colours and they mean the same thing everywhere: green
-//     for live, amber for read-only, red for gone, grey for exited.
-//   - The terminal keeps a dark sheet in both appearances: the ANSI sixteen are
-//     drawn for a dark ground, and inverting them makes success and failure read
-//     wrong. Only the chrome around the sheet flips.
-//
-// The numbers below are the CSS tokens, one for one. When the browser client's
-// tokens change, these change with them.
+// Neutral desktop chrome; status and terminal output keep their own colors.
 
 // chromeMetrics are the layout numbers the two clients share. They are the CSS
 // custom properties of the same names in web/src/style.css.
@@ -61,25 +41,25 @@ const (
 func darkTheme() *ui.Theme {
 	return &ui.Theme{
 		Dark:           true,
-		Background:     ui.Hex("#101014"),
-		Surface:        ui.Hex("#16161c"),
-		SurfaceHover:   ui.Hex("#1d1d24"),
-		SurfacePressed: ui.Hex("#23232c"),
-		Border:         ui.Hex("#27272f"),
-		Text:           ui.Hex("#e9e9f0"),
-		TextMuted:      ui.Hex("#b2b2c0"),
-		Accent:         ui.Hex("#a48bfa"),
-		AccentHover:    ui.Hex("#8f75f2"),
-		AccentPressed:  ui.Hex("#8f75f2"),
-		AccentText:     ui.Hex("#16102b"),
-		Danger:         ui.Hex("#f2707a"),
-		Warning:        ui.Hex("#dfa73f"),
-		Success:        ui.Hex("#4cc38a"),
-		Selection:      ui.RGBA(0xa4, 0x8b, 0xfa, 0.32),
-		Focus:          ui.Hex("#a48bfa"),
-		Inverse:        ui.Hex("#e9e9f0"),
-		InverseText:    ui.Hex("#101014"),
-		Scrollbar:      ui.Hex("#27272f"),
+		Background:     ui.Hex("#111111"),
+		Surface:        ui.Hex("#191919"),
+		SurfaceHover:   ui.Hex("#222222"),
+		SurfacePressed: ui.Hex("#2b2b2b"),
+		Border:         ui.Hex("#303030"),
+		Text:           ui.Hex("#dedede"),
+		TextMuted:      ui.Hex("#a0a0a0"),
+		Accent:         ui.Hex("#d0d0d0"),
+		AccentHover:    ui.Hex("#e0e0e0"),
+		AccentPressed:  ui.Hex("#e0e0e0"),
+		AccentText:     ui.Hex("#111111"),
+		Danger:         ui.Hex("#cf7773"),
+		Warning:        ui.Hex("#d3aa62"),
+		Success:        ui.Hex("#72b67b"),
+		Selection:      ui.RGBA(153, 153, 153, 0.32),
+		Focus:          ui.Hex("#d0d0d0"),
+		Inverse:        ui.Hex("#dedede"),
+		InverseText:    ui.Hex("#111111"),
+		Scrollbar:      ui.Hex("#303030"),
 		ScrollbarWidth: 8,
 		Radius:         radius,
 		Spacing:        spacing,
@@ -93,25 +73,25 @@ func darkTheme() *ui.Theme {
 // state colours, which are darker because they have to be read on white.
 func lightTheme() *ui.Theme {
 	return &ui.Theme{
-		Background:     ui.Hex("#f7f7f8"),
+		Background:     ui.Hex("#f0f0f0"),
 		Surface:        ui.Hex("#ffffff"),
-		SurfaceHover:   ui.Hex("#eeeef2"),
-		SurfacePressed: ui.Hex("#e8e8ee"),
-		Border:         ui.Hex("#dcdce3"),
-		Text:           ui.Hex("#1b1b22"),
-		TextMuted:      ui.Hex("#4c4c58"),
-		Accent:         ui.Hex("#5f45e6"),
-		AccentHover:    ui.Hex("#4f37d4"),
-		AccentPressed:  ui.Hex("#4f37d4"),
+		SurfaceHover:   ui.Hex("#e6e6e6"),
+		SurfacePressed: ui.Hex("#dddddd"),
+		Border:         ui.Hex("#d0d0d0"),
+		Text:           ui.Hex("#222222"),
+		TextMuted:      ui.Hex("#666666"),
+		Accent:         ui.Hex("#606060"),
+		AccentHover:    ui.Hex("#4a4a4a"),
+		AccentPressed:  ui.Hex("#4a4a4a"),
 		AccentText:     ui.Hex("#ffffff"),
-		Danger:         ui.Hex("#c2394a"),
-		Warning:        ui.Hex("#8f6410"),
-		Success:        ui.Hex("#177d4b"),
-		Selection:      ui.RGBA(0x5f, 0x45, 0xe6, 0.22),
-		Focus:          ui.Hex("#5f45e6"),
-		Inverse:        ui.Hex("#1b1b22"),
-		InverseText:    ui.Hex("#f7f7f8"),
-		Scrollbar:      ui.Hex("#dcdce3"),
+		Danger:         ui.Hex("#ad4545"),
+		Warning:        ui.Hex("#8d661f"),
+		Success:        ui.Hex("#35744a"),
+		Selection:      ui.RGBA(102, 102, 102, 0.22),
+		Focus:          ui.Hex("#606060"),
+		Inverse:        ui.Hex("#222222"),
+		InverseText:    ui.Hex("#f0f0f0"),
+		Scrollbar:      ui.Hex("#d0d0d0"),
 		ScrollbarWidth: 8,
 		Radius:         radius,
 		Spacing:        spacing,
@@ -140,47 +120,38 @@ type shellColors struct {
 func shellColorsFor(t *ui.Theme) shellColors {
 	if t.Dark {
 		return shellColors{
-			pane:     ui.Hex("#16161c"),
-			side:     ui.Hex("#0b0b0e"),
-			field:    ui.Hex("#1e1e24"),
-			tabOn:    ui.Hex("#23232c"),
-			line:     ui.Hex("#27272f"),
-			hairline: ui.Hex("#1c1c22"),
-			chosen:   ui.RGBA(0xa4, 0x8b, 0xfa, 0.10),
-			icon:     ui.Hex("#b2b2c0"),
-			quiet:    ui.Hex("#8c8c9c"),
+			pane:     ui.Hex("#191919"),
+			side:     ui.Hex("#141414"),
+			field:    ui.Hex("#222222"),
+			tabOn:    ui.Hex("#2b2b2b"),
+			line:     ui.Hex("#303030"),
+			hairline: ui.Hex("#292929"),
+			chosen:   ui.Hex("#292929"),
+			icon:     ui.Hex("#a0a0a0"),
+			quiet:    ui.Hex("#777777"),
 		}
 	}
 	return shellColors{
 		pane:     ui.Hex("#ffffff"),
-		side:     ui.Hex("#eeeef2"),
+		side:     ui.Hex("#e6e6e6"),
 		field:    ui.Hex("#ececf0"),
 		tabOn:    ui.Hex("#ffffff"),
-		line:     ui.Hex("#dcdce3"),
-		hairline: ui.Hex("#e8e8ee"),
-		chosen:   ui.RGBA(0x5f, 0x45, 0xe6, 0.07),
-		icon:     ui.Hex("#4c4c58"),
+		line:     ui.Hex("#d0d0d0"),
+		hairline: ui.Hex("#dddddd"),
+		chosen:   ui.Hex("#e5e5e5"),
+		icon:     ui.Hex("#666666"),
 		quiet:    ui.Hex("#75757f"),
 	}
 }
 
-// The shell's palette on the terminal's own terms, so the pane a shell runs in
-// belongs to the window around it instead of looking like a program that
-// wandered in. The sixteen program colours are the browser client's terminal
-// theme in web/src/term.ts, which the two clients render ANSI with: the
-// terminal's accent is the chrome's violet, so a prompt and a chosen tab are the
-// same colour.
-//
-// The sheet is dark in both appearances, so this answers the same thing whichever
-// appearance the window is in. It takes the flag and returns one palette anyway:
-// a caller asking for the light appearance is asking the question this answers.
+// Preserve distinct ANSI colors and TrueColor output on a neutral background.
 func terminalTheme(_ bool) *terminal.Theme {
 	return &terminal.Theme{
 		Foreground: ui.Hex("#d7dae2"),
-		Background: ui.Hex("#0d0d12"),
-		Cursor:     ui.Hex("#b6a6ff"),
-		CursorText: ui.Hex("#0d0d12"),
-		Selection:  ui.RGBA(0xb6, 0xa6, 0xff, 0.28),
+		Background: ui.Hex("#111111"),
+		Cursor:     ui.Hex("#dedede"),
+		CursorText: ui.Hex("#111111"),
+		Selection:  ui.RGBA(153, 153, 153, 0.28),
 		Palette: [16]ui.Color{
 			ui.Hex("#26262e"), ui.Hex("#ff8b93"), ui.Hex("#6fd39a"), ui.Hex("#e6c07d"),
 			ui.Hex("#9ecbff"), ui.Hex("#b6a6ff"), ui.Hex("#7dd3fc"), ui.Hex("#d7dae2"),

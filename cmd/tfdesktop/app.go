@@ -33,11 +33,10 @@ type window struct {
 	// the terminals through Update — they belong to this window's UI thread.
 	win *mygo.Window
 
-	// settingsWin is the preferences window while it is open, so a second
-	// click brings it forward instead of stacking another copy. It is reached
-	// from the window-opening goroutine and the close callback, hence the lock.
-	settingsMu  sync.Mutex
-	settingsWin *mygo.Window
+	settingsContent *settingsWindow
+	settingsOpen    bool
+	sidebarHidden   bool
+	dismissed       map[string]bool
 
 	// order is the tabs in the order they were opened, by key; selected indexes
 	// it. A tab is keyed rather than named by session id because a tab exists
@@ -130,6 +129,7 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 		sidebarSplit: -1,
 		nextKey:      1,
 		cmdBar:       newCommandBar(),
+		dismissed:    make(map[string]bool),
 	}
 	// The window is a client of its own hub from the moment it opens, so every
 	// shell it shows — including one a browser took over — arrives as frames
@@ -342,43 +342,48 @@ func (w *window) view(c *ui.Context) {
 	}
 	w.followLease()
 
-	// The appearance is a saved preference, and the ui reads the theme once per
-	// frame, so every frame of every window asks for it.
+	// Desktop chrome uses a fixed neutral palette; terminal ANSI stays colored.
 	mode := w.store.Get().Theme
 	applyTheme(c, mode)
 
-	// A tab strip's own keys, because the panel's rows are not the only way
-	// between shells: ⌘⇧] and ⌘⇧[ walk this window's tabs, wherever each shell
-	// runs. The terminal takes the keys it binds; these it does not.
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight) {
-		w.stepTab(1)
+	if c.Shortcut(ui.Cmd, ui.KeyComma) {
+		w.openSettings()
 	}
-	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) {
-		w.stepTab(-1)
-	}
-	// The two keys the window writes on its own controls — ⌘T on the button that
-	// opens a shell, the digits in the shortcut list — so that what the chrome
-	// promises is what the keyboard does.
-	if c.Shortcut(ui.Cmd, ui.KeyT) {
-		w.newTab()
-	}
-	for i, key := range tabDigits {
-		if c.Shortcut(ui.Cmd, key) {
-			w.jumpTab(i)
+	if !w.settingsOpen && w.reachPrompt == "" {
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight) {
+			w.stepTab(1)
+		}
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) {
+			w.stepTab(-1)
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyT) {
+			w.newTab()
+		}
+		for i, key := range tabDigits {
+			if c.Shortcut(ui.Cmd, key) {
+				w.jumpTab(i)
+			}
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyB) {
+			w.sidebarHidden = !w.sidebarHidden
+		}
+		if c.Shortcut(ui.Cmd, ui.KeyW) {
+			if tb := w.activeTab(); tb != nil {
+				w.removeTab(tb)
+			}
 		}
 	}
 
 	ui.Row(c).Fill().Background(c.Theme().Background).Children(func() {
-		w.sidebar(c, mode)
+		if !w.sidebarHidden {
+			w.sidebar(c, mode)
+		}
 		ui.Column(c).Fill().Children(func() {
 			w.header(c)
-			w.tabStrip(c)
 			w.body(c)
-			w.historyBar(c)
-			w.commandBarRow(c)
 			w.statusBar(c)
 		})
-		w.inspectPanel(c)
+		w.settingsDialog(c)
 		w.reachDialog(c)
 	})
 }
@@ -515,6 +520,17 @@ func (w *window) askForReach() {
 	}()
 }
 
+func (w *window) settingsDialog(c *ui.Context) {
+	width, height := c.Size()
+	ui.Modal(c, &w.settingsOpen, func() {
+		ui.Column(c).Width(min(720, width-80)).Height(min(560, height-80)).Background(c.Theme().Background).Children(func() {
+			if w.settingsContent != nil {
+				w.settingsContent.view(c)
+			}
+		})
+	})
+}
+
 // reachDialog is the confirmation a person gets the first time they pick a
 // machine this window cannot reach: where the credential comes from, what it is
 // good for, and that the relay is the one checking.
@@ -645,29 +661,23 @@ func (w *window) remoteHolder(machine, sessionID string) string {
 func (w *window) reconcile(live []protocol.Summary) {
 	w.live = live
 	present := make(map[string]bool, len(live))
-	for _, s := range live {
-		present[s.SessionID] = true
+	for _, sum := range live {
+		present[sum.SessionID] = true
 	}
-
-	// A shell that ended keeps its tab: the tab is where its last output is read,
-	// and taking it away here is what used to leave the client that ended a shell
-	// as the only one that could not see its final line. The tab is marked dead by
-	// the exit frame itself; this only has to not undo that.
-	//
-	// A tab is dropped when the session it names is no longer in the roster AND
-	// the window never saw it exit — a shell that was ended from somewhere this
-	// window had no link to, say. Those carry nothing worth keeping.
+	for id := range w.dismissed {
+		if !strings.ContainsRune(id, '\x00') && !present[id] {
+			delete(w.dismissed, id)
+		}
+	}
+	// Keep the exit frame's final output, and never reconcile remote tabs
+	// against this machine's roster.
 	for key, tb := range w.tabs {
-		if tb.id == "" || present[tb.id] || tb.alive {
+		if tb == nil || tb.machine != machineLocal || tb.id == "" || present[tb.id] || tb.alive || tb.done {
 			continue
 		}
-		if !tb.done {
-			// No exit frame and no session: this window lost track of it rather
-			// than watched it end.
-			tb.close()
-			delete(w.tabs, key)
-			w.order = dropKey(w.order, key)
-		}
+		tb.close()
+		delete(w.tabs, key)
+		w.order = dropKey(w.order, key)
 	}
 
 	// A shell that appeared gets one. A shell that has *ended* does not, even if
@@ -679,7 +689,7 @@ func (w *window) reconcile(live []protocol.Summary) {
 		if !s.Alive {
 			continue
 		}
-		if w.tabOf(machineLocal, s.SessionID) != nil {
+		if w.tabOf(machineLocal, s.SessionID) != nil || w.dismissed[s.SessionID] {
 			continue
 		}
 		if err := w.mount(s); err != nil {
@@ -799,6 +809,12 @@ func (w *window) removeTab(tb *tab) {
 	}
 	if key < 0 {
 		return
+	}
+	if tb.id != "" {
+		if w.dismissed == nil {
+			w.dismissed = make(map[string]bool)
+		}
+		w.dismissed[dismissedKey(tb.machine, tb.id)] = true
 	}
 	tb.close()
 	delete(w.tabs, key)
@@ -1330,44 +1346,13 @@ func (w *window) reletter(f terminal.Font) {
 	})
 }
 
-// invalidateSettings redraws the settings window if it is open. The relay link
-// reports its state from the agent's goroutine, and an immediate-mode pane only
-// repaints when something tells it to.
-func (w *window) invalidateSettings() {
-	w.settingsMu.Lock()
-	win := w.settingsWin
-	w.settingsMu.Unlock()
-	if win != nil {
-		win.Invalidate()
-	}
-}
+// Relay changes also repaint the settings dialog.
+func (w *window) invalidateSettings() { w.invalidate() }
 
-// openSettings shows the preferences window, or brings the open one forward.
-// It runs off the UI thread, as New Tab does, so a click never re-enters the
-// render pass that drew the button.
 func (w *window) openSettings() {
-	w.settingsMu.Lock()
-	defer w.settingsMu.Unlock()
-	if w.settingsWin != nil {
-		w.settingsWin.Focus()
-		return
+	if w.settingsContent == nil {
+		w.settingsContent = newSettingsWindow(w, w.store, w.fleet)
 	}
-	sw := newSettingsWindow(w, w.store, w.fleet)
-	win := mygo.NewWindow(mygo.WindowOptions{
-		Title:           "term-fleet 设置",
-		Width:           540,
-		Height:          440,
-		MinWidth:        440,
-		MinHeight:       360,
-		BackgroundColor: windowGround(w.store.Get().Theme),
-		StateKey:        "settings",
-		Content:         ui.View(sw.view),
-	})
-	sw.win = win
-	w.settingsWin = win
-	win.OnClosed(func() {
-		w.settingsMu.Lock()
-		w.settingsWin = nil
-		w.settingsMu.Unlock()
-	})
+	w.settingsOpen = true
+	w.invalidate()
 }

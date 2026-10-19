@@ -52,7 +52,7 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 
 	// The mark is drawn on the tab's row, too.
 	tt := drawNav(t, w)
-	if !tt.HasText("c9") {
+	if !tt.HasText("只读") || !strings.Contains(w.sessionTooltip(w.sessionEntries()[0]), "c9") {
 		t.Fatalf("the tab row does not mark the holder; texts = %v", tt.Texts())
 	}
 
@@ -140,14 +140,11 @@ func TestOnlyThisMachinesTakenShellIsLit(t *testing.T) {
 
 // paneEdgeLit is whether a picture has light along the pane's left edge. The band
 // is centred on that edge, so the lit pixel is the edge itself; it counts as lit
-// when it is brighter than the paper around it and bluer than anything either the
-// terminal's black or the window's grey can be, which is what the accent's light
-// looks like as a number.
+// when it is brighter and warmer than the terminal's neutral ground.
 func paneEdgeLit(img *image.RGBA) bool {
 	for _, x := range []int{paneInset - 2, paneInset - 1, paneInset, paneInset + 1, paneInset + 2} {
-		r, _, _, _ := img.At(x, 300).RGBA()
-		_, _, b, _ := img.At(x, 300).RGBA()
-		if int(b>>8)-int(r>>8) > 24 && b>>8 > 40 {
+		r, _, b, _ := img.At(x, 300).RGBA()
+		if int(r>>8)-int(b>>8) > 15 && r>>8 > 40 {
 			return true
 		}
 	}
@@ -277,7 +274,7 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 	}
 
 	nav := drawNav(t, w)
-	if !nav.HasText("1 个会话正被其他客户端控制") {
+	if !nav.HasText("只读") {
 		t.Fatalf("the machine panel does not say a shell is being driven; texts = %v", nav.Texts())
 	}
 

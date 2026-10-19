@@ -60,7 +60,7 @@ const leaseGlowPad = float32(paneInset)
 // where the light runs. Read from the sheet rather than written twice, because a
 // light drawn for a different corner than the pane has is a light that misses
 // the corner.
-const leaseGlowRadius = float32(paneInset) + radiusLarge
+const leaseGlowRadius = float32(0)
 
 // glowFade is how long the light takes to come up and go away. The state itself
 // is a step — a shell either has somebody else on it or it does not — so this is

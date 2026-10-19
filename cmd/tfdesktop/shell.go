@@ -22,16 +22,10 @@ import (
 // meant to read as one product: the same band heights, the same strip of pills,
 // the same three facts along the bottom in the same order.
 
-// paneInset is how far the terminal's sheet stands off the window's ground, the
-// browser client's .tf-panes margin. A shell that fills the window to the edge
-// reads as a different kind of program from one that sits on a page.
-const paneInset = 10
+// The terminal fills the workspace without a floating card around it.
+const paneInset = 0
 
-// terminalGround is the sheet's own colour, which does not follow the
-// appearance: the ANSI sixteen are designed for a dark ground, so the terminal
-// keeps the browser client's --term-bg in both appearances and only the chrome
-// around it flips.
-var terminalGround = ui.Hex("#0d0d12")
+var terminalGround = ui.Hex("#111111")
 
 //go:embed assets/mark.png
 var markPNG []byte
@@ -74,10 +68,14 @@ func (w *window) header(c *ui.Context) {
 		Background(col.pane).
 		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
 		Children(func() {
-			ui.Row(c).Gap(7).AlignItems(ui.Center).Label("term-fleet").Children(func() {
-				markTile(c, 18)
-				ui.Text(c, "term-fleet").FontSize(13).FontWeight(600)
-			})
+			if w.sidebarHidden && iconButton(c, iconSettings, "设置", headerButtonSize).Clicked() {
+				w.openSettings()
+			}
+			name := "本机 / 终端"
+			if tb := w.activeTab(); tb != nil {
+				name = w.machineName(tb.machine) + " / " + tb.name()
+			}
+			ui.Text(c, name).FontSize(12).SingleLine().Shrink(1).MaxWidth(300)
 			ui.Spacer(c)
 			w.headerBanner(c)
 			w.headerActions(c)
@@ -99,41 +97,14 @@ func (w *window) header(c *ui.Context) {
 // nothing on screen to say why. A shell of this machine's is typed into here;
 // there is no one to give it to.
 func (w *window) headerActions(c *ui.Context) {
-	t := c.Theme()
-
 	if tb := w.activeTab(); tb != nil && tb.alive && tb.held() && tb.machine != machineLocal {
-		if ui.Button(c, "释放控制权").
-			Tooltip("释放控制权：终端继续运行，交还给运行它的机器").Clicked() {
+		if ui.Button(c, "释放控制权").Tooltip("释放控制权：交还给运行它的机器").Clicked() {
 			w.releaseLease(tb)
 		}
 	}
-	inspect := iconButton(c, iconInfo, "会话检视", headerButtonSize)
-	inspect.Tooltip("会话检视（会话的 id、尺寸、控制端）")
-	if inspect.Clicked() {
-		inspectVisible = !inspectVisible
-		w.invalidate()
-	}
-	appearance := iconMoon
-	if t.Dark {
-		appearance = iconSun
-	}
-	if iconButton(c, appearance, themeActionLabel(w.store.Get().Theme, t.Dark), headerButtonSize).Clicked() {
-		w.setTheme(flipTheme(w.store.Get().Theme, t.Dark))
-	}
-	if iconButton(c, iconSettings, "设置", headerButtonSize).Clicked() {
-		w.openSettings()
-	}
-
-	// The primary control, with the keystroke that does the same thing written
-	// on it: a window that has a shortcut should say so where the button is.
-	new := ui.PrimaryButton(c, "").
-		Height(headerButtonSize).PaddingX(11).Gap(7).
-		Label("新建终端").Tooltip("新建终端 ⌘T")
-	new.Children(func() {
-		ui.Text(c, "新建终端").FontSize(12).FontWeight(600)
-		kbdChip(c, "⌘T", true)
-	})
-	if new.Clicked() {
+	newTab := ui.PrimaryButton(c, "").Height(headerButtonSize).PaddingX(11).Gap(7).Label("新建终端").Tooltip("新建终端 ⌘T")
+	newTab.Children(func() { ui.Text(c, "新建终端").FontSize(12).FontWeight(600); kbdChip(c, "⌘T", true) })
+	if newTab.Clicked() {
 		w.newTab()
 	}
 }
@@ -151,7 +122,7 @@ func (w *window) headerBanner(c *ui.Context) {
 		return
 	}
 	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, text).FontSize(12).TextColor(tone).MaxWidth(420).SingleLine()
+		ui.Text(c, text).FontSize(12).TextColor(tone).MaxWidth(240).SingleLine().Shrink(1)
 		if action == "" {
 			return
 		}
@@ -503,8 +474,7 @@ func (w *window) body(c *ui.Context) {
 	// drawn over both, so it can spill past the edge it belongs to. A light
 	// clipped to the pane would be a coloured border on it.
 	ui.Box(c).Fill().Children(func() {
-		sheet := ui.Box(c).Fill().Margin(paneInset).Radius(radiusLarge).
-			BorderWidth(1).BorderColor(shellColorsFor(c.Theme()).hairline).
+		sheet := ui.Box(c).Fill().Margin(paneInset).
 			Background(terminalGround)
 		sheet.Children(func() {
 			ui.Box(c).Fill().Children(func() {
@@ -696,7 +666,7 @@ func (w *window) statusBar(c *ui.Context) {
 				Tooltip(w.serviceLine() + " · " + buildLine())
 			chip.Children(func() {
 				ui.Box(c).Size(6, 6).Radius(3).Background(state)
-				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(state)
+				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(state).SingleLine().MaxWidth(190)
 			})
 			// The machine the shell on screen runs on. Its platform is on the
 			// same line, and the build's own platform is not repeated beside it:
@@ -704,7 +674,7 @@ func (w *window) statusBar(c *ui.Context) {
 			// status bar that says darwin/arm64 twice says it once too often.
 			// Which build this is lives in the chip's tooltip and in 设置 → 更新.
 			if host := w.statusHostLine(); host != "" {
-				ui.Text(c, host).FontSize(11).TextColor(col.quiet)
+				ui.Text(c, host).FontSize(11).TextColor(col.quiet).SingleLine().Shrink(1).MaxWidth(220)
 			}
 			ui.Spacer(c)
 			// The window's own news, when there is any: a machine that took its
@@ -716,7 +686,7 @@ func (w *window) statusBar(c *ui.Context) {
 			// The shell on screen itself, at the end of the line, which is where
 			// the browser client keeps it.
 			if sess := w.statusSessionLine(); sess != "" {
-				ui.Text(c, sess).FontSize(11).TextColor(t.TextMuted)
+				ui.Text(c, sess).FontSize(11).TextColor(t.TextMuted).SingleLine().Shrink(0)
 			}
 		})
 }
