@@ -4,6 +4,17 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.16
+
+**Desktop: terminal PTY size sync, remote machine tab creation, unclipped header buttons — 终端尺寸同步与远端新建标签修复**
+
+- **Remote PTY size synchronization.** Fixed broken terminal rendering, repeating prompts, and duplicated progress lines on remote sessions (e.g. Windows ConPTY). Terminal dimensions are now recorded while viewing and immediately synchronized to the remote Hub upon lease takeover (`接管`), ensuring remote PTY columns always match the desktop window width.
+  — 彻底修复远端终端（如 Windows ConPTY）文字重叠、进度条重复刷屏和换行错位的问题。终端视图尺寸在只读时记录并在接管控制权时自动同步给远端 Hub。
+- **Creating new tabs on selected remote machine.** Fixed an issue where clicking `+` in the session panel or pressing `⌘T` while viewing a remote machine would mistakenly create a local tab if an existing local tab was active. New tabs now always target the selected remote machine.
+  — 修复切换到远端机器后点击新建终端仍创建本地终端的问题。新建终端将始终基于当前选中的目标机器创建。
+- **Unclipped header release button.** Replaced the shrinkable header action button with a fixed-size pill button (`Shrink(0)`), ensuring "释放控制权" is never truncated into a single character ("释").
+  — 修复顶栏操作按钮在边距收紧时被挤压成单个文字“释”的问题，采用固定尺寸药丸按钮保持完整文案。
+
 ## 0.4.15
 
 **Desktop: bottom lease controls, remote new tab fix, Windows caption padding — 底部控制权操作与多端交互优化**

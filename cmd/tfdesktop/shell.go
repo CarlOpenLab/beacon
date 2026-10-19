@@ -109,8 +109,21 @@ func (w *window) header(c *ui.Context) {
 // nothing on screen to say why. A shell of this machine's is typed into here;
 // there is no one to give it to.
 func (w *window) headerActions(c *ui.Context) {
+	t := c.Theme()
+	col := shellColorsFor(t)
 	if tb := w.activeTab(); tb != nil && tb.alive && tb.held() && tb.machine != machineLocal {
-		if ui.Button(c, "释放控制权").Tooltip("释放控制权：转为只读观察模式，终端继续在后台运行").Clicked() {
+		rel := ui.Box(c).
+			Height(22).PaddingX(10).Radius(radiusPill).
+			AlignItems(ui.Center).Justify(ui.Center).Shrink(0).
+			Background(col.field).BorderWidth(1).BorderColor(col.line).
+			Label("释放控制权").Tooltip("释放控制权：转为只读观察模式，终端继续在后台运行")
+		if rel.Hovered() {
+			rel.Background(t.SurfaceHover)
+		}
+		rel.Children(func() {
+			ui.Text(c, "释放控制权").FontSize(11).TextColor(t.TextMuted)
+		})
+		if rel.Clicked() {
 			w.releaseLease(tb)
 		}
 	}
@@ -128,7 +141,7 @@ func (w *window) headerBanner(c *ui.Context) {
 	if text == "" {
 		return
 	}
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
 		ui.Text(c, text).FontSize(12).TextColor(tone).MaxWidth(240).SingleLine().Shrink(1)
 		if action == "" {
 			return

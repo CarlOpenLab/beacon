@@ -556,6 +556,26 @@ func (w *window) reachDialog(c *ui.Context) {
 	}
 }
 
+// currentTermSize returns the active terminal view size in columns and rows,
+// or 80x24 when no terminal is available.
+func (w *window) currentTermSize() (cols, rows int) {
+	if tb := w.activeTab(); tb != nil && tb.term != nil {
+		c, r := tb.term.Size()
+		if c > 0 && r > 0 {
+			return c, r
+		}
+	}
+	for _, tb := range w.tabs {
+		if tb != nil && tb.term != nil {
+			c, r := tb.term.Size()
+			if c > 0 && r > 0 {
+				return c, r
+			}
+		}
+	}
+	return 80, 24
+}
+
 // newTab asks the machine the panels are showing for a shell and gives it a tab
 // to land in. On this machine that is the hub the window is already a client of;
 // on another it is a create over the relay. It runs on the window's own thread —
@@ -564,15 +584,13 @@ func (w *window) reachDialog(c *ui.Context) {
 // the tab waiting for it.
 func (w *window) newTab() {
 	machine := w.selectedMachine()
-	if tb := w.activeTab(); tb != nil && tb.machine != "" {
-		machine = tb.machine
-	}
-	if machine != machineLocal {
+	if machine != "" && machine != machineLocal {
 		w.newTabOn(machine)
 		return
 	}
 	w.openTab(machineLocal, "")
-	w.local.create(80, 24, w.cwd, w.shell)
+	cols, rows := w.currentTermSize()
+	w.local.create(cols, rows, w.cwd, w.shell)
 }
 
 // newTabOn asks another machine's hub for a shell there and gives it a tab here,
@@ -592,7 +610,8 @@ func (w *window) newTabOn(machine string) {
 	// The link may still be waiting for the relay to route it; the frame waits
 	// with it rather than being dropped, which is what the panel's click would
 	// otherwise do on the first use of a machine.
-	w.linkFor(machine).create(80, 24, "", "")
+	cols, rows := w.currentTermSize()
+	w.linkFor(machine).create(cols, rows, "", "")
 }
 
 // kill ends the shell behind a tab — this machine's or another one's, through
@@ -789,6 +808,9 @@ func (w *window) openTab(machine, sessionID string) *tab {
 	w.tabs[key] = tb
 	w.order = append(w.order, key)
 	w.selected = len(w.order) - 1
+	if machine != "" {
+		w.machineSel = machine
+	}
 
 	if sessionID != "" {
 		sess.bind(sessionID)
@@ -944,6 +966,13 @@ func (h tabHandlers) Created(id string) {
 		// label, its pane and its lease all belong to the same tab.
 		if tb := w.tabOfSession(h.sess); tb != nil {
 			tb.bind(id)
+			if tb.held() {
+				cols, rows := 0, 0
+				if tb.term != nil {
+					cols, rows = tb.term.Size()
+				}
+				h.conn.syncSize(cols, rows)
+			}
 		}
 		w.invalidate()
 	})
@@ -967,6 +996,13 @@ func (h tabHandlers) Role(role, controller string, epoch uint64) {
 			held = false
 		}
 		tb.setLease(role, controller, epoch)
+		if tb.held() {
+			cols, rows := 0, 0
+			if tb.term != nil {
+				cols, rows = tb.term.Size()
+			}
+			h.conn.syncSize(cols, rows)
+		}
 		switch {
 		case !held || tb.held():
 			// Nothing changed hands: a viewer is still a viewer, or the lease is

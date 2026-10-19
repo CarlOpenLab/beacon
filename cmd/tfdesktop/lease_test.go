@@ -499,3 +499,30 @@ func TestAShellWhoseLeaseIsNotKnownYetIsNotMarked(t *testing.T) {
 		t.Errorf("a shell with no role frame yet names nobody as its holder; texts = %v", tt.Texts())
 	}
 }
+
+// When a terminal view resizes in read-only mode, it records its dimensions.
+// Once the lease is acquired (controller role), syncSize propagates the actual
+// dimensions to the hub so remote PTY size matches client window size.
+func TestTermConnResizeSyncOnClaim(t *testing.T) {
+	f := newTestFleet(t)
+	l := openLocalLink(f.Hub())
+	sess := newSession("test-s1", l.link, nil)
+	conn := newTermConn(sess)
+
+	// In read-only / viewer mode, Resize records dimensions without sending.
+	if err := conn.Resize(120, 36); err != nil {
+		t.Fatalf("Resize failed: %v", err)
+	}
+	if conn.lastCols != 120 || conn.lastRows != 36 {
+		t.Fatalf("lastCols=%d lastRows=%d, want 120x36", conn.lastCols, conn.lastRows)
+	}
+
+	// Now promote to controller and sync size.
+	sess.setRole(protocol.RoleController, "", 1)
+	if !sess.holds() {
+		t.Fatal("session should hold lease")
+	}
+
+	// syncSize should now propagate the saved dimensions without error.
+	conn.syncSize(0, 0)
+}

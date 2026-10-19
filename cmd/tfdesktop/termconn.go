@@ -20,11 +20,13 @@ import (
 type termConn struct {
 	sess *session
 
-	mu      sync.Mutex
-	pending []byte
-	closed  bool
-	once    sync.Once
-	done    chan struct{}
+	mu       sync.Mutex
+	pending  []byte
+	closed   bool
+	once     sync.Once
+	done     chan struct{}
+	lastCols int
+	lastRows int
 }
 
 func newTermConn(s *session) *termConn {
@@ -94,11 +96,32 @@ func (c *termConn) Write(p []byte) (int, error) {
 // Resize is how the terminal tells the hub the size of the view; the plugin
 // finds it by name on the Conn.
 func (c *termConn) Resize(cols, rows int) error {
+	c.mu.Lock()
+	c.lastCols, c.lastRows = cols, rows
+	c.mu.Unlock()
 	if !c.sess.holds() {
 		return nil
 	}
 	c.sess.link.resize(c.sess.id, cols, rows)
 	return nil
+}
+
+// syncSize notifies the hub of the terminal's actual size once the lease is held.
+// If cols/rows are 0, it falls back to the last recorded size from Resize.
+func (c *termConn) syncSize(cols, rows int) {
+	if c == nil || c.sess == nil || c.sess.link == nil {
+		return
+	}
+	c.mu.Lock()
+	if cols > 0 && rows > 0 {
+		c.lastCols, c.lastRows = cols, rows
+	} else {
+		cols, rows = c.lastCols, c.lastRows
+	}
+	c.mu.Unlock()
+	if cols > 0 && rows > 0 && c.sess.holds() {
+		c.sess.link.resize(c.sess.id, cols, rows)
+	}
 }
 
 // Close detaches this view. It never ends the session: the shell keeps running

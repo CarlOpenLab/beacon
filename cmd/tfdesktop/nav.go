@@ -415,6 +415,13 @@ func (w *window) selectTab(tb *tab) {
 		if tb.machine != "" {
 			w.machineSel = tb.machine
 		}
+		if tb.held() {
+			cols, rows := 0, 0
+			if tb.term != nil {
+				cols, rows = tb.term.Size()
+			}
+			tb.conn.syncSize(cols, rows)
+		}
 		w.invalidate()
 		return
 	}

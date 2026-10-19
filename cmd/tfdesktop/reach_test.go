@@ -605,6 +605,66 @@ func TestDesktopStartsATerminalOnTheOtherMachine(t *testing.T) {
 	})
 }
 
+// When a local tab is currently open and active, selecting another machine in
+// the sidebar and pressing New Tab MUST create a tab on the selected remote
+// machine, rather than mistakenly creating another local tab.
+func TestDesktopNewTabWithActiveLocalTabCreatesOnRemoteMachine(t *testing.T) {
+	url, alphaID, alphaSecret, betaID, betaSecret := twoDeskRelay(t)
+	alpha, alphaDesk := deskFleet(t, url, alphaID, alphaSecret)
+	beta, _ := deskFleet(t, url, betaID, betaSecret)
+
+	waitFor(t, "the roster to name the other machine", 20*time.Second, func() bool {
+		alphaDesk.drain()
+		for _, m := range alphaDesk.roster {
+			if m.ID == betaID && m.Online {
+				return true
+			}
+		}
+		return false
+	})
+
+	// Start with an active local tab on alphaDesk.
+	localTab := alphaDesk.openTab(machineLocal, "")
+	alphaDesk.local.create(80, 24, "", "")
+	waitSessions(alpha, 1)
+	settleTabs(t, alphaDesk, 1)
+	alphaDesk.drain()
+	if localTab == nil || alphaDesk.activeTab() != localTab {
+		t.Fatalf("local tab should be active")
+	}
+
+	// Select beta machine in the panel and trigger newTab.
+	entry, ok := alphaDesk.machineByID(betaID)
+	if !ok {
+		t.Fatal("the roster does not hold the other machine")
+	}
+	alphaDesk.selectMachine(entry)
+	alphaDesk.newTab()
+
+	// Verify a shell was started on beta, not on alpha.
+	var id string
+	waitFor(t, "a shell on the far machine", 20*time.Second, func() bool {
+		live := beta.Hub().Sessions()
+		if len(live) != 1 {
+			return false
+		}
+		id = live[0].SessionID
+		return true
+	})
+
+	// Alpha hub should still have only 1 session (the initial local one).
+	if len(alpha.Hub().Sessions()) != 1 {
+		t.Fatalf("alpha hub sessions should be 1, got %d", len(alpha.Hub().Sessions()))
+	}
+
+	// Active tab on alphaDesk should be the new remote tab.
+	waitFor(t, "the remote tab to become active", 20*time.Second, func() bool {
+		alphaDesk.drain()
+		tb := alphaDesk.activeTab()
+		return tb != nil && tb.machine == betaID && tb.id == id && tb.held()
+	})
+}
+
 // The lease follows the shell on screen. A window that reached another machine
 // and is driving one of its shells lets go the moment the screen moves on — so
 // 切到本机 does not leave the far machine sitting behind 正在被控制 with a

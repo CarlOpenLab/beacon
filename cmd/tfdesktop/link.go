@@ -133,6 +133,9 @@ func (l *link) input(id string, data []byte) {
 }
 
 func (l *link) resize(id string, cols, rows int) {
+	if l == nil || id == "" {
+		return
+	}
 	l.sendMsg(protocol.Msg{T: protocol.CTResize, SessionID: id, Cols: cols, Rows: rows, Epoch: l.epochOf(id)})
 }
 
