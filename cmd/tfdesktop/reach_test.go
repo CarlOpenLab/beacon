@@ -301,6 +301,7 @@ func TestTakeoverAcrossMachines(t *testing.T) {
 		return false
 	})
 	tb := w.openTab("member-2", shell)
+	w.reclaim(tb)
 
 	// The tab drives the shell: the lease comes with it, so the machine whose
 	// shell it is is told it is not the one typing any more.
@@ -428,6 +429,7 @@ func TestTwoDesktopsDriveEachOther(t *testing.T) {
 		if tb == nil {
 			t.Fatalf("%s: no tab for the shell on %s", side.who, side.target)
 		}
+		side.w.reclaim(tb)
 
 		// The far machine is told in the same frame, and the glow and the popover
 		// that say "not yours right now" are what it gets.

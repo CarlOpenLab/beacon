@@ -4,6 +4,27 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.15
+
+**Desktop: bottom lease controls, remote new tab fix, Windows caption padding — 底部控制权操作与多端交互优化**
+
+- **Bottom lease status and actions.** Live lease status (只读 / 控制中) and action
+  buttons (接管 / 释放控制权) are now displayed in the bottom status bar, safe from
+  window titlebar button overlap and reachable at all times.
+  — 底部状态栏增加只读/控制中状态指示及“接管”、“释放控制权”按钮，随时可触达。
+- **Windows titlebar caption padding.** The top header now applies right padding on
+  Windows to prevent header controls from overlapping or being covered by native
+  Windows minimize/maximize/close buttons.
+  — Windows 标题栏增加右侧避让边距，避免顶栏操作按钮与原生关闭按钮重叠。
+- **New tab targets the active remote machine.** Creating a new terminal tab (via
+  sidebar or `⌘T`) while controlling a remote machine now opens the tab on that
+  remote machine rather than defaulting to local.
+  — 修复控制其他机器时新建终端的问题，快捷键与新建按钮将跟随当前控制的机器。
+- **Strictly manual remote takeover.** Opening an existing remote session no longer
+  auto-claims the lease. It opens as read-only, requiring the user to explicitly
+  click "接管".
+  — 彻底移除远端会话打开时的自动接管，打开后保持只读，接管与释放均改为手动。
+
 ## 0.4.14
 
 **Desktop: macOS native dark styling, squircle icon, manual lease control — 桌面端深色外观与交互细节优化**

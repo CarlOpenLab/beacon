@@ -68,8 +68,13 @@ func (w *window) header(c *ui.Context) {
 		leftPad = bar.Left + 12
 	}
 
+	rightPad := float32(12)
+	if bar.Right > 0 {
+		rightPad = bar.Right + 12
+	}
+
 	ui.Row(c).
-		Height(headerHeight).Padding(0, 12, 0, leftPad).Gap(10).
+		Height(headerHeight).Padding(0, rightPad, 0, leftPad).Gap(10).
 		AlignItems(ui.Center).
 		Background(col.pane).
 		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
@@ -692,7 +697,87 @@ func (w *window) statusBar(c *ui.Context) {
 			if sess := w.statusSessionLine(); sess != "" {
 				ui.Text(c, sess).FontSize(11).TextColor(t.TextMuted).SingleLine().Shrink(0)
 			}
+			w.statusLeaseBar(c)
 		})
+}
+
+// statusLeaseBar renders the current shell's input lease state (只读 / 控制中)
+// and corresponding action buttons (接管 / 释放控制权) at the bottom right.
+func (w *window) statusLeaseBar(c *ui.Context) {
+	t := c.Theme()
+	tb := w.activeTab()
+	if tb == nil {
+		return
+	}
+	if !tb.alive {
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(6, 6).Radius(3).Background(t.Danger)
+			ui.Text(c, "已退出").FontSize(11).TextColor(t.Danger)
+		})
+		return
+	}
+	if readOnly(tb) {
+		holder := tb.holder()
+		label := "只读"
+		if holder != "" {
+			label = "只读（" + holder + " 操作中）"
+		} else {
+			label = "只读模式"
+		}
+		take := "拿回控制权"
+		takeTip := "本机拿回控制：恢复键盘输入权限"
+		if tb.machine != machineLocal {
+			take = "接管"
+			takeTip = "接管输入：获取键盘操作权限（对方转为只读）"
+		}
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(6, 6).Radius(3).Background(t.Warning)
+				ui.Text(c, label).FontSize(11).TextColor(t.Warning)
+			})
+			act := ui.Box(c).
+				Height(20).PaddingX(8).Radius(radiusPill).
+				AlignItems(ui.Center).Justify(ui.Center).
+				Background(t.Warning.Alpha(0.12)).
+				BorderWidth(1).BorderColor(t.Warning.Alpha(0.42)).
+				Label(take).Tooltip(takeTip)
+			if act.Hovered() {
+				act.Background(t.Warning.Alpha(0.24))
+			}
+			act.Children(func() {
+				ui.Text(c, take).FontSize(10.5).FontWeight(600).TextColor(t.Warning)
+			})
+			if act.Clicked() {
+				w.reclaim(tb)
+			}
+		})
+		return
+	}
+	if tb.held() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(6, 6).Radius(3).Background(t.Success)
+				ui.Text(c, "控制中").FontSize(11).TextColor(t.Success)
+			})
+			if tb.machine != machineLocal {
+				rel := ui.Box(c).
+					Height(20).PaddingX(8).Radius(radiusPill).
+					AlignItems(ui.Center).Justify(ui.Center).
+					Background(shellColorsFor(t).field).
+					BorderWidth(1).BorderColor(shellColorsFor(t).line).
+					Label("释放控制权").Tooltip("释放控制权：转为只读观察模式，终端继续在后台运行")
+				if rel.Hovered() {
+					rel.Background(t.SurfaceHover)
+				}
+				rel.Children(func() {
+					ui.Text(c, "释放控制权").FontSize(10.5).TextColor(t.TextMuted)
+				})
+				if rel.Clicked() {
+					w.releaseLease(tb)
+				}
+			}
+		})
+	}
 }
 
 // buildLine is the version and the platform, the way a status bar says it.

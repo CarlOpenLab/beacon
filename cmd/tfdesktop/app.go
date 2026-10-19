@@ -563,7 +563,11 @@ func (w *window) reachDialog(c *ui.Context) {
 // that draws it — and the hub's answer arrives as a `created` frame that adopts
 // the tab waiting for it.
 func (w *window) newTab() {
-	if machine := w.selectedMachine(); machine != machineLocal {
+	machine := w.selectedMachine()
+	if tb := w.activeTab(); tb != nil && tb.machine != "" {
+		machine = tb.machine
+	}
+	if machine != machineLocal {
 		w.newTabOn(machine)
 		return
 	}
@@ -789,19 +793,6 @@ func (w *window) openTab(machine, sessionID string) *tab {
 	if sessionID != "" {
 		sess.bind(sessionID)
 		l.attach(sessionID, 0)
-		if machine != machineLocal {
-			// Reaching a machine is the consent — the relay handed this window a
-			// control token for it — and a tab here is opened to drive what it
-			// watches, so the lease comes with the tab. Without this the window
-			// arrived as a spectator of a shell it had just asked to work in: the
-			// machine's own window kept the lease, and this one sat read-only
-			// over a terminal that took none of its keys.
-			//
-			// The machine whose shell it is goes read-only and says so — 只读 on
-			// the pane, with the popover naming the holder and offering 拿回控制权,
-			// which the hub always honours for the machine the shell runs on.
-			l.claim(sessionID, true)
-		}
 	} else {
 		// The hub's answer names this session; until it arrives the link holds
 		// the tab's place.
