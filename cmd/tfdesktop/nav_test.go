@@ -353,7 +353,11 @@ func TestMachinePanelListsOnlyMachines(t *testing.T) {
 	if !tt.HasText("机器") {
 		t.Fatalf("the column has no machines' panel; texts = %v", tt.Texts())
 	}
-	if !tt.HasText(f.Host().Hostname) {
+	wantHost := f.Host().Hostname
+	if len([]rune(wantHost)) > 21 {
+		wantHost = string([]rune(wantHost)[:20]) + "…"
+	}
+	if !tt.HasText(wantHost) {
 		t.Fatalf("the machine row does not name this machine; texts = %v", tt.Texts())
 	}
 
@@ -544,8 +548,12 @@ func TestMachinePanelDoesNotListThisMachineTwice(t *testing.T) {
 	// Its own name is on the 本机 row and nowhere else: a second row would be the
 	// roster entry for this machine, which is what the device-id check skips.
 	named := 0
+	wantHost := f.Host().Hostname
+	if len([]rune(wantHost)) > 21 {
+		wantHost = string([]rune(wantHost)[:20]) + "…"
+	}
 	for _, text := range tt.Texts() {
-		if strings.TrimSpace(text) == f.Host().Hostname {
+		if strings.TrimSpace(text) == wantHost {
 			named++
 		}
 	}
