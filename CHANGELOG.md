@@ -4,6 +4,19 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.17
+
+**Desktop: pending tab states, stream reconnect resilience, and sidebar session retention — 终端连接状态呈现与会话持久性修复**
+
+- **Distinguish pending creation from exited state.** Fixed a bug where brand new pending tabs (`tb.id == ""`) were falsely rendered as "已退出" with an error banner "会话已退出，最后几行仍可读取。 [关闭标签]". Pending tabs now properly display neutral "正在创建终端…" / "创建中…" and will never prematurely display exit warnings or badges while awaiting hub creation.
+  — 彻底修复新建终端标签页等待分配会话时被误判为“已退出”并弹出关闭警告的问题。等待连接的标签页现在正确显示“正在创建终端…”与“创建中…”，不再误报退出。
+- **Preserve live remote sessions in the sidebar.** Fixed an issue where closing or dismissing a tab watching a remote session caused the remote session to be permanently hidden from the sidebar session list ("会话 0"). Live remote sessions remain listed in the sidebar at all times so they can always be re-opened.
+  — 修复关闭远端标签页导致侧边栏远端会话被永久隐藏、显示为“会话 0”的严重缺陷。远端机器上实际运行的会话将始终保留在侧边栏列表中，随时可重新点击查看。
+- **Resilient relay stream recycling and tab retention.** Fixed stream lifecycle management in `relayclient` so closed or dropped streams are properly forgotten rather than reused as dead zombie streams. Link disconnections now preserve existing terminal tabs and buffer history rather than automatically deleting them.
+  — 修复中继客户端在网络闪断或流结束时错误复用已关闭死流的问题，且网络连接断开时不再强制关闭和销毁终端标签页，保留终端缓冲区历史。
+- **Deduplicated PTY resize synchronization.** Optimized `syncSize` to track synced dimensions and eliminate redundant `CTResize` frames during tab selection when terminal dimensions have not changed.
+  — 优化终端尺寸同步逻辑，记录上次同步尺寸，避免重复点击标签页时向远端终端发送冗余 resize 帧。
+
 ## 0.4.16
 
 **Desktop: terminal PTY size sync, remote machine tab creation, unclipped header buttons — 终端尺寸同步与远端新建标签修复**

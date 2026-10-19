@@ -25,8 +25,10 @@ type termConn struct {
 	closed   bool
 	once     sync.Once
 	done     chan struct{}
-	lastCols int
-	lastRows int
+	lastCols   int
+	lastRows   int
+	syncedCols int
+	syncedRows int
 }
 
 func newTermConn(s *session) *termConn {
@@ -98,30 +100,46 @@ func (c *termConn) Write(p []byte) (int, error) {
 func (c *termConn) Resize(cols, rows int) error {
 	c.mu.Lock()
 	c.lastCols, c.lastRows = cols, rows
-	c.mu.Unlock()
 	if !c.sess.holds() {
+		c.mu.Unlock()
 		return nil
 	}
+	if cols == c.syncedCols && rows == c.syncedRows {
+		c.mu.Unlock()
+		return nil
+	}
+	c.syncedCols, c.syncedRows = cols, rows
+	c.mu.Unlock()
+
 	c.sess.link.resize(c.sess.id, cols, rows)
 	return nil
 }
 
 // syncSize notifies the hub of the terminal's actual size once the lease is held.
 // If cols/rows are 0, it falls back to the last recorded size from Resize.
+// It avoids redundant resize frames if the size is already synced.
 func (c *termConn) syncSize(cols, rows int) {
 	if c == nil || c.sess == nil || c.sess.link == nil {
 		return
 	}
 	c.mu.Lock()
-	if cols > 0 && rows > 0 {
-		c.lastCols, c.lastRows = cols, rows
-	} else {
+	if cols <= 0 || rows <= 0 {
 		cols, rows = c.lastCols, c.lastRows
+	} else {
+		c.lastCols, c.lastRows = cols, rows
 	}
+	if cols <= 0 || rows <= 0 || (cols == c.syncedCols && rows == c.syncedRows) {
+		c.mu.Unlock()
+		return
+	}
+	if !c.sess.holds() {
+		c.mu.Unlock()
+		return
+	}
+	c.syncedCols, c.syncedRows = cols, rows
 	c.mu.Unlock()
-	if cols > 0 && rows > 0 && c.sess.holds() {
-		c.sess.link.resize(c.sess.id, cols, rows)
-	}
+
+	c.sess.link.resize(c.sess.id, cols, rows)
 }
 
 // Close detaches this view. It never ends the session: the shell keeps running

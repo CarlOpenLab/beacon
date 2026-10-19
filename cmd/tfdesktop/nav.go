@@ -186,7 +186,7 @@ func (w *window) sessionEntries() []sessionEntry {
 	list := w.remoteSessions[machine]
 	out := make([]sessionEntry, 0, len(list))
 	for _, s := range list {
-		if w.dismissed[dismissedKey(machine, s.SessionID)] {
+		if !s.Alive && w.dismissed[dismissedKey(machine, s.SessionID)] {
 			continue
 		}
 		summary := s
@@ -270,6 +270,7 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 		}
 		if e.close != nil && iconButton(c, iconClose, "关闭 "+e.label, 20).Shrink(0).Clicked() {
 			e.close()
+			return
 		}
 	})
 	row.ContextMenu(func(m *ui.Menu) {
@@ -304,6 +305,8 @@ func (w *window) sessionMeta(e sessionEntry) string {
 		parts = append(parts, e.meta)
 	}
 	switch {
+	case e.session == "":
+		parts = append(parts, "创建中")
 	case !e.alive:
 		parts = append(parts, "已退出")
 	case w.holds(e):
@@ -339,13 +342,19 @@ func (w *window) holds(e sessionEntry) bool {
 // claim.
 func (w *window) leaseBadge(t *ui.Theme, e sessionEntry) (string, ui.Color, bool) {
 	if tb := w.tabOf(e.machine, e.session); tb != nil {
-		if !tb.alive {
+		if tb.isEnded() {
 			return "已退出", t.Danger, true
+		}
+		if tb.isPending() {
+			return "创建中", shellColorsFor(t).quiet, true
 		}
 		if readOnly(tb) {
 			return "只读", t.Warning, true
 		}
 		return "", t.Success, false
+	}
+	if !e.alive {
+		return "已退出", t.Danger, true
 	}
 	if e.holder != "" {
 		return "只读", t.Warning, true

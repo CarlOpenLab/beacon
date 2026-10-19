@@ -185,13 +185,16 @@ func (w *window) bannerState(c *ui.Context) (text, action string, tone ui.Color,
 	if tb == nil {
 		return "", "", t.TextMuted, nil
 	}
-	if !tb.alive {
+	if tb.isEnded() {
 		// The window says the state and offers the one thing left to do with it.
 		// The sentence does not name the button: a banner that reads
 		// "…关闭标签 [关闭标签]" is a banner nobody reads twice.
 		return "会话已退出，最后几行仍可读取。", "关闭标签", t.Danger, func() {
 			w.removeTab(tb)
 		}
+	}
+	if tb.isPending() {
+		return "正在创建终端…", "", t.TextMuted, nil
 	}
 	if holder := tb.holder(); readOnly(tb) {
 		// This machine's own shell is taken back; another machine's was never
@@ -305,8 +308,10 @@ func (w *window) statusSessionLine() string {
 	}
 	role := "—"
 	switch {
-	case !tb.alive:
+	case tb.isEnded():
 		role = "已退出"
+	case tb.isPending():
+		role = "创建中"
 	case tb.held():
 		role = "控制中"
 	case tb.controller != "":
@@ -393,7 +398,7 @@ func (w *window) tab(c *ui.Context, tb *tab, active bool) {
 	} else if pill.Hovered() {
 		pill.Background(col.field)
 	}
-	if !tb.alive {
+	if tb.isEnded() {
 		pill.Opacity(0.6)
 	}
 
@@ -419,7 +424,7 @@ func (w *window) tab(c *ui.Context, tb *tab, active bool) {
 		// inside it spills out of the strip. What the strip does not show — the
 		// whole name, the machine, the exit code — is in the tooltip, and a shell
 		// that has ended is the dimmed pill with the dot in the exit's colour.
-		name := ui.Text(c, tb.name()).FontSize(12.5).SingleLine()
+		name := ui.Text(c, tb.name()).FontSize(12.5).SingleLine().Shrink(1)
 		if active {
 			name.TextColor(t.Text)
 		} else {
@@ -429,7 +434,7 @@ func (w *window) tab(c *ui.Context, tb *tab, active bool) {
 		// ending it is the panel's own action. So the × is on the tab, and the
 		// 结束 that kills a process is not.
 		close := ui.Box(c).
-			Size(18, 18).Radius(radiusPill).
+			Size(18, 18).Radius(radiusPill).Shrink(0).
 			AlignItems(ui.Center).Justify(ui.Center).
 			Label("关闭标签页").Tooltip("关闭标签页（仅停止观看，不结束进程）")
 		if close.Hovered() {
@@ -440,6 +445,7 @@ func (w *window) tab(c *ui.Context, tb *tab, active bool) {
 		})
 		if close.Clicked() {
 			w.removeTab(tb)
+			return
 		}
 	})
 
@@ -509,11 +515,11 @@ func (w *window) body(c *ui.Context) {
 			ui.Box(c).Fill().Children(func() {
 				terminal.View(c, tb.term).Fill().AutoFocus()
 			})
-			if !tb.alive {
+			if tb.isEnded() {
 				// A shell that has ended says so on the sheet: the tab and the
 				// banner say it too, and the pane is where a person is looking.
 				endedBadge(c)
-			} else if readOnly(tb) {
+			} else if readOnly(tb) && !tb.isPending() {
 				readOnlyBadge(c)
 			}
 		})
@@ -522,7 +528,7 @@ func (w *window) body(c *ui.Context) {
 		// shell that has ended is not that — the banner has already said what
 		// happened to it — and a panel offering 拿回控制权 over a process the hub
 		// has forgotten would be offering a button that cannot work.
-		if !tb.alive || !readOnly(tb) {
+		if tb.isEnded() || tb.isPending() || !readOnly(tb) {
 			return
 		}
 
@@ -722,10 +728,18 @@ func (w *window) statusLeaseBar(c *ui.Context) {
 	if tb == nil {
 		return
 	}
-	if !tb.alive {
+	if tb.isEnded() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(6, 6).Radius(3).Background(t.Danger)
 			ui.Text(c, "已退出").FontSize(11).TextColor(t.Danger)
+		})
+		return
+	}
+	if tb.isPending() {
+		col := shellColorsFor(t)
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(6, 6).Radius(3).Background(col.quiet)
+			ui.Text(c, "创建中…").FontSize(11).TextColor(col.quiet)
 		})
 		return
 	}

@@ -174,10 +174,19 @@ func (c *Client) Machine(id string) (tunnel.Machine, bool) {
 func (c *Client) Open(machine string, h Handlers) *Stream {
 	c.mu.Lock()
 	if existing := c.byMachine[machine]; existing != nil {
-		existing.handlers = h
-		c.mu.Unlock()
-		c.flush()
-		return existing
+		existing.mu.Lock()
+		closed := existing.closed
+		existing.mu.Unlock()
+		if !closed {
+			existing.handlers = h
+			c.mu.Unlock()
+			c.flush()
+			return existing
+		}
+		delete(c.byMachine, machine)
+		if existing.stream != 0 {
+			delete(c.byStream, existing.stream)
+		}
 	}
 	s := &Stream{client: c, machine: machine, handlers: h}
 	c.byMachine[machine] = s
@@ -552,6 +561,7 @@ func (s *Stream) end(reason string) {
 	s.closed = true
 	s.stream, s.accepted = 0, false
 	s.mu.Unlock()
+	s.client.forget(s)
 	s.handlers.Close(reason)
 }
 

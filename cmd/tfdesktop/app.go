@@ -258,7 +258,6 @@ func (w *window) remoteLink(machine string) *relayLink {
 	l.onGone = func(reason string) {
 		w.update(func() {
 			delete(w.remote, machine)
-			delete(w.remoteSessions, machine)
 			log.Printf("tfdesktop: %s: %s", machine, reason)
 			w.invalidate()
 		})
@@ -840,11 +839,11 @@ func (w *window) removeTab(tb *tab) {
 	if key < 0 {
 		return
 	}
-	if tb.id != "" {
+	if tb.id != "" && tb.machine == machineLocal {
 		if w.dismissed == nil {
 			w.dismissed = make(map[string]bool)
 		}
-		w.dismissed[dismissedKey(tb.machine, tb.id)] = true
+		w.dismissed[tb.id] = true
 	}
 	tb.close()
 	delete(w.tabs, key)
@@ -1050,7 +1049,7 @@ func (h tabHandlers) Closed() {
 func (h tabHandlers) Gone(reason string) {
 	w := h.w
 	w.update(func() {
-		if tb := h.tab(); tb != nil {
+		if tb := h.tab(); tb != nil && tb.id == "" {
 			w.removeTab(tb)
 		}
 		log.Printf("tfdesktop: %s", reason)
@@ -1326,6 +1325,26 @@ func (t *tab) exitLine() string {
 		return ""
 	}
 	return fmt.Sprintf("已退出（退出码 %d）", t.exit)
+}
+
+// isPending reports whether this tab is still waiting for the hub to assign a session id.
+func (t *tab) isPending() bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.id == ""
+}
+
+// isEnded reports whether this tab has finished/exited.
+func (t *tab) isEnded() bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.done || (t.id != "" && !t.alive)
 }
 
 // programName turns the shell path a session reports into the short name shown
