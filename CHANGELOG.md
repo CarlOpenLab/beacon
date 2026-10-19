@@ -4,7 +4,7 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
-## Unreleased
+## 0.4.20
 
 **Desktop & agent: a tab whose relay link dropped renders the shell again — 远端标签页断线重连后自动恢复渲染**
 
