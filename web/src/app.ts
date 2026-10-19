@@ -555,7 +555,19 @@ export class App {
 
     const aside = el('aside', 'tf-side')
     const sideHead = el('div', 'tf-side-head')
-    sideHead.append(el('span', undefined, '会话'), el('span', 'tf-count', '0'))
+    const refreshBtn = el('button', 'tf-btn tf-btn-icon tf-btn-ghost tf-side-refresh') as HTMLButtonElement
+    refreshBtn.title = '刷新列表'
+    refreshBtn.setAttribute('aria-label', '刷新会话与机器列表')
+    refreshBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>' +
+      '</svg>'
+    refreshBtn.onclick = (e) => {
+      e.stopPropagation()
+      this.refreshAll()
+    }
+    const sideSpacer = el('span', 'tf-spacer')
+    sideHead.append(el('span', undefined, '会话'), el('span', 'tf-count', '0'), sideSpacer, refreshBtn)
     this.fleetList = el('div', 'tf-side-list')
     aside.append(sideHead, this.fleetList)
     // Tapping outside the drawer closes it on a phone.
@@ -1265,6 +1277,20 @@ export class App {
     // instead of being resized a frame later.
     mv.fleet.create({ cols, rows })
     this.renderTabs()
+  }
+
+  private refreshAll(): void {
+    if (this.relay) {
+      this.relay.refreshMachines()
+    }
+    for (const mv of this.machines.values()) {
+      if (mv.fleet.online) {
+        mv.fleet.list()
+      } else {
+        mv.fleet.ensureConnected()
+      }
+    }
+    this.toast('已刷新会话与机器列表', 'info')
   }
 
   private attachOrFocus(machineId: string, sessionId: string): void {

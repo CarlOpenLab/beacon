@@ -497,6 +497,26 @@ func TestAuthFrame(t *testing.T) {
 	}
 }
 
+// TestClientRequestMachines verifies that a client can explicitly query the relay
+// for an up-to-date machines roster at any time.
+func TestClientRequestMachines(t *testing.T) {
+	h := newHarness(t)
+	c := h.dialViaFrame(clientToken)
+
+	if f := c.next(); f.T != tunnel.TAuthOK {
+		t.Fatalf("first frame = %q, want %q", f.T, tunnel.TAuthOK)
+	}
+	if f := c.next(); f.T != tunnel.TMachines {
+		t.Fatalf("second frame = %q, want %q", f.T, tunnel.TMachines)
+	}
+
+	// Client asks to refresh machines:
+	c.write(tunnel.Frame{T: tunnel.TMachines})
+	if f := c.next(); f.T != tunnel.TMachines {
+		t.Fatalf("refresh response frame = %q, want %q", f.T, tunnel.TMachines)
+	}
+}
+
 // TestAuthFrameRejected covers the browser presenting a bad token: the socket
 // upgrades (it has to, to carry the frame) and is then closed as a policy
 // violation rather than left hanging.

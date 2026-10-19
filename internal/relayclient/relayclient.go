@@ -156,6 +156,11 @@ func (c *Client) Machines() []tunnel.Machine {
 	return append([]tunnel.Machine(nil), c.machines...)
 }
 
+// RefreshMachines asks the relay for an updated machine roster.
+func (c *Client) RefreshMachines() bool {
+	return c.raw(tunnel.Frame{T: tunnel.TMachines})
+}
+
 // Machine is one roster entry, or the zero value.
 func (c *Client) Machine(id string) (tunnel.Machine, bool) {
 	c.mu.Lock()
@@ -536,6 +541,13 @@ func (s *Stream) Send(m protocol.Msg) bool {
 		return false
 	}
 	return s.client.raw(tunnel.Frame{T: tunnel.TData, Stream: stream, Payload: payload})
+}
+
+// Closed reports whether the stream has closed.
+func (s *Stream) Closed() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.closed
 }
 
 // Close ends the stream. The machine's shells are left alone.

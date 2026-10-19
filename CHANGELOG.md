@@ -4,6 +4,19 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.18
+
+**Desktop & Web: manual refresh controls for sessions and fleet machines, shortcut support — 会话与机器列表手动刷新功能**
+
+- **Dedicated refresh buttons in panel headers.** Added dedicated refresh icon buttons (`↻`) to both the "会话" (Sessions) and "机器" (Machines) panel headers in the desktop app sidebar. Users can instantly poll the relay and target hubs for the latest live sessions and roster without needing to restart the app or deselect machines.
+  — 桌面端侧边栏「会话」与「机器」面板标题栏新增独立刷新图标按钮（`↻`）。用户可随时主动拉取目标机器与中继集群的最新会话列表及机器在线状态，无需重启应用或反复切换选项。
+- **Global refresh shortcuts.** Supported `⌘R` (macOS) / `Ctrl+R` (Windows) and `F5` shortcuts across the desktop client to trigger a unified refresh of all machines and active machine sessions, with clean, non-intrusive status feedback in the bottom status bar (`已刷新终端与机器状态`).
+  — 全局支持 `⌘R` / `Ctrl+R` 与 `F5` 快捷键，一键同时刷新机器集群列表与当前聚焦机器的全部会话，并在底部状态栏静默显示刷新提示。
+- **Relay snapshot on-demand query.** Extended the relay protocol and client transport to support explicit client-initiated `tunnel.TMachines` queries, allowing instant retrieval of the up-to-date fleet snapshot anytime a refresh is requested.
+  — 扩展中继协议与客户端传输层，支持客户端随时主动请求 `tunnel.TMachines` 快照帧，确保手动刷新时立即获取最新的机器名册与健康状态。
+- **Web client sidebar refresh.** Added an in-app refresh button to the Web UI sidebar header, enabling instant resync of all connected fleet hubs and relay machines from mobile and desktop browsers alike.
+  — Web 客户端侧边栏同步新增刷新按钮，手机与网页端用户也可一键刷新所有机器及其会话。
+
 ## 0.4.17
 
 **Desktop: pending tab states, stream reconnect resilience, and sidebar session retention — 终端连接状态呈现与会话持久性修复**

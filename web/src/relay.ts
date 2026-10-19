@@ -62,6 +62,12 @@ export class RelayConnection {
     this.setState('offline', '已断开')
   }
 
+  refreshMachines(): void {
+    if (this.authed && this.ws?.readyState === WebSocket.OPEN) {
+      this.raw({ t: TF.machines })
+    }
+  }
+
   /** A Connector for one machine, held by that machine's `Fleet`. */
   connectorFor(machineId: string): Connector {
     const name = () => this.machines.find((m) => m.id === machineId)?.name ?? machineId

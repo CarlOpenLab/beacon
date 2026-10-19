@@ -492,6 +492,37 @@ svg {
   background: var(--kbd-bg);
 }
 
+.tf-spacer {
+  flex: 1;
+}
+
+.tf-side-refresh {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  color: var(--fg-dim);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.tf-side-refresh:hover {
+  color: var(--fg);
+  background: var(--tab-hover);
+}
+
+.tf-side-refresh svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
 .tf-side-list {
   overflow-y: auto;
   flex: 1;

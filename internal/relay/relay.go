@@ -540,6 +540,8 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 			r.routeFromClient(c, f)
 		case tunnel.TClose:
 			r.handleClientClose(c, f)
+		case tunnel.TMachines:
+			c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshot()})
 		default:
 			c.send(errFrame(tunnel.ErrBadRequest, "unexpected frame "+f.T, f.Stream))
 		}

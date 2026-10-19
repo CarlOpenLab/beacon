@@ -711,3 +711,37 @@ func TestTheSessionPanelListsOnlyThePickedMachinesShells(t *testing.T) {
 		t.Fatalf("the other machine's list = %v, want the shell it is running", got)
 	}
 }
+
+func TestSessionAndMachinePanelsOfferRefreshControls(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t)
+	w.fleet = f
+	w.local = openLocalLink(f.Hub())
+	w.local.onSessions = w.sessionsArrived
+	w.local.onGone = w.linkGone
+
+	tt := drawNav(t, w)
+	if _, ok := tt.Find("刷新会话 ⌘R"); !ok {
+		t.Fatal("the session panel has no refresh control")
+	}
+	if _, ok := tt.Find("刷新机器 ⌘R"); !ok {
+		t.Fatal("the machine panel has no refresh control")
+	}
+
+	if err := tt.Click("刷新会话 ⌘R"); err != nil {
+		t.Fatalf("Click(刷新会话 ⌘R): %v", err)
+	}
+	w.drain()
+	if w.notice != "已刷新本机会话" {
+		t.Fatalf("notice after session refresh = %q, want '已刷新本机会话'", w.notice)
+	}
+
+	if err := tt.Click("刷新机器 ⌘R"); err != nil {
+		t.Fatalf("Click(刷新机器 ⌘R): %v", err)
+	}
+	w.drain()
+	if w.notice != "已刷新机器列表" {
+		t.Fatalf("notice after machine refresh = %q, want '已刷新机器列表'", w.notice)
+	}
+}
+

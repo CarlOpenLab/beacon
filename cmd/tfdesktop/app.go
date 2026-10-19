@@ -348,6 +348,9 @@ func (w *window) view(c *ui.Context) {
 		if c.Shortcut(ui.Cmd, ui.KeyT) {
 			w.newTab()
 		}
+		if c.Shortcut(ui.Cmd, ui.KeyR) || c.Shortcut(0, ui.KeyF5) {
+			w.refreshAll()
+		}
 		for i, key := range tabDigits {
 			if c.Shortcut(ui.Cmd, key) {
 				w.jumpTab(i)
@@ -482,6 +485,50 @@ func (w *window) ensureSessionList(machine string) {
 		return
 	}
 	w.linkNote = w.noLinkReason(machine)
+}
+
+// refreshAll re-queries the relay for the roster and the active machine for its sessions.
+func (w *window) refreshAll() {
+	w.refreshMachines()
+	w.refreshSessions(w.selectedMachine())
+	w.setNotice("已刷新终端与机器状态")
+}
+
+// refreshSessions asks the selected machine's hub for its live session list.
+func (w *window) refreshSessions(machine string) {
+	if machine == machineLocal || machine == "" {
+		if w.local != nil {
+			w.local.list()
+		}
+		w.setNotice("已刷新本机会话")
+		w.invalidate()
+		return
+	}
+	if l := w.remote[machine]; l != nil && l.stream != nil && l.stream.Closed() {
+		delete(w.remote, machine)
+	}
+	w.ensureSessionList(machine)
+	w.setNotice("已刷新 " + w.machineName(machine) + " 会话")
+	w.invalidate()
+}
+
+// refreshMachines asks the relay for the freshest roster of machines.
+func (w *window) refreshMachines() {
+	if w.fleet == nil {
+		return
+	}
+	if c := w.fleet.RelayClient(); c != nil {
+		if machines := c.Machines(); len(machines) > 0 {
+			w.roster = machines
+		}
+		c.RefreshMachines()
+	} else if w.relayOn() {
+		go func() {
+			_ = w.fleet.Reach()
+		}()
+	}
+	w.setNotice("已刷新机器列表")
+	w.invalidate()
 }
 
 // askForReach asks the relay for a short-lived credential and, when one arrives,

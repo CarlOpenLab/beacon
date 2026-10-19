@@ -99,9 +99,14 @@ func (w *window) sessionPanel(c *ui.Context) {
 		// button, which meant "close this tab" killed a process on a machine
 		// somewhere — for every client watching it, not just this window.
 		panelHead(c, "会话", len(entries), func() {
-			if iconButton(c, iconPlus, "新建终端 ⌘T", 26).Clicked() {
-				w.newTab()
-			}
+			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+				if iconButton(c, iconRefresh, "刷新会话 ⌘R", 26).Clicked() {
+					w.refreshSessions(w.selectedMachine())
+				}
+				if iconButton(c, iconPlus, "新建终端 ⌘T", 26).Clicked() {
+					w.newTab()
+				}
+			})
 		})
 
 		if len(entries) == 0 {
@@ -525,7 +530,11 @@ func (w *window) machinePanel(c *ui.Context) {
 		}
 	}
 	ui.Column(c).Height(min(184, float32(42+34*rows))).Children(func() {
-		panelHead(c, "机器", w.machineCount(), nil)
+		panelHead(c, "机器", w.machineCount(), func() {
+			if iconButton(c, iconRefresh, "刷新机器 ⌘R", 26).Clicked() {
+				w.refreshMachines()
+			}
+		})
 		ui.Scroll(c).Fill().Children(func() {
 			ui.Column(c).Gap(2).Padding(0, 6, 6, 6).Children(func() {
 				w.machineChoice(c, w.localEntry())
