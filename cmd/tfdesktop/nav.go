@@ -67,12 +67,12 @@ func (w *window) sidebar(c *ui.Context, mode string) {
 		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
 		w.machinePanel(c)
 		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
-		settings := ui.Row(c).Height(42).FillWidth().PaddingX(14).Gap(9).AlignItems(ui.Center).Label("设置")
+		settings := ui.Row(c).Height(36).FillWidth().PaddingX(12).Gap(8).AlignItems(ui.Center).Label("设置")
 		if settings.Hovered() {
 			settings.Background(t.SurfaceHover)
 		}
 		settings.Children(func() {
-			ui.Icon(c, iconSettings).FontSize(15).TextColor(t.TextMuted)
+			ui.Icon(c, iconSettings).FontSize(14).TextColor(t.TextMuted)
 			ui.Text(c, "设置").FontSize(12).TextColor(t.TextMuted)
 		})
 		if settings.Clicked() {
@@ -100,10 +100,10 @@ func (w *window) sessionPanel(c *ui.Context) {
 		// somewhere — for every client watching it, not just this window.
 		panelHead(c, "会话", len(entries), func() {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-				if iconButton(c, iconRefresh, "刷新会话 ⌘R", 26).Clicked() {
+				if iconButton(c, iconRefresh, "刷新会话 ⌘R", 24).Clicked() {
 					w.refreshSessions(w.selectedMachine())
 				}
-				if iconButton(c, iconPlus, "新建终端 ⌘T", 26).Clicked() {
+				if iconButton(c, iconPlus, "新建终端 ⌘T", 24).Clicked() {
 					w.newTab()
 				}
 			})
@@ -114,7 +114,7 @@ func (w *window) sessionPanel(c *ui.Context) {
 		}
 
 		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Gap(2).Padding(0, 8, 8, 8).Children(func() {
+			ui.Column(c).Gap(2).Padding(2, 8, 6, 8).Children(func() {
 				for _, e := range entries {
 					w.sessionRow(c, e)
 				}
@@ -253,7 +253,7 @@ func (w *window) sessionEntries() []sessionEntry {
 func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 	t := c.Theme()
 	col := shellColorsFor(t)
-	row := ui.Row(c).Height(36).FillWidth().PaddingX(9).Gap(7).AlignItems(ui.Center).Radius(radiusSmall).Label(e.label).Tooltip(w.sessionTooltip(e))
+	row := ui.Row(c).Height(34).FillWidth().PaddingX(8).Gap(7).AlignItems(ui.Center).Radius(radiusSmall).Label(e.label).Tooltip(w.sessionTooltip(e))
 	if e.active {
 		row.Background(col.chosen)
 	} else if row.Hovered() {
@@ -529,14 +529,21 @@ func (w *window) machinePanel(c *ui.Context) {
 			rows++
 		}
 	}
-	ui.Column(c).Height(min(184, float32(42+34*rows))).Children(func() {
+	headH := float32(30)
+	rowH := float32(32)
+	padTop := float32(2)
+	padBottom := float32(4)
+	gap := float32(2)
+	itemsH := float32(rows)*rowH + float32(max(0, rows-1))*gap
+	contentH := headH + padTop + padBottom + itemsH
+	ui.Column(c).Height(min(180, contentH)).Children(func() {
 		panelHead(c, "机器", w.machineCount(), func() {
-			if iconButton(c, iconRefresh, "刷新机器 ⌘R", 26).Clicked() {
+			if iconButton(c, iconRefresh, "刷新机器 ⌘R", 24).Clicked() {
 				w.refreshMachines()
 			}
 		})
 		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Gap(2).Padding(0, 6, 6, 6).Children(func() {
+			ui.Column(c).Gap(2).Padding(padTop, 8, padBottom, 8).Children(func() {
 				w.machineChoice(c, w.localEntry())
 				for _, machine := range w.roster {
 					if !w.ownMachine(machine) {
@@ -565,7 +572,7 @@ func (w *window) localEntry() tunnel.Machine {
 func (w *window) machineChoice(c *ui.Context, m tunnel.Machine) {
 	t := c.Theme()
 	selected := w.selectedMachine() == m.ID
-	row := ui.Row(c).Height(34).PaddingX(8).Gap(8).AlignItems(ui.Center).Radius(radiusSmall).FillWidth().Tooltip(m.ID + " · " + machineState(m))
+	row := ui.Row(c).Height(32).PaddingX(8).Gap(8).AlignItems(ui.Center).Radius(radiusSmall).FillWidth().Tooltip(m.ID + " · " + machineState(m))
 	if selected {
 		row.Background(shellColorsFor(t).chosen)
 	} else if row.Hovered() {
@@ -743,16 +750,15 @@ func panelHead(c *ui.Context, title string, count int, controls func()) {
 	t := c.Theme()
 	col := shellColorsFor(t)
 	ui.Row(c).
-		Height(34).PaddingX(10).Gap(7).
+		Height(30).PaddingX(10).Gap(6).
 		AlignItems(ui.Center).
-		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
 		Children(func() {
 			ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(0.4).TextColor(col.quiet)
-			count2 := ui.Box(c).Height(17).PaddingX(7).Radius(radiusPill).
+			count2 := ui.Box(c).Height(16).PaddingX(6).Radius(radiusPill).
 				AlignItems(ui.Center).Justify(ui.Center).
 				Background(col.field).BorderWidth(1).BorderColor(col.line)
 			count2.Children(func() {
-				ui.Text(c, strconv.Itoa(count)).FontSize(10.5).TextColor(t.TextMuted)
+				ui.Text(c, strconv.Itoa(count)).FontSize(10).TextColor(t.TextMuted)
 			})
 			ui.Spacer(c)
 			if controls != nil {

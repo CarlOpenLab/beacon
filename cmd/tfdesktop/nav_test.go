@@ -46,6 +46,47 @@ func drawNav(t *testing.T, w *window) *ui.Tester {
 	}, sidebarWidth, 420)
 }
 
+func TestPrintSidebarLayout(t *testing.T) {
+	w, _ := newTestShellWindow(t, "zsh 1")
+	tt := drawNav(t, w)
+	for _, text := range tt.Texts() {
+		if r, ok := tt.Find(text); ok {
+			t.Logf("Found %q at X=%.1f Y=%.1f W=%.1f H=%.1f", text, r.X, r.Y, r.W, r.H)
+		}
+	}
+}
+
+func TestSidebarLayoutWithMultipleMachines(t *testing.T) {
+	w, _ := newTestShellWindow(t, "zsh 1")
+	w.roster = []tunnel.Machine{
+		{ID: "m1", Name: "carl-windows", Online: false},
+		{ID: "m2", Name: "win-20240410OWZ", Online: true},
+	}
+	tt := drawNav(t, w)
+	// With 3 machines:
+	// Local machine + 2 remote machines
+	if _, ok := tt.Find("carl-windows"); !ok {
+		t.Fatalf("carl-windows missing")
+	}
+	winRect, ok := tt.Find("win-20240410OWZ")
+	if !ok {
+		t.Fatalf("win-20240410OWZ missing")
+	}
+	setRect, ok := tt.Find("设置")
+	if !ok {
+		t.Fatalf("设置 button missing")
+	}
+	t.Logf("win-20240410OWZ: Y=%.1f H=%.1f (bottom=%.1f)", winRect.Y, winRect.H, winRect.Y+winRect.H)
+	t.Logf("设置: Y=%.1f H=%.1f", setRect.Y, setRect.H)
+	// Between the bottom of win-20240410OWZ row and the top of 设置, the distance
+	// should be compact (no large void gap).
+	gap := setRect.Y - (winRect.Y + winRect.H)
+	t.Logf("Gap between last machine text and settings: %.1f", gap)
+	if gap > 30 {
+		t.Fatalf("Gap %.1f is too large, dead space not eliminated", gap)
+	}
+}
+
 func TestSessionPanelListsTheOpenShellsAndPicksOne(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one", "two")
 	tt := drawNav(t, w)

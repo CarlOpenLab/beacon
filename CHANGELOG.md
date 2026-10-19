@@ -4,6 +4,19 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.19
+
+**Desktop: refined sidebar spacing, removed redundant section hairlines, and snug machine panel height — 侧边栏布局间距深度精简与优化**
+
+- **Eliminated intrusive section header dividers.** Removed redundant bottom hairline borders from section title rows (`会话` and `机器`), allowing headers to flow naturally into list items without dividing them with harsh lines or sandwiching the machine title between double borders.
+  — 移除了「会话」与「机器」面板标题栏下方冗余的分割线，让标题与下方项目自然衔接，彻底消除「机器」标题被上下两道分割线夹在中间的生硬感。
+- **Compact header & row heights.** Standardized section header height to 30px with 24px icon buttons, session rows to 34px, and machine rows to 32px with 8px horizontal padding, bringing tight, balanced vertical rhythm matching modern desktop apps.
+  — 将分类标题栏高度优化为 30px、操作图标调整为 24px；会话行高精简至 34px、机器列表行高精简至 32px，左右外边距统一定为 8px，视觉重心更加规整平衡。
+- **Dynamic machine panel content fitting.** Calculated exact content height for the machines panel (`headH + itemsH + padding`), eliminating awkward blank dead space below the machine list before the bottom divider and "设置" button.
+  — 机器面板高度改为基于名册行数精确计算内容高度，彻底解决机器列表下方与底部分割线及「设置」按钮之间大块多余空白的问题。
+- **Streamlined settings button.** Reduced bottom settings toolbar height to 36px with 12px padding, ensuring the sidebar footer feels compact, lightweight, and cohesive.
+  — 底部「设置」按钮高度调整为更精致的 36px，使侧边栏整体在深色主题下更加紧凑耐看、高级舒适。
+
 ## 0.4.18
 
 **Desktop & Web: manual refresh controls for sessions and fleet machines, shortcut support — 会话与机器列表手动刷新功能**
