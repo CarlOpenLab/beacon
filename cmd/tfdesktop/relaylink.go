@@ -104,6 +104,12 @@ func (h relayHandlers) Open() {
 	h.l.sendMsg(protocol.Msg{T: protocol.CTHello, V: protocol.Version})
 	h.l.sendMsg(protocol.Msg{T: protocol.CTList})
 	h.l.flush()
+	// A link that replaces a dead one picks the orphaned tabs back up here.
+	// This runs on the relay's reader goroutine, so the hook is the window's to
+	// make thread-safe.
+	if h.l.onOpen != nil {
+		h.l.onOpen()
+	}
 }
 
 func (h relayHandlers) Frame(m protocol.Msg) { h.l.dispatch(m) }

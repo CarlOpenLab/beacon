@@ -56,10 +56,13 @@ type link struct {
 	sendMu sync.Mutex
 
 	// onSessions is the hub's session list, pushed on every change. onGone is
-	// the link itself ending, with the reason. Both are set by the link's
-	// owner; neither is required.
+	// the link itself ending, with the reason. onOpen is the link's wire coming
+	// up — for a relay stream, the relay routing it — which is when a link that
+	// replaces a dead one can pick the orphaned tabs back up. All three are set
+	// by the link's owner; none is required.
 	onSessions func([]protocol.Summary)
 	onGone     func(reason string)
+	onOpen     func()
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -71,6 +74,15 @@ type link struct {
 
 func newLink() *link {
 	return &link{sessions: map[string]*session{}}
+}
+
+// dead reports whether this link has ended. A tab watching a session on a dead
+// link can never render again — nothing re-attaches it on its own — so the
+// window re-watches such a tab on the machine's link as it now stands.
+func (l *link) dead() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.closed
 }
 
 // session is the window's view of one shell on the far side of a link: what it

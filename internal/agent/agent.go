@@ -314,6 +314,22 @@ func (s *session) send(f tunnel.Frame) bool {
 	}
 }
 
+// sendCtx is send that waits for room, up to ctx. It is what a viewer's output
+// uses: the out queue is shared by every viewer of this machine, and a full one
+// must slow the hub's writer down rather than answer it with an error the hub
+// reads as a dead client — which killed the viewer mid-replay and left its tab
+// a blank pane with a live shell behind it.
+func (s *session) sendCtx(ctx context.Context, f tunnel.Frame) error {
+	select {
+	case <-s.done:
+		return errors.New("relay link unavailable")
+	case <-ctx.Done():
+		return ctx.Err()
+	case s.out <- f:
+		return nil
+	}
+}
+
 // openStream projects one remote viewer onto the local hub. Each stream gets
 // its own hub client, so a phone watching three sessions is three viewers —
 // which is exactly what the control arbitration already expects.
@@ -326,8 +342,8 @@ func (s *session) openStream(ctx context.Context, id uint32) {
 	s.streams[id] = tp
 	s.mu.Unlock()
 
-	tp.send = func(payload []byte) bool {
-		return s.send(tunnel.Frame{T: tunnel.TData, Stream: id, Payload: payload})
+	tp.send = func(ctx context.Context, payload []byte) error {
+		return s.sendCtx(ctx, tunnel.Frame{T: tunnel.TData, Stream: id, Payload: payload})
 	}
 
 	go func() {
@@ -415,7 +431,7 @@ const inboundQueue = 512
 // socket.
 type streamTransport struct {
 	in   chan []byte
-	send func(payload []byte) bool
+	send func(ctx context.Context, payload []byte) error
 	done chan struct{}
 	once sync.Once
 }
@@ -443,10 +459,7 @@ func (s *streamTransport) Read(ctx context.Context) ([]byte, error) {
 }
 
 func (s *streamTransport) Write(ctx context.Context, b []byte) error {
-	if !s.send(b) {
-		return errors.New("relay link unavailable")
-	}
-	return nil
+	return s.send(ctx, b)
 }
 
 // Ping is a no-op: the relay link has its own heartbeat, and a session's

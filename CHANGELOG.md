@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## Unreleased
+
+**Desktop & agent: a tab whose relay link dropped renders the shell again — 远端标签页断线重连后自动恢复渲染**
+
+- **Remote tabs re-attach after a link drop.** A tab watching another machine's shell was bound to the relay stream it was opened on; when that stream ended — a relay restart, a member flap, or a slow viewer evicted under load — the tab stayed on screen forever showing nothing new, and clicking its row only selected the dead pane. The window now re-watches such a tab on the machine's link as it now stands: the click finds a live pane, and looking at the machine again (picking it in the 机器 panel, refreshing its sessions) heals its tabs without a click, the way the browser client's reconnect already re-attached its own. The hub replays the session's ring from byte 0 onto a fresh terminal, so the shell's screen is painted again rather than laid over the stale one.
+  — 彻底修复查看其他机器终端时，中继流断开（中继重启、机器掉线、高负载下慢速查看者被踢出）后标签页卡住、什么都不渲染且再次点击也无效的缺陷。重新点击该会话或再次查看该机器时，窗口会自动在新链路上重新附着该终端，Hub 从字节 0 重放会话环形缓冲区并绘制到全新终端，立即可见 Shell 界面。
+- **A busy session no longer kills its remote viewer mid-replay.** The relay agent's outbound queue is shared by every viewer of a machine; when it filled under sustained output, the frame in flight was dropped and the error was read by the hub as a dead client — which detached the viewer before its replay had landed and left exactly the blank pane above. A full queue now applies bounded backpressure (the hub's own write deadline bounds the wait) instead of silently evicting the viewer.
+  — 修复 Mac 等高输出机器在中继链路拥塞时，远程查看者的附着回放帧被静默丢弃、导致 Hub 直接判定该查看者掉线的问题。出站队列满时现在按 Hub 写超时做有界背压，而非静默踢掉查看者造成白屏。
+
 ## 0.4.19
 
 **Desktop: refined sidebar spacing, removed redundant section hairlines, and snug machine panel height — 侧边栏布局间距深度精简与优化**

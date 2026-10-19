@@ -446,6 +446,15 @@ func (w *window) selectTab(tb *tab) {
 // time a shell is picked is not a list of tabs.
 func (w *window) openOrSelect(machine, sessionID string) {
 	if tb := w.tabOf(machine, sessionID); tb != nil {
+		// A tab whose link went away renders nothing new, ever — selecting it
+		// would put a dead pane on screen and explain nothing. Give it the
+		// machine's link as it now stands first, so the click lands on a pane
+		// that can show the shell again.
+		if tb.sess != nil && tb.sess.link.dead() {
+			if l := w.linkTo(machine); l != nil {
+				w.watchTab(tb, l, machine, sessionID)
+			}
+		}
 		w.selectTab(tb)
 		return
 	}

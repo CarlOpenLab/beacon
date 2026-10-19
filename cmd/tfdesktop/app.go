@@ -255,6 +255,15 @@ func (w *window) remoteLink(machine string) *relayLink {
 	}
 	l := openRelayLink(c, machine)
 	l.onSessions = func(list []protocol.Summary) { w.remoteSessionsArrived(machine, list) }
+	l.onOpen = func() {
+		// The stream is routed: this link is the machine's as it now stands, so
+		// the tabs the previous link left behind are picked back up here —
+		// without a click, the way the browser client's reconnect re-attaches
+		// its tabs. Open runs on the relay's reader goroutine, so the re-attach
+		// goes through the window's thread, which owns the tabs and their
+		// terminals.
+		w.update(func() { w.reattachMachineTabs(machine, l.link) })
+	}
 	l.onGone = func(reason string) {
 		w.update(func() {
 			delete(w.remote, machine)
@@ -807,14 +816,64 @@ func (w *window) mount(s protocol.Summary) error {
 // caller must say out loud, because attaching a remote session id to the local
 // hub instead would open a tab that shows nothing and explains nothing.
 func (w *window) openTab(machine, sessionID string) *tab {
-	l := w.linkFor(machine)
+	l := w.linkTo(machine)
 	if l == nil {
-		remote := w.remoteLink(machine)
-		if remote == nil {
-			log.Printf("tfdesktop: no link to %s: %s", machine, w.noLinkReason(machine))
-			return nil
+		log.Printf("tfdesktop: no link to %s: %s", machine, w.noLinkReason(machine))
+		return nil
+	}
+	key := w.nextKey
+	w.nextKey++
+	prog := ""
+	if machine == machineLocal {
+		prog = programName(w.shell)
+		if prog == "" {
+			prog = programName(os.Getenv("SHELL"))
 		}
-		l = remote.link
+	}
+	tb := &tab{
+		id:      sessionID,
+		machine: machine,
+		program: prog,
+		ordinal: w.nextOrdinal(machine),
+	}
+	w.tabs[key] = tb
+	w.order = append(w.order, key)
+	w.selected = len(w.order) - 1
+	if machine != "" {
+		w.machineSel = machine
+	}
+	w.watchTab(tb, l, machine, sessionID)
+	return tb
+}
+
+// linkTo is the link that speaks to machine right now: this machine's own, or
+// the window's relay link to another machine — opening that link when the
+// window has none yet. It is nil when the machine cannot be reached at all,
+// which is a thing a caller must say out loud rather than paper over with a
+// tab that shows nothing and explains nothing.
+func (w *window) linkTo(machine string) *link {
+	if l := w.linkFor(machine); l != nil {
+		return l
+	}
+	if remote := w.remoteLink(machine); remote != nil {
+		return remote.link
+	}
+	return nil
+}
+
+// watchTab gives a tab its terminal and attaches it to sessionID over l. It is
+// what opening a tab does, and what re-attaching a tab does when the link it
+// was on has gone away: the hub replays the session's ring from byte 0, so a
+// fresh terminal is the screen that replay is meant to paint — feeding it to
+// the old one would lay the replay over whatever the tab last showed.
+func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
+	// The terminal this tab had, if any, goes away with the conn under it: its
+	// reader is parked on a link that is never coming back.
+	if tb.conn != nil {
+		_ = tb.conn.Close()
+	}
+	if tb.term != nil {
+		_ = tb.term.Close()
 	}
 	sess := newSession(sessionID, l, nil)
 	conn := newTermConn(sess)
@@ -833,30 +892,10 @@ func (w *window) openTab(machine, sessionID string) *tab {
 	if err != nil {
 		log.Printf("tfdesktop: terminal: %v", err)
 	}
-	key := w.nextKey
-	w.nextKey++
-	prog := ""
-	if machine == machineLocal {
-		prog = programName(w.shell)
-		if prog == "" {
-			prog = programName(os.Getenv("SHELL"))
-		}
-	}
-	tb := &tab{
-		id:      sessionID,
-		term:    term,
-		conn:    conn,
-		sess:    sess,
-		machine: machine,
-		program: prog,
-		ordinal: w.nextOrdinal(machine),
-	}
-	w.tabs[key] = tb
-	w.order = append(w.order, key)
-	w.selected = len(w.order) - 1
-	if machine != "" {
-		w.machineSel = machine
-	}
+	tb.term, tb.conn, tb.sess = term, conn, sess
+	tb.machine = machine
+	tb.setLease("", "", 0)
+	tb.takeLetGo()
 
 	if sessionID != "" {
 		sess.bind(sessionID)
@@ -866,7 +905,34 @@ func (w *window) openTab(machine, sessionID string) *tab {
 		// the tab's place.
 		l.watch(sess)
 	}
-	return tb
+}
+
+// reattachMachineTabs gives the tabs watching machine a link again after the
+// one they were on ended. A tab on a dead link renders nothing new, ever: the
+// click that finds it only selects it, so a machine whose relay stream dropped
+// — a relay restart, a member flap, a slow viewer evicted under load — would
+// leave every tab on it a blank pane with a live shell behind it. The machine's
+// link as it now stands is l; every tab still on the old one is re-watched on
+// it, and the hub's replay from byte 0 paints the shell's screen again.
+//
+// A tab whose shell has ended keeps its final screen: there is no session left
+// to attach to, and wiping the last words of a dead shell to show a blank pane
+// is a worse answer than the pane it already has.
+func (w *window) reattachMachineTabs(machine string, l *link) {
+	for _, key := range w.order {
+		tb := w.tabs[key]
+		if tb == nil || tb.machine != machine || tb.id == "" {
+			continue
+		}
+		if tb.isEnded() {
+			continue
+		}
+		if tb.sess == nil || tb.sess.link == l || !tb.sess.link.dead() {
+			continue
+		}
+		log.Printf("tfdesktop: re-attaching %s on %s after its link ended", tb.id, machine)
+		w.watchTab(tb, l, machine, tb.id)
+	}
 }
 
 // removeTab takes a tab away. The shell is left alone: ending it is the hub's

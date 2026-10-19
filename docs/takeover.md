@@ -99,6 +99,13 @@ state needs no new channel:
 * Resume instead of resending: a viewer keeps a short replay buffer plus the last
   sequence it consumed and asks for the missing tail on reconnect (the same
   session resume the browser client already uses).
+* A dropped link is a routing outage, never a dead pane: the browser client
+  re-attaches every tab's session at its cursor when its link comes back, and
+  the desktop window does the same for its tabs — a tab whose relay stream ended
+  is re-watched on the machine's link as it now stands, either when the row is
+  clicked again or when the machine is looked at again, and the hub's replay
+  from byte 0 paints the shell's screen onto a fresh terminal. A tab that stays
+  blank forever was the failure this replaced.
 
 ## How it is wired
 
