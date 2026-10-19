@@ -40,6 +40,7 @@ func main() {
 	// privacy question. 设置 → 更新 turns it on, and 检查更新… in the menu works
 	// either way.
 	mygo.Use(native.New(updater.Options{DisableAutomaticChecks: true}))
+	mygo.Theme.SetSource(mygo.ThemeDark)
 
 	addr := flag.String("addr", "127.0.0.1:0",
 		"loopback address for the daemon under the window; port 0 picks a free one")
@@ -134,6 +135,7 @@ func main() {
 			MinWidth:        720,
 			MinHeight:       420,
 			BackgroundColor: windowGround(saved.Theme),
+			TitleBarStyle:   mygo.TitleBarHidden,
 			StateKey:        "main",
 			Content:         ui.View(app.view),
 		})

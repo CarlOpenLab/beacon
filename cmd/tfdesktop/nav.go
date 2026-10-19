@@ -50,8 +50,19 @@ const (
 func (w *window) sidebar(c *ui.Context, mode string) {
 	t := c.Theme()
 	col := shellColorsFor(t)
+	bar := c.TitleBar()
+	topHeight := float32(headerHeight)
+	if bar.Height > topHeight {
+		topHeight = bar.Height
+	}
 	ui.Column(c).Width(sidebarWidth).FillHeight().Background(col.side).BorderWidth(0, 1, 0, 0).BorderColor(col.hairline).Children(func() {
-		ui.Row(c).Height(50).PaddingX(14).Gap(9).AlignItems(ui.Center).Children(func() { markTile(c, 24); ui.Text(c, "term-fleet").FontSize(13).FontWeight(600) })
+		top := ui.Row(c).Height(topHeight).FillWidth().PaddingX(12).AlignItems(ui.Center).DragWindow()
+		top.Children(func() {
+			if bar.Left > 0 {
+				ui.Box(c).Width(bar.Left)
+			}
+			ui.Spacer(c)
+		})
 		w.sessionPanel(c)
 		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
 		w.machinePanel(c)
@@ -184,7 +195,15 @@ func (w *window) sessionEntries() []sessionEntry {
 			name = filepath.Base(summary.Cwd)
 		}
 		if name == "" || name == "." || name == "/" {
-			name = summary.SessionID
+			if prog := programName(summary.Shell); prog != "" {
+				name = prog
+			} else if strings.HasPrefix(summary.SessionID, "s") {
+				name = "终端 " + summary.SessionID[1:]
+			} else if summary.SessionID != "" {
+				name = "终端 " + summary.SessionID
+			} else {
+				name = "终端"
+			}
 		}
 		// A shell the window already has a tab for is on screen when that tab is
 		// the tab on screen: picking it is switching to it, not opening a second
@@ -533,6 +552,8 @@ func (w *window) machineChoice(c *ui.Context, m tunnel.Machine) {
 			state = t.Danger
 		} else if m.ID == machineLocal {
 			state = w.fleetColor(t)
+		} else {
+			state = t.Success
 		}
 		ui.Box(c).Size(7, 7).Radius(4).Background(state)
 		name := m.Name

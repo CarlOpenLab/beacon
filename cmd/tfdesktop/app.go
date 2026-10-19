@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -296,39 +298,27 @@ func (w *window) linkGone(reason string) {
 func (w *window) followLease() {
 	on := w.activeTab()
 
-	// A shell on another machine that this window is not showing is not one it
-	// drives. Derived from the shells and the screen rather than remembered, so
-	// no sequence of clicks can leave a shell held with nobody looking at it.
-	for _, tb := range w.tabs {
-		if tb == nil || tb == on || tb.machine == machineLocal || !tb.held() {
-			continue
-		}
-		tb.letGoLease()
-	}
-
 	if on == nil || on.conn == nil || on == w.arranged {
 		return
 	}
-	// The shell on screen has changed: settle its lease once. A claim the hub
-	// refuses — a machine that allows no other client to control it — is answered
-	// on screen, and is not retried every frame.
+	// The shell on screen has changed: settle its lease once.
 	w.arranged = on
 	if on.held() {
 		return
 	}
-	if on.machine == machineLocal && on.holder() != "" {
+	if on.machine != machineLocal {
+		// Do not automatically take over remote machine shells:
+		// watching another machine is read-only by default;
+		// taking over (接管) and releasing (释放) are both manual.
+		return
+	}
+	if on.holder() != "" {
 		// This machine's own shell, held by another client: taking it back ends
 		// that client's session with this machine's shell, so it stays a person's
 		// click — 拿回控制权 in the pane — and never a side effect of looking at it.
 		return
 	}
-	// Another machine's shell on screen is one this window drives: reaching that
-	// machine is the consent. The machine's own window is left read-only with the
-	// way back — 拿回控制权, which the hub always honours — and letting this
-	// happen on the way in rather than every frame is what keeps two windows
-	// looking at the same shell from taking it from each other for as long as
-	// both looked.
-	on.conn.claiming(on.machine != machineLocal)
+	on.conn.claiming(false)
 }
 
 // view draws the window: a band across the top, a pill per shell, and the shell
@@ -689,7 +679,13 @@ func (w *window) reconcile(live []protocol.Summary) {
 		if !s.Alive {
 			continue
 		}
-		if w.tabOf(machineLocal, s.SessionID) != nil || w.dismissed[s.SessionID] {
+		if tb := w.tabOf(machineLocal, s.SessionID); tb != nil {
+			if tb.program == "" && s.Shell != "" {
+				tb.program = programName(s.Shell)
+			}
+			continue
+		}
+		if w.dismissed[s.SessionID] {
 			continue
 		}
 		if err := w.mount(s); err != nil {
@@ -705,6 +701,21 @@ func (w *window) reconcile(live []protocol.Summary) {
 	}
 }
 
+// nextOrdinal finds the lowest unused 1-based index for tabs on the given machine.
+func (w *window) nextOrdinal(machine string) int {
+	used := make(map[int]bool)
+	for _, tb := range w.tabs {
+		if tb != nil && tb.machine == machine && tb.ordinal > 0 {
+			used[tb.ordinal] = true
+		}
+	}
+	for i := 1; ; i++ {
+		if !used[i] {
+			return i
+		}
+	}
+}
+
 // mount gives a session its native terminal. The terminal reads and writes the
 // session through the window's link, so it draws the real shell — the same one
 // a browser sees — and types into it under the same lease a browser answers to.
@@ -712,11 +723,8 @@ func (w *window) mount(s protocol.Summary) error {
 	tb := w.openTab(machineLocal, s.SessionID)
 	if s.Title != "" {
 		tb.setTitle(s.Title)
-	} else {
-		// The shell has not named itself yet, so label the tab by what it is
-		// rather than by its session id.
-		w.tabSeq++
-		tb.ordinal = w.tabSeq
+	}
+	if s.Shell != "" {
 		tb.program = programName(s.Shell)
 	}
 	return nil
@@ -758,12 +766,21 @@ func (w *window) openTab(machine, sessionID string) *tab {
 	}
 	key := w.nextKey
 	w.nextKey++
+	prog := ""
+	if machine == machineLocal {
+		prog = programName(w.shell)
+		if prog == "" {
+			prog = programName(os.Getenv("SHELL"))
+		}
+	}
 	tb := &tab{
 		id:      sessionID,
 		term:    term,
 		conn:    conn,
 		sess:    sess,
 		machine: machine,
+		program: prog,
+		ordinal: w.nextOrdinal(machine),
 	}
 	w.tabs[key] = tb
 	w.order = append(w.order, key)
@@ -921,6 +938,9 @@ func (h tabHandlers) Attached(sum protocol.Summary, cursor int64, truncated bool
 		tb.alive = sum.Alive
 		if sum.Title != "" {
 			tb.setTitle(sum.Title)
+		}
+		if tb.program == "" && sum.Shell != "" {
+			tb.program = programName(sum.Shell)
 		}
 		w.invalidate()
 	})
@@ -1245,13 +1265,25 @@ func (t *tab) nameLocked() string {
 	if name == "" {
 		// Nothing named this shell yet. Say what the tab is instead of
 		// showing a session id, which tells the reader nothing.
+		ordinal := t.ordinal
+		if ordinal <= 0 && strings.HasPrefix(t.id, "s") {
+			if n, err := strconv.Atoi(t.id[1:]); err == nil && n > 0 {
+				ordinal = n
+			}
+		}
 		switch {
+		case t.program != "" && ordinal > 0:
+			name = fmt.Sprintf("%s %d", t.program, ordinal)
 		case t.program != "":
-			name = fmt.Sprintf("%s %d", t.program, t.ordinal)
-		case t.ordinal > 0:
-			name = fmt.Sprintf("终端 %d", t.ordinal)
+			name = t.program
+		case ordinal > 0:
+			name = fmt.Sprintf("终端 %d", ordinal)
+		case strings.HasPrefix(t.id, "s"):
+			name = "终端 " + t.id[1:]
+		case t.id != "":
+			name = "终端 " + t.id
 		default:
-			name = t.id
+			name = "终端"
 		}
 	}
 	return name

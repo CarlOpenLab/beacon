@@ -167,18 +167,20 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 	}
 	who := holder + " 正在控制这个终端"
 	outcome := holder + " 会变成只读，之后仍能看着这个终端。"
-	tip := "取得控制权（" + holder + " 会变成只读）"
+	tip := "接管输入：取得操作权限（" + holder + " 会变成只读）"
 	if holder == "" {
 		// Nobody's shell: the panel says so rather than leaving a blank where a
 		// name goes, and the button promises nothing about a person who is not
 		// there.
 		who = "当前无人控制这个终端"
 		outcome = "取得控制权后你就能继续输入。"
-		tip = "取得控制权（当前无人控制）"
+		tip = "取得控制权后即可在终端内输入"
 	} else if steal {
 		// Another machine's shell: this window never had it, so it is taken
 		// rather than taken back, and the holder is told.
 		outcome = "接管会通知 " + holder + "，对方会变成只读。"
+	} else {
+		tip = "拿回控制权：本机恢复输入（" + holder + " 会变成只读）"
 	}
 
 	ui.Popover(c, anchor, open, func() {
@@ -190,12 +192,12 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 				ui.Text(c, who).
 					FontSize(13).FontWeight(600).SingleLine()
 			})
-			ui.Text(c, "你的输入不会送进 shell。").
+			ui.Text(c, "当前为只读观察模式，你的输入不会送进 shell。").
 				FontSize(11.5).TextColor(t.TextMuted)
 			ui.Text(c, outcome).
 				FontSize(11.5).TextColor(t.TextMuted)
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, "保持只读").Clicked() {
+				if ui.Button(c, "保持只读").Tooltip("仅实时查看画面，不发送键盘输入").Clicked() {
 					*open = false
 				}
 				if ui.PrimaryButton(c, take).Tooltip(tip).Clicked() {

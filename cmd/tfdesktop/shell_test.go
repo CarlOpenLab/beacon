@@ -20,7 +20,7 @@ func TestTheHeaderNamesTheActiveTerminalAndOffersNewTerminal(t *testing.T) {
 	if !tt.HasText("本机 / one") {
 		t.Fatalf("missing terminal title: %v", tt.Texts())
 	}
-	if _, ok := tt.Find("新建终端"); !ok {
+	if _, ok := tt.Find("新建终端 ⌘T"); !ok {
 		t.Fatal("missing new terminal action")
 	}
 	if _, ok := tt.Find("设置"); !ok {

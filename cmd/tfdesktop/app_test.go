@@ -128,3 +128,33 @@ func TestATabOfAnEndedShellIsNamedLikeAnyOtherAndKeepsTheCodeForTheTooltip(t *te
 		t.Fatalf("exitLine = %q for a shell that is still running, want nothing", got)
 	}
 }
+
+func TestTabNameNeverShowsBareSessionID(t *testing.T) {
+	// When program and ordinal were unassigned, tabs must never show raw "s1" or "s3".
+	s1 := &tab{id: "s1"}
+	if got := s1.name(); got != "终端 1" {
+		t.Fatalf("s1.name() = %q, want %q", got, "终端 1")
+	}
+	s3 := &tab{id: "s3"}
+	if got := s3.name(); got != "终端 3" {
+		t.Fatalf("s3.name() = %q, want %q", got, "终端 3")
+	}
+}
+
+func TestNextOrdinalRecyclesUnusedIndices(t *testing.T) {
+	w := &window{tabs: make(map[int]*tab)}
+	if got := w.nextOrdinal(machineLocal); got != 1 {
+		t.Fatalf("first ordinal = %d, want 1", got)
+	}
+	w.tabs[1] = &tab{machine: machineLocal, ordinal: 1}
+	if got := w.nextOrdinal(machineLocal); got != 2 {
+		t.Fatalf("second ordinal = %d, want 2", got)
+	}
+	w.tabs[2] = &tab{machine: machineLocal, ordinal: 2}
+	// After removing tab 1, index 1 is recycled
+	delete(w.tabs, 1)
+	if got := w.nextOrdinal(machineLocal); got != 1 {
+		t.Fatalf("recycled ordinal = %d, want 1", got)
+	}
+}
+

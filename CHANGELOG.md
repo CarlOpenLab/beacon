@@ -4,6 +4,36 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.14
+
+**Desktop: macOS native dark styling, squircle icon, manual lease control — 桌面端深色外观与交互细节优化**
+
+- **macOS dark styling and clean title bar.** Fix the 1px white line at the top of the
+  macOS window by enforcing native dark appearance and using a hidden titlebar
+  style. App icon now uses an Apple-compliant squircle to eliminate the white Dock
+  background platter.
+  — 适配 macOS 原生深色外观，消除顶部白线，规范图标底板避免 Dock 显示白底。
+- **Cleaner minimal navigation.** Remove the redundant top-left logo block and
+  the intrusive header "新建终端" button. New sessions can be created via the
+  sidebar button or `⌘T`. The header supports native window dragging and traffic
+  light spacing when the sidebar is collapsed.
+  — 精简侧栏顶部标识与顶部新建按钮，支持窗口拖拽及侧栏折叠避让红绿灯。
+- **Clear machine status.** Remote online machines now display a green status dot
+  instead of grey, preventing confusion about connectivity.
+  — 远端在线机器状态指示灯调整为绿色，状态更直观。
+- **Human-readable terminal names & recycled numbering.** Terminals now show clean
+  names like `zsh 1`, `zsh 2` or `终端 1`, `终端 2` instead of raw internal backend
+  IDs (`s1`, `s3`). Closing and opening tabs recycles unused ordinal numbers.
+  — 终端名称优化为友好的程序名和序号（如 `zsh 1` 或 `终端 1`），消除裸露的后端内部 ID（`s1`、`s3`），关闭会话后可回收序号。
+- **Clearer lease and takeover terminology.** Add self-explanatory tooltips and helper
+  descriptions for read-only mode, takeover, and release actions, clarifying multi-client
+  keyboard input vs view-only observation.
+  — 补充多端协同模式提示，优化只读模式、接管输入及释放控制权的文案与悬浮提示。
+- **Explicit, manual lease takeover and release.** Switching to another machine
+  no longer automatically claims its shell or drops existing leases. Taking over
+  and releasing control are now strictly manual.
+  — 切换机器或会话不再自动接管或释放控制权，接管与释放均改为手动操作。
+
 ## 0.4.13
 
 **Desktop: a quieter terminal, with its colors intact — 桌面终端界面重构**

@@ -663,6 +663,14 @@ func TestTheLeaseFollowsTheShellOnScreen(t *testing.T) {
 	if mine == nil {
 		t.Fatal("no tab for the far machine's shell")
 	}
+	alphaDesk.frame(t)
+	// Opening/looking at far shell is read-only by default, not auto-claimed.
+	if mine.held() {
+		t.Fatal("far shell should not be auto-claimed on opening")
+	}
+
+	// Taking over requires explicit reclaim
+	alphaDesk.reclaim(mine)
 	waitFor(t, "the lease on the far shell", 20*time.Second, func() bool {
 		alphaDesk.drain()
 		return mine.held()
@@ -672,15 +680,15 @@ func TestTheLeaseFollowsTheShellOnScreen(t *testing.T) {
 		return farTab != nil && !farTab.held() && farTab.holder() != ""
 	})
 
-	// 切到本机: the click a person makes on this machine's row in the panel. The
-	// screen follows it, and the far shell is let go — the far machine takes its
-	// own shell back, so 正在被控制 ends there without anyone clicking anything.
+	// 切到本机: switching away does not auto-release the lease; releasing is manual
 	local, ok := alphaDesk.machineByID(machineLocal)
 	if !ok {
 		t.Fatal("the window does not know this machine")
 	}
 	alphaDesk.selectMachine(local)
 	alphaDesk.frame(t)
+	// Releasing is manual
+	alphaDesk.releaseLease(mine)
 	waitFor(t, "the far machine to have its shell back", 20*time.Second, func() bool {
 		alphaDesk.drain()
 		betaDesk.drain()
@@ -696,17 +704,12 @@ func TestTheLeaseFollowsTheShellOnScreen(t *testing.T) {
 		t.Errorf("notice = %q, want nothing about the far machine taking anything back", notice)
 	}
 
-	// And going back to that shell drives it again, without a click.
+	// And going back to that shell stays read-only; does not drive it again without manual reclaim.
 	alphaDesk.selectTab(mine)
 	alphaDesk.frame(t)
-	waitFor(t, "the lease on the far shell again", 20*time.Second, func() bool {
-		alphaDesk.drain()
-		return mine.held()
-	})
-	waitFor(t, "the far machine read-only again", 20*time.Second, func() bool {
-		betaDesk.drain()
-		return !farTab.held() && farTab.holder() != ""
-	})
+	if mine.held() {
+		t.Fatal("switching back to far shell should not auto-reclaim")
+	}
 }
 
 // frame draws one frame of the window, the way the app's own loop does. The

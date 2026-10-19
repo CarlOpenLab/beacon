@@ -61,12 +61,19 @@ func markTile(c *ui.Context, size float32) {
 func (w *window) header(c *ui.Context) {
 	t := c.Theme()
 	col := shellColorsFor(t)
+	bar := c.TitleBar()
+
+	leftPad := float32(12)
+	if w.sidebarHidden && bar.Left > 0 {
+		leftPad = bar.Left + 12
+	}
 
 	ui.Row(c).
-		Height(headerHeight).PaddingX(12).Gap(10).
+		Height(headerHeight).Padding(0, 12, 0, leftPad).Gap(10).
 		AlignItems(ui.Center).
 		Background(col.pane).
 		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
+		DragWindow().
 		Children(func() {
 			if w.sidebarHidden && iconButton(c, iconSettings, "设置", headerButtonSize).Clicked() {
 				w.openSettings()
@@ -98,14 +105,9 @@ func (w *window) header(c *ui.Context) {
 // there is no one to give it to.
 func (w *window) headerActions(c *ui.Context) {
 	if tb := w.activeTab(); tb != nil && tb.alive && tb.held() && tb.machine != machineLocal {
-		if ui.Button(c, "释放控制权").Tooltip("释放控制权：交还给运行它的机器").Clicked() {
+		if ui.Button(c, "释放控制权").Tooltip("释放控制权：转为只读观察模式，终端继续在后台运行").Clicked() {
 			w.releaseLease(tb)
 		}
-	}
-	newTab := ui.PrimaryButton(c, "").Height(headerButtonSize).PaddingX(11).Gap(7).Label("新建终端").Tooltip("新建终端 ⌘T")
-	newTab.Children(func() { ui.Text(c, "新建终端").FontSize(12).FontWeight(600); kbdChip(c, "⌘T", true) })
-	if newTab.Clicked() {
-		w.newTab()
 	}
 }
 
@@ -126,10 +128,19 @@ func (w *window) headerBanner(c *ui.Context) {
 		if action == "" {
 			return
 		}
+		tooltip := action
+		switch action {
+		case "接管":
+			tooltip = "接管输入：获取键盘操作权限，即可在终端内输入"
+		case "拿回控制权":
+			tooltip = "拿回控制权：本机恢复键盘输入权限"
+		case "关闭标签":
+			tooltip = "关闭当前终端标签页"
+		}
 		act := ui.Box(c).
 			Height(20).PaddingX(9).Radius(radiusPill).
 			AlignItems(ui.Center).Justify(ui.Center).
-			Label(action).Tooltip(action)
+			Label(action).Tooltip(tooltip)
 		act.Background(tone.Alpha(0.10)).BorderWidth(1).BorderColor(tone.Alpha(0.42))
 		if act.Hovered() {
 			act.Background(tone.Alpha(0.22))
@@ -577,7 +588,7 @@ func (w *window) releaseLease(tb *tab) {
 	// back and must not open the popover or tear the link down.
 	tb.letGoLease()
 	tb.conn.releasing()
-	w.setNotice("已释放控制权：" + tb.name() + " 继续运行，本窗口改为只读")
+	w.setNotice("已释放控制权：已转为只读观察，" + tb.name() + " 在后台继续运行")
 }
 
 // emptyState is the window with nothing open. It is not a dead end: it says what
@@ -605,14 +616,7 @@ func (w *window) emptyState(c *ui.Context) {
 				ui.Text(c, w.emptyLine()).FontSize(12.5).TextColor(t.TextMuted)
 				ui.Box(c).Height(6)
 				ui.Row(c).Gap(8).Children(func() {
-					new := ui.PrimaryButton(c, "").
-						Height(headerButtonSize).PaddingX(12).Gap(7).
-						Label("新建终端").Tooltip("新建终端 ⌘T")
-					new.Children(func() {
-						ui.Text(c, "新建终端").FontSize(12).FontWeight(600)
-						kbdChip(c, "⌘T", true)
-					})
-					if new.Clicked() {
+					if ui.Button(c, "新建终端").Tooltip("新建终端 ⌘T").Clicked() {
 						w.newTab()
 					}
 					if ui.Button(c, "设置…").Clicked() {
@@ -636,7 +640,7 @@ func (w *window) emptyLine() string {
 	if n := len(w.sessionEntries()); n > 0 {
 		return "左侧有 " + strconv.Itoa(n) + " 个会话。选一个，或者新建一个终端。"
 	}
-	return "本机开一个新终端，或从另一台机器接管一个。"
+	return "在侧栏点击 + 新建终端，或在机器列表中选择远端会话。"
 }
 
 // statusBar is the quiet line along the bottom: the state of the local service,
