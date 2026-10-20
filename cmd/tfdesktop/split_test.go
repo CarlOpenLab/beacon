@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -21,6 +22,15 @@ func newSplitWindow(t *testing.T) (*window, *fleet) {
 	return w, f
 }
 
+// testShell is the program a test's shell runs: sh where there is one, and
+// cmd.exe on Windows, which is the only choice that works everywhere.
+func testShell() string {
+	if runtime.GOOS == "windows" {
+		return "cmd.exe"
+	}
+	return "/bin/sh"
+}
+
 // openShell gives the window one shell of its own, in dir, and waits until the
 // hub has named it and the window has adopted the tab.
 func openShell(t *testing.T, w *window, f *fleet, dir string) *tab {
@@ -29,7 +39,7 @@ func openShell(t *testing.T, w *window, f *fleet, dir string) *tab {
 	if tb == nil {
 		t.Fatal("the window opened no tab")
 	}
-	w.local.create(80, 24, dir, "/bin/sh", "")
+	w.local.create(80, 24, dir, testShell(), "")
 	waitSessions(f, liveCount(f)+1)
 	settleTabs(t, w, len(w.order))
 	w.drain()
@@ -206,7 +216,7 @@ func TestTheStripMovesTheFocusAndKeepsTheSplit(t *testing.T) {
 
 	// A third shell, opened the way a browser's is: it has a tab and no pane.
 	third := w.openTab(machineLocal, "")
-	w.local.create(80, 24, "", "/bin/sh", "")
+	w.local.create(80, 24, "", testShell(), "")
 	waitSessions(f, 3)
 	settleTabs(t, w, 3)
 	w.drain()

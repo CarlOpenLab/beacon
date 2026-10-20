@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -47,14 +48,10 @@ func TestADoubleClickOnTheRowNamesTheShell(t *testing.T) {
 	tt.Frame()
 	drainFor(t, w, func() bool { return w.renaming == nil })
 
-	// The hub keeps the name, trimmed, and says so to everybody.
-	named := ""
-	for _, s := range f.Hub().Sessions() {
-		if s.SessionID == tb.id {
-			named = s.Title
-		}
-	}
-	if named != "build box" {
+	// The hub keeps the name, trimmed, and says so to everybody. The frame is
+	// answered on the hub's own goroutine, so the answer is waited for rather
+	// than read once.
+	if named := hubTitle(t, f, tb.id, "build box"); named != "build box" {
 		t.Fatalf("the hub names the shell %q, want the name that was typed", named)
 	}
 	// And the tab reads it, which is the person who typed it seeing it land.
@@ -84,10 +81,31 @@ func TestEscapeLeavesTheShellNamedAsItWas(t *testing.T) {
 	if got := tb.name(); got != before {
 		t.Fatalf("the shell is named %q, want the name it had, %q", got, before)
 	}
-	for _, s := range f.Hub().Sessions() {
-		if s.SessionID == tb.id && s.Title != "" {
-			t.Fatalf("the hub was told a name the person did not commit: %q", s.Title)
+	if named := hubTitle(t, f, tb.id, ""); named != "" {
+		t.Fatalf("the hub was told a name the person did not commit: %q", named)
+	}
+}
+
+// hubTitle is the title the hub gives a session, waited for until it says want:
+// a rename is answered on the hub's own goroutine, so the frame that carries it
+// lands a moment after the one that sent it.
+func hubTitle(t *testing.T, f *fleet, id, want string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		named := ""
+		for _, s := range f.Hub().Sessions() {
+			if s.SessionID == id {
+				named = s.Title
+			}
 		}
+		if named == want {
+			return named
+		}
+		if time.Now().After(deadline) {
+			return named
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -104,10 +122,8 @@ func TestAnEmptyNameGivesTheShellItsProgramBack(t *testing.T) {
 	if tb.name() == "  " || tb.name() == "" {
 		t.Fatalf("the shell is named %q, want its program's name", tb.name())
 	}
-	for _, s := range f.Hub().Sessions() {
-		if s.SessionID == tb.id && s.Title != "" {
-			t.Fatalf("the hub still names the shell %q after the title was cleared", s.Title)
-		}
+	if named := hubTitle(t, f, tb.id, ""); named != "" {
+		t.Fatalf("the hub still names the shell %q after the title was cleared", named)
 	}
 }
 
