@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo"
+
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // The menu bar is built at startup, before anything else runs, so it must not
@@ -19,14 +21,14 @@ func TestAppMenuAsksForTheUpdaterItemWithoutThePlugin(t *testing.T) {
 	asked := 0
 	updaterMenuItem = func() *mygo.MenuItem {
 		asked++
-		return &mygo.MenuItem{Label: "检查更新…"}
+		return &mygo.MenuItem{Label: locales.UpdateCheckNow()}
 	}
 
 	if m := appMenu(&window{}); m == nil {
 		t.Fatal("appMenu built no menu")
 	}
 	if asked != 1 {
-		t.Errorf("appMenu asked for the 检查更新… item %d times, want 1", asked)
+		t.Errorf("appMenu asked for the %s item %d times, want 1", locales.UpdateCheckNow(), asked)
 	}
 }
 
@@ -41,7 +43,7 @@ func TestInstallMenuPutsTheUpdaterItemOnTheBar(t *testing.T) {
 	old := updaterMenuItem
 	t.Cleanup(func() { updaterMenuItem = old })
 	updaterMenuItem = func() *mygo.MenuItem {
-		return &mygo.MenuItem{Label: "检查更新…"}
+		return &mygo.MenuItem{Label: locales.UpdateCheckNow()}
 	}
 
 	installMenu(&window{})
@@ -50,8 +52,8 @@ func TestInstallMenuPutsTheUpdaterItemOnTheBar(t *testing.T) {
 	if m == nil {
 		t.Fatal("installMenu left the app without a menu")
 	}
-	if !menuHasLabel(m.Items(), "检查更新…") {
-		t.Errorf("installed menu bar has no 检查更新… item: %v", labelsOf(m.Items()))
+	if !menuHasLabel(m.Items(), locales.UpdateCheckNow()) {
+		t.Errorf("installed menu bar has no %s item: %v", locales.UpdateCheckNow(), labelsOf(m.Items()))
 	}
 }
 

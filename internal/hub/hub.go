@@ -418,11 +418,32 @@ func (h *Hub) handle(c *client, m protocol.Msg) {
 		h.handleRelease(c, m.SessionID)
 	case protocol.CTClose:
 		h.handleClose(c, m.SessionID, m.Epoch)
+	case protocol.CTRename:
+		h.handleRename(c, m.SessionID, m.Title)
 	case "":
 		c.fail(protocol.ErrProtocol, "frame has no type field", "")
 	default:
 		c.fail(protocol.ErrProtocol, "unknown frame type: "+m.T, m.SessionID)
 	}
+}
+
+// handleRename sets a session's title: the name every client's tab and row
+// reads for it, in place of the shell's program and number. An empty title
+// clears it, which is how a shell goes back to being "zsh 2".
+//
+// The lease is not consulted. A title is a label on a shell everybody watching
+// sees, not the keyboard: a viewer on a phone renaming the shell it is reading
+// is a person naming what they are looking at, and the machine's own window can
+// name it back. What the lease guards — typing, resizing, ending — is elsewhere.
+func (h *Hub) handleRename(c *client, id, title string) {
+	s, ok := h.mgr.Get(id)
+	if !ok || !s.Alive() {
+		c.fail(protocol.ErrNoSession, "no live session named "+id, id)
+		return
+	}
+	s.SetTitle(strings.TrimSpace(title))
+	// Every client hears it, so a rename on one is a rename on all of them.
+	h.broadcastSessions()
 }
 
 func (h *Hub) handleCreate(c *client, m protocol.Msg) {
@@ -444,7 +465,7 @@ func (h *Hub) handleCreate(c *client, m protocol.Msg) {
 	if id == "" {
 		id = h.newSessionID()
 	}
-	s, err := h.start(id, m.Cols, m.Rows, m.Cwd, m.Shell)
+	s, err := h.start(id, m.Cols, m.Rows, m.Cwd, m.Shell, m.From)
 	if err != nil {
 		c.fail(protocol.ErrBadRequest, err.Error(), id)
 		return

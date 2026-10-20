@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // commandBarHeight is what the composer adds over the terminal. The browser
@@ -139,15 +141,15 @@ func (w *window) historyBar(c *ui.Context) {
 		Background(shellColorsFor(t).pane).
 		BorderWidth(1, 0, 0, 0).BorderColor(shellColorsFor(t).hairline).
 		Children(func() {
-			ui.Text(c, "历史").FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, locales.ComposerHistory()).FontSize(11).TextColor(t.TextMuted)
 			ui.Scroll(c).Fill().Children(func() {
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					for _, text := range b.shown() {
 						chip := ui.Box(c).
 							Height(20).PaddingX(8).Radius(4).Gap(5).
 							AlignItems(ui.Center).
-							Label("填入 " + text).
-							Tooltip("填入输入框")
+							Label(locales.ComposerFill(text)).
+							Tooltip(locales.ComposerFillTip())
 						if chip.Hovered() {
 							chip.Background(t.SurfaceHover)
 						}
@@ -232,10 +234,10 @@ func (w *window) commandBarRow(c *ui.Context) {
 
 			send := ui.PrimaryButton(c, "").
 				Height(36).PaddingX(14).Gap(7).
-				Label("发送").Tooltip("把这一行发给终端（" + modLabel() + "↵）")
+				Label(locales.ActionSend()).Tooltip(locales.ComposerSendTip(modLabel()))
 			send.Children(func() {
 				ui.Icon(c, iconSend).FontSize(13).TextColor(t.AccentText)
-				ui.Text(c, "发送 "+modLabel()+"↵").FontSize(12.5).FontWeight(600)
+				ui.Text(c, locales.ComposerSendButton(modLabel())).FontSize(12.5).FontWeight(600)
 			})
 			if sendable {
 				if send.Clicked() {
@@ -260,13 +262,13 @@ func (w *window) commandBarRow(c *ui.Context) {
 func composerPlaceholder(tb *tab, sendable bool) string {
 	switch {
 	case tb == nil:
-		return "尚未创建会话"
+		return locales.ComposerNoSession()
 	case !tb.alive:
-		return "会话已退出"
+		return locales.ComposerExited()
 	case !sendable:
-		return "只读：等待接管"
+		return locales.LabelReadonlyWait()
 	}
-	return "输入命令，回车发送（Shift+回车换行）"
+	return locales.ComposerPlaceholder()
 }
 
 // modLabel is the modifier the keyboard's enter is named by. The browser client

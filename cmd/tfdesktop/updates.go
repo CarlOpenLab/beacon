@@ -7,6 +7,8 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // updatePrefs is what the 更新 pane shows: whether this build can update
@@ -57,7 +59,7 @@ func versionLabel() string {
 // lastCheckLabel says when the app last asked about updates.
 func lastCheckLabel(when time.Time) string {
 	if when.IsZero() {
-		return "还没有检查过"
+		return locales.UpdateNever()
 	}
 	return when.Local().Format("2006-01-02 15:04")
 }
@@ -74,46 +76,42 @@ func (s *settingsWindow) updatesPane(c *ui.Context) {
 	prefs := loadUpdatePrefs()
 
 	ui.Form(c, func() {
-		ui.Field(c, "当前版本", func() { ui.Text(c, versionLabel()) })
-		ui.Field(c, "上次检查", func() { ui.Text(c, lastCheckLabel(prefs.lastCheck)) })
+		ui.Field(c, locales.UpdateCurrent(), func() { ui.Text(c, versionLabel()) })
+		ui.Field(c, locales.UpdateLastCheck(), func() { ui.Text(c, lastCheckLabel(prefs.lastCheck)) })
 
 		if !prefs.available {
-			ui.Field(c, "自动检查更新", func() { ui.Text(c, "不可用") })
-			ui.Field(c, "自动下载更新", func() { ui.Text(c, "不可用") })
+			ui.Field(c, locales.UpdateAutoCheck(), func() { ui.Text(c, locales.UpdateUnavailable()) })
+			ui.Field(c, locales.UpdateAutoDownload(), func() { ui.Text(c, locales.UpdateUnavailable()) })
 		} else {
 			// Each switch is drawn from the plugin's state and pushed back when
 			// clicked, so the pane reads what is on disk every frame and keeps no
 			// second copy of it.
 			checks := prefs.automaticChecks
-			ui.Field(c, "自动检查更新", func() {
+			ui.Field(c, locales.UpdateAutoCheck(), func() {
 				if ui.Switch(c, &checks).AlignSelf(ui.Start).Clicked() {
 					saveUpdatePrefs(checks, prefs.automaticDownloads)
 				}
 			})
 			downloads := prefs.automaticDownloads
-			ui.Field(c, "自动下载更新", func() {
+			ui.Field(c, locales.UpdateAutoDownload(), func() {
 				if ui.Switch(c, &downloads).AlignSelf(ui.Start).Clicked() {
 					saveUpdatePrefs(prefs.automaticChecks, downloads)
 				}
 			})
 		}
-	})
-	ui.Text(c, "每天在后台问一次；打开自动下载后，新版本装好，下次启动就是新版本。").
-		FontSize(11).TextColor(t.TextMuted)
-
-	// A build that cannot update itself gets the reason instead of a button —
-	// the same rule the two switches above follow.
-	if prefs.available {
-		if ui.Button(c, "检查更新…").Clicked() {
-			checkForUpdatesNow()
+		paneNote(c, locales.UpdateDailyNote(), t.TextMuted)
+		// A build that cannot update itself gets the reason instead of a button —
+		// the same rule the two switches above follow.
+		if prefs.available {
+			ui.Field(c, "", func() {
+				if ui.Button(c, locales.UpdateCheckNow()).Clicked() {
+					checkForUpdatesNow()
+				}
+			})
+			paneNote(c, locales.UpdateFoundNote(), t.TextMuted)
+		} else {
+			paneNote(c, locales.UpdateUnavailableNote(), t.TextMuted)
 		}
-		ui.Text(c, "发现新版本时会弹出窗口，列出版本说明，可以安装、稍后提醒或跳过这一版。").
-			FontSize(11).TextColor(t.TextMuted)
-	} else {
-		ui.Text(c, "这份构建不能自我更新：开发构建，或由包管理器（.deb 等）安装，更新交给它。"+
-			"用安装器或 tar.gz 装的版本会自己更新。").
-			FontSize(11).TextColor(t.TextMuted)
-	}
-	ui.Text(c, "更新源：github.com/CarlOpenLab/term-fleet 的正式发布版，包带签名校验。").
-		FontSize(11).TextColor(t.TextMuted)
+		paneNote(c, locales.UpdateSourceNote(), t.TextMuted)
+	})
 }

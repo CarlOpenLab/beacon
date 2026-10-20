@@ -58,6 +58,11 @@ type Settings struct {
 	// Theme is the desktop shell's appearance: "light" or "dark". Empty — what a
 	// first run gets — follows the system.
 	Theme string `json:"theme,omitempty"`
+
+	// Language is the interface language, as a BCP 47 tag of the languages the
+	// app is written in: "zh-Hans" or "en". Empty — what a first run gets —
+	// follows the languages the system says the person reads.
+	Language string `json:"language,omitempty"`
 }
 
 // Dir is where the desktop shell keeps its settings. TERM_FLEET_CONFIG_HOME

@@ -4,6 +4,24 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.21
+
+**Desktop: split panes with ⌘D / ⌘⇧D, and every new shell opens where the shell beside it stands — 桌面端分栏终端与工作目录继承**
+
+- **Split panes.** `⌘D` splits the shell on screen beside a fresh one and `⌘⇧D` above or below it, each with its own sheet and a divider the pointer drags (the arrows move it once it has the focus). The new shell is an ordinary shell: the 会话 panel lists it, and closing its pane leaves it running. The pane on screen is the one the composer types into, the header describes and `⌘W` closes. Splitting a shell on another machine opens the second shell there, over the same relay link.
+  — 桌面端支持 `⌘D` 左右分栏、`⌘⇧D` 上下分栏，中间分隔线可拖动（获得焦点后方向键也可移动）。新分栏是普通标签页：出现在标签栏与会话列表中，关闭分栏不会结束进程。聚焦分栏即当前终端：输入框、顶栏、状态栏都跟随它，点击或标签栏可切换焦点；有分栏时 `⌘W` 关闭当前分栏，无分栏时关闭标签页。对远端机器的终端分栏会在同一台中继链路上再开一个shell。
+- **A new shell opens where the shell beside it stands.** The daemon asks the operating system where a session's process is now — `/proc` on Linux, `lsof` on macOS — and a create that names a session with `from` opens in that directory, so a split or a second tab continues where the first shell is instead of at the home directory. The directory the shell was started in is the fallback where the platform cannot say, and a follow of a session that is gone keeps the directory the client asked for. Both clients send it: the desktop on `⌘T`, the sidebar's ＋ and every split; the browser on `⌘T` and its 新建终端.
+  — 新终端继承相邻终端的当前工作目录：daemon 通过 `/proc`（Linux）或 `lsof`（macOS）查询会话进程的实时 cwd，create 帧带 `from` 指定继承来源，分栏和新标签页都会落在前一个 shell 当前所在目录，而不是每次都回到 home。平台无法查询时回退到 shell 启动目录，被继承的会话已不存在时回退到客户端指定目录。桌面端（`⌘T`、侧栏 ＋、每次分栏）与浏览器端（`⌘T`、新建终端）均已支持。
+
+**Desktop & agent: name a shell, and an interface that speaks English — 会话重命名与中英文切换**
+
+- **Name a shell.** A `rename` frame sets a session's title, which every client's tab and row reads; an empty title clears it and the shell goes back to being named after its program. The lease is not consulted — a title is a label on a shell everybody watching sees, not the keyboard. In the desktop a double-click on the shell's row in the 会话 panel puts its name into a field (Enter commits, Escape lets go), with the same act in the row's menu; in the browser a double-click on the tab does the same.
+  — 新增 `rename` 帧设置会话标题，所有客户端的标签页与会话行都会读取；清空标题则恢复为按程序名命名。租约不参与此事：标题是给大家看的标签，不是键盘。桌面端在「会话」面板双击某一行的名字即可改名（回车提交、Esc 取消），行菜单里也有同样一项；浏览器端双击标签页同理。
+- **The interface speaks English.** The desktop's chrome is now a mygo i18n catalog with Chinese and English, and 设置 → 终端 carries a 语言 field: 跟随系统, 中文 or English, applied on the click and kept for the next launch. The browser client is unchanged and stays Chinese.
+  — 桌面端界面全面接入 mygo i18n，提供中文与英文两套文案，「设置 → 终端」新增「语言」选项：跟随系统、中文、English，点击即生效并记住下次启动。浏览器端暂不涉及，仍为中文。
+- **The settings window's panes line up.** Every explanatory line now starts in the control column instead of at the pane's edge, so the notes, the status lines and the fields read as one grid.
+  — 设置窗口各面板的说明文字统一对齐到控件列，不再从面板左边缘开始，说明、状态行与输入框成为一个整体。
+
 ## 0.4.20
 
 **Desktop & agent: a tab whose relay link dropped renders the shell again — 远端标签页断线重连后自动恢复渲染**

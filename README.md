@@ -53,7 +53,9 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   single-controller model with viewers.
 - The browser client: tabs, session inventory, keyboard-driven new/close,
   selection with a copy button at it, reopen-from-cursor after a dropped link,
-  and a machine-grouped sidebar when more than one machine is reachable.
+  and a machine-grouped sidebar when more than one machine is reachable. A new
+  tab opens in the directory the shell on screen stands in — the same follow the
+  desktop's splits use — and a double-click on a tab names the shell.
 - It is served by the daemon *and* by the relay, from one build: the server
   reports which transport it speaks (`/tf/config`), so a browser tab and a
   phone load the same code. The desktop window is native, and attaches to the
@@ -72,10 +74,25 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   row — it is the pipe, not a machine — and 新建 on another machine asks that
   machine's hub for a shell over the relay, which lands in a tab here under that
   machine's arbitration.
-  A Settings window (the strip's 设置 button, at the bottom under the shells)
-  picks the terminal's font and size, stores this machine's relay credential,
-  turns the local service on or off, and decides whether other clients may take
-  this machine's shells — the same surface Gloss keeps, drawn
+  The body splits: `⌘D` puts a second shell beside the one on screen and `⌘⇧D`
+  above or below it, with a divider the pointer drags between the panes. A
+  split shell is an ordinary shell — the 会话 panel lists it, and closing its
+  pane leaves it running — and the pane on screen is the one the composer types
+  into, the header describes and `⌘W` closes. Splitting a shell on another
+  machine opens the second shell there, over the same relay link.
+  A new shell — from a split, from `⌘T`, or from the panel's ＋ — opens in the
+  directory the shell beside it stands in, so a person who has cd'd somewhere
+  gets the second pane there rather than at the home directory. The daemon asks
+  the operating system where the process is now (`/proc` on Linux, `lsof` on
+  macOS) and falls back to the directory the shell was started in.
+  A shell is named by a double-click on its row in the 会话 panel — Enter
+  commits, Escape lets go — and the name is the session's title, so every
+  client watching the shell reads it. The interface language is chosen in
+  设置 → 终端: 跟随系统, 中文 or English.
+  A Settings window (the 设置 row at the bottom of the column, under the shells)
+  picks the terminal's font, size and language, stores this machine's relay
+  credential, turns the local service on or off, and decides whether other
+  clients may take this machine's shells — the same surface Gloss keeps, drawn
   the same way. Reaching the other machines needs nothing typed: a window asks
   the relay for a short-lived *control token*, proving itself with the device
   credential it already joins the fleet with (`/relay/control-token`), and that

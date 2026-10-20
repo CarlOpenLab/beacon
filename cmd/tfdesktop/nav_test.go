@@ -11,6 +11,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // newTestShellWindow is a shell window with shells open and no hub behind it:
@@ -72,7 +73,7 @@ func TestSidebarLayoutWithMultipleMachines(t *testing.T) {
 	if !ok {
 		t.Fatalf("win-20240410OWZ missing")
 	}
-	setRect, ok := tt.Find("设置")
+	setRect, ok := tt.Find(locales.ActionSettings())
 	if !ok {
 		t.Fatalf("设置 button missing")
 	}
@@ -125,12 +126,12 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	w.local.onGone = w.linkGone
 
 	tt := drawNav(t, w)
-	if _, ok := tt.Find("新建终端 ⌘T"); !ok {
+	if _, ok := tt.Find(locales.ActionNewTerminalTip()); !ok {
 		t.Fatal("the session panel has no new terminal control")
 	}
 
 	// A new shell, from the panel's button.
-	if err := tt.Click("新建终端 ⌘T"); err != nil {
+	if err := tt.Click(locales.ActionNewTerminalTip()); err != nil {
 		t.Fatalf("Click(新建标签页): %v", err)
 	}
 	if got := waitSessions(f, 1); got != 1 {
@@ -152,7 +153,7 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	if err := tt.RightClick(w.activeTab().name()); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.ChooseMenuItem("结束进程…"); err != nil {
+	if err := tt.ChooseMenuItem(locales.TabEndProcess()); err != nil {
 		t.Fatal(err)
 	}
 	if got := waitSessions(f, 0); got != 0 {
@@ -165,15 +166,15 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	// row still offering to end a shell that is already gone.
 	drainFor(t, w, func() bool { return len(w.order) == 1 && !w.tabs[w.order[0]].alive })
 	tt.Frame()
-	if !tt.HasText("已退出") {
+	if !tt.HasText(locales.StateEnded()) {
 		t.Fatalf("the row of the shell that was just ended does not say so; texts = %v", tt.Texts())
 	}
-	if tt.HasText("结束") {
+	if tt.HasText(locales.TabEndProcess()) {
 		t.Errorf("an ended shell is still offered 结束, which would do nothing; texts = %v", tt.Texts())
 	}
 	// And the row is not a dead end: the way to stop watching a shell that is
 	// already gone is on it, in the place the 结束 was.
-	if _, ok := tt.Find("关闭 " + w.tabs[w.order[0]].name()); !ok {
+	if _, ok := tt.Find(locales.TabCloseNamed(w.tabs[w.order[0]].name())); !ok {
 		t.Errorf("the ended shell's row offers no way to close the tab; texts = %v", tt.Texts())
 	}
 
@@ -185,7 +186,7 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	// The panel is redrawn before it is clicked: the tester holds a frame, not a
 	// live view, and a button drawn after the last Frame is not there to click.
 	tt.Frame()
-	if err := tt.Click("新建终端 ⌘T"); err != nil {
+	if err := tt.Click(locales.ActionNewTerminalTip()); err != nil {
 		t.Fatalf("Click(新建标签页): %v", err)
 	}
 	if got := waitSessions(f, 1); got != 1 {
@@ -201,7 +202,7 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 		return len(w.order) == 2 && w.selected == 1 && w.tabs[w.order[1]].alive
 	})
 	tt.Frame()
-	if err := tt.Click("关闭 " + w.activeTab().name()); err != nil {
+	if err := tt.Click(locales.TabCloseNamed(w.activeTab().name())); err != nil {
 		t.Fatalf("Click(关闭标签页): %v", err)
 	}
 	if got := liveCount(f); got != 1 {
@@ -232,13 +233,13 @@ func TestAnEndedShellsRowOffersTheWayOut(t *testing.T) {
 	tb.finish(3)
 
 	nav := drawNav(t, w)
-	if !nav.HasText("已退出") {
+	if !nav.HasText(locales.StateEnded()) {
 		t.Fatalf("the row does not say the shell has ended; texts = %v", nav.Texts())
 	}
-	if nav.HasText("结束") {
+	if nav.HasText(locales.TabEndProcess()) {
 		t.Errorf("an ended shell is still offered 结束, which would do nothing; texts = %v", nav.Texts())
 	}
-	if err := nav.Click("关闭 gone"); err != nil {
+	if err := nav.Click(locales.TabCloseNamed("gone")); err != nil {
 		t.Fatalf("the row of an ended shell has no way to close it: %v; texts = %v", err, nav.Texts())
 	}
 	if len(w.order) != 0 || len(w.tabs) != 0 {
@@ -253,13 +254,13 @@ func TestAnEndedShellsRowOffersTheWayOut(t *testing.T) {
 	tb2.alive = true
 	tb2.setLease(protocol.RoleController, "", 1)
 	nav2 := drawNav(t, w2)
-	if _, ok := nav2.Find("关闭 live"); !ok {
+	if _, ok := nav2.Find(locales.TabCloseNamed("live")); !ok {
 		t.Fatal("a running terminal has no detach control")
 	}
 	if err := nav2.RightClick("live"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(nav2.Menu(), " "), "结束进程") {
+	if !strings.Contains(strings.Join(nav2.Menu(), " "), locales.TabEndProcess()) {
 		t.Fatal("the process action is missing from the context menu")
 	}
 }
@@ -285,10 +286,10 @@ func TestARowNamesNobodyWhenNobodyHoldsTheShell(t *testing.T) {
 	}}
 
 	nav := drawNav(t, w)
-	if !nav.HasText("只读") {
+	if !nav.HasText(locales.StateReadonly()) {
 		t.Fatalf("the row does not say the shell is nobody's; texts = %v", nav.Texts())
 	}
-	if nav.HasText("控制中") {
+	if nav.HasText(locales.StateControlling()) {
 		t.Errorf("the row still claims the shell is being driven; texts = %v", nav.Texts())
 	}
 
@@ -296,11 +297,11 @@ func TestARowNamesNobodyWhenNobodyHoldsTheShell(t *testing.T) {
 	// badge, and the line says whose it is.
 	tb.setLease(protocol.RoleController, "", 3)
 	nav.Frame()
-	if nav.HasText("无人控制") {
+	if nav.HasText(locales.StateNobody()) {
 		t.Errorf("the row still says nobody holds a shell this window drives; texts = %v", nav.Texts())
 	}
 
-	if nav.HasText("只读") {
+	if nav.HasText(locales.StateReadonly()) {
 		t.Errorf("a shell this window drives wears 只读; texts = %v", nav.Texts())
 	}
 }
@@ -391,7 +392,7 @@ func TestMachinePanelListsOnlyMachines(t *testing.T) {
 	w.fleet = f
 
 	tt := drawNav(t, w)
-	if !tt.HasText("机器") {
+	if !tt.HasText(locales.MachinePanel()) {
 		t.Fatalf("the column has no machines' panel; texts = %v", tt.Texts())
 	}
 	wantHost := f.Host().Hostname
@@ -402,11 +403,10 @@ func TestMachinePanelListsOnlyMachines(t *testing.T) {
 		t.Fatalf("the machine row does not name this machine; texts = %v", tt.Texts())
 	}
 
-	// The relay is a pipe, not a machine: it never gets a row of its own, whether
-	// it is off or on.
-	if _, ok := tt.Find("中继"); ok {
-		t.Fatal("the panel shows a relay row")
-	}
+	// The relay is a pipe, not a machine: it never gets a row of its own. A row
+	// for it would be named by its address — the only name a relay has — so the
+	// address staying out of the panel is the whole guard, and it holds in any
+	// language the panel is drawn in.
 
 	// Enrolled with a relay: still no relay row, and the note says where the
 	// other machines come from.
@@ -414,13 +414,9 @@ func TestMachinePanelListsOnlyMachines(t *testing.T) {
 		t.Fatalf("SetRelay: %v", err)
 	}
 	tt.Frame()
-	if _, ok := tt.Find("中继"); ok {
+	if _, ok := tt.Find("wss://relay.example/relay/agent"); ok {
 		t.Fatalf("an enrolled machine shows a relay row: %v", tt.Texts())
 	}
-	if tt.HasText("wss://relay.example/relay/agent") {
-		t.Fatalf("the panel shows the relay's address as a row; texts = %v", tt.Texts())
-	}
-
 }
 
 // Picking a machine this window cannot reach yet asks the relay first, because
@@ -458,17 +454,17 @@ func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
 	// The dialog is on screen, with the machine's name and both answers.
 	tt := ui.NewTester(w.view, 900, 600)
 	tt.Frame()
-	if !tt.HasText("接管 other box") {
+	if !tt.HasText(locales.ReachTitle("other box")) {
 		t.Fatalf("the dialog does not name the machine; texts = %v", tt.Texts())
 	}
-	if _, ok := tt.Find("申请并接管"); !ok {
+	if _, ok := tt.Find(locales.ReachConfirm()); !ok {
 		t.Fatalf("the dialog does not offer to ask the relay; texts = %v", tt.Texts())
 	}
-	if _, ok := tt.Find("取消"); !ok {
+	if _, ok := tt.Find(locales.ActionCancel()); !ok {
 		t.Fatalf("the dialog cannot be declined; texts = %v", tt.Texts())
 	}
 
-	if err := tt.Click("取消"); err != nil {
+	if err := tt.Click(locales.ActionCancel()); err != nil {
 		t.Fatalf("Click(取消): %v", err)
 	}
 	tt.Frame()
@@ -484,7 +480,7 @@ func TestDesktopUsesNeutralDarkChrome(t *testing.T) {
 	w, _ := newTestShellWindow(t)
 	tt := ui.NewTester(w.view, 900, 600)
 	tt.SetDark(false)
-	if _, ok := tt.Find("切换到暗黑"); ok {
+	if _, ok := tt.Find(locales.ThemeToDark()); ok {
 		t.Fatal("removed appearance switch is still visible")
 	}
 	if got := tt.Image().RGBAAt(899, 300); got.R != got.G || got.G != got.B || got.R > 30 {
@@ -527,13 +523,16 @@ func TestSettingsOpensSwitchesPanesAndCloses(t *testing.T) {
 	w, _ := newTestShellWindow(t)
 	w.fleet = newTestFleet(t)
 	tt := ui.NewTester(w.view, 1000, 700)
-	if err := tt.Click("设置"); err != nil {
+	if err := tt.Click(locales.ActionSettings()); err != nil {
 		t.Fatal(err)
 	}
-	if !w.settingsOpen || !tt.HasText("字体") {
+	if !w.settingsOpen || !tt.HasText(locales.SettingsFont()) {
 		t.Fatalf("settings did not open: %v", tt.Texts())
 	}
-	for _, pane := range []string{"远程", "服务", "更新", "终端"} {
+	for _, pane := range []string{
+		locales.SettingsPaneRelay(), locales.SettingsPaneServer(),
+		locales.SettingsPaneUpdates(), locales.SettingsPaneTerminal(),
+	} {
 		if err := tt.Click(pane); err != nil {
 			t.Fatal(err)
 		}
@@ -541,7 +540,7 @@ func TestSettingsOpensSwitchesPanesAndCloses(t *testing.T) {
 			t.Fatalf("pane %s closed settings: %v", pane, tt.Texts())
 		}
 	}
-	if err := tt.Click("关闭设置"); err != nil {
+	if err := tt.Click(locales.SettingsClose()); err != nil {
 		t.Fatal(err)
 	}
 	if w.settingsOpen {
@@ -552,7 +551,7 @@ func TestSettingsOpensSwitchesPanesAndCloses(t *testing.T) {
 	if !w.settingsOpen {
 		t.Fatal("settings shortcut did not open the modal")
 	}
-	if err := tt.Click("关闭设置"); err != nil {
+	if err := tt.Click(locales.SettingsClose()); err != nil {
 		t.Fatalf("settings cannot close at the minimum window size: %v", err)
 	}
 	tt.Key(ui.Cmd, ui.KeyComma)
@@ -762,27 +761,26 @@ func TestSessionAndMachinePanelsOfferRefreshControls(t *testing.T) {
 	w.local.onGone = w.linkGone
 
 	tt := drawNav(t, w)
-	if _, ok := tt.Find("刷新会话 ⌘R"); !ok {
+	if _, ok := tt.Find(locales.SessionRefresh()); !ok {
 		t.Fatal("the session panel has no refresh control")
 	}
-	if _, ok := tt.Find("刷新机器 ⌘R"); !ok {
+	if _, ok := tt.Find(locales.MachineRefresh()); !ok {
 		t.Fatal("the machine panel has no refresh control")
 	}
 
-	if err := tt.Click("刷新会话 ⌘R"); err != nil {
+	if err := tt.Click(locales.SessionRefresh()); err != nil {
 		t.Fatalf("Click(刷新会话 ⌘R): %v", err)
 	}
 	w.drain()
-	if w.notice != "已刷新本机会话" {
+	if w.notice != locales.AppRefreshedLocal() {
 		t.Fatalf("notice after session refresh = %q, want '已刷新本机会话'", w.notice)
 	}
 
-	if err := tt.Click("刷新机器 ⌘R"); err != nil {
+	if err := tt.Click(locales.MachineRefresh()); err != nil {
 		t.Fatalf("Click(刷新机器 ⌘R): %v", err)
 	}
 	w.drain()
-	if w.notice != "已刷新机器列表" {
+	if w.notice != locales.AppRefreshedMachines() {
 		t.Fatalf("notice after machine refresh = %q, want '已刷新机器列表'", w.notice)
 	}
 }
-

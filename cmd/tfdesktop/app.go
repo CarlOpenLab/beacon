@@ -16,6 +16,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // window is the desktop window's state: the shells on this machine, one native
@@ -46,6 +47,19 @@ type window struct {
 	order    []int
 	tabs     map[int]*tab
 	selected int
+
+	// split is the body's tree of panes when the shells on screen are split,
+	// and nil when the body is the one pane the strip selects — the ordinary
+	// case, and the one every path below keeps when there is no split. focus is
+	// the leaf of that tree the window acts on; it is a leaf whenever split is
+	// not nil. See split.go.
+	split *splitNode
+	focus *splitNode
+
+	// renaming is the shell whose name is being edited and renameDraft is what
+	// the field holds; see rename.go.
+	renaming    *renameTarget
+	renameDraft string
 
 	// cmdBar is the command composer and its history: what this window has typed
 	// into the shell on screen, and the box it is typed into again.
@@ -212,6 +226,13 @@ func (w *window) rosterArrived(machines []tunnel.Machine) {
 func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) {
 	w.update(func() {
 		w.remoteSessions[machine] = list
+		// Each tab on that machine keeps the directory its hub last reported,
+		// which is where a shell opened beside it falls back to.
+		for _, s := range list {
+			if tb := w.tabOf(machine, s.SessionID); tb != nil {
+				tb.cwd = s.Cwd
+			}
+		}
 		w.invalidate()
 	})
 }
@@ -220,15 +241,15 @@ func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) 
 // panel and the log should use.
 func (w *window) noLinkReason(machine string) string {
 	if machine == machineLocal || machine == "" {
-		return "本机链路未就绪"
+		return locales.AppLinkNotReady()
 	}
 	if !w.relayOn() {
-		return "未接入中继"
+		return locales.AppNotEnrolled()
 	}
 	if w.fleet.RelayClientErr() != "" {
-		return "客户端链路失败：" + w.fleet.RelayClientErr()
+		return locales.AppClientLinkFailed(w.fleet.RelayClientErr())
 	}
-	return "没有客户端令牌，无法连接其他机器"
+	return locales.AppNoClientToken()
 }
 
 // linkFor is the link that speaks to a machine: this machine's own, or another
@@ -357,6 +378,15 @@ func (w *window) view(c *ui.Context) {
 		if c.Shortcut(ui.Cmd, ui.KeyT) {
 			w.newTab()
 		}
+		// ⌘D splits the pane on screen beside itself and ⌘⇧D above or below
+		// it, each with a fresh shell on the far side of the new divider —
+		// the two keys every terminal on a Mac answers to.
+		if c.Shortcut(ui.Cmd, ui.KeyD) {
+			w.splitFocused(true)
+		}
+		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyD) {
+			w.splitFocused(false)
+		}
 		if c.Shortcut(ui.Cmd, ui.KeyR) || c.Shortcut(0, ui.KeyF5) {
 			w.refreshAll()
 		}
@@ -369,9 +399,10 @@ func (w *window) view(c *ui.Context) {
 			w.sidebarHidden = !w.sidebarHidden
 		}
 		if c.Shortcut(ui.Cmd, ui.KeyW) {
-			if tb := w.activeTab(); tb != nil {
-				w.removeTab(tb)
-			}
+			// With panes on screen this closes the pane — the shell keeps
+			// running and its tab stays in the strip — and with one pane it
+			// closes the tab, which is what it has always done.
+			w.closeSplitPane()
 		}
 	}
 
@@ -418,7 +449,7 @@ func (w *window) loseMachine(machine string) {
 		w.machineSel = machineLocal
 	}
 	w.leaseOpen = false
-	w.setNotice(name + " 拿回了控制权：与它的连接已断开")
+	w.setNotice(locales.AppMachineTookBack(name))
 }
 
 // noticeTTL is how long the window's own notice stays on screen. Long enough to
@@ -500,7 +531,7 @@ func (w *window) ensureSessionList(machine string) {
 func (w *window) refreshAll() {
 	w.refreshMachines()
 	w.refreshSessions(w.selectedMachine())
-	w.setNotice("已刷新终端与机器状态")
+	w.setNotice(locales.AppRefreshedAll())
 }
 
 // refreshSessions asks the selected machine's hub for its live session list.
@@ -509,7 +540,7 @@ func (w *window) refreshSessions(machine string) {
 		if w.local != nil {
 			w.local.list()
 		}
-		w.setNotice("已刷新本机会话")
+		w.setNotice(locales.AppRefreshedLocal())
 		w.invalidate()
 		return
 	}
@@ -517,7 +548,7 @@ func (w *window) refreshSessions(machine string) {
 		delete(w.remote, machine)
 	}
 	w.ensureSessionList(machine)
-	w.setNotice("已刷新 " + w.machineName(machine) + " 会话")
+	w.setNotice(locales.AppRefreshedMachine(w.machineName(machine)))
 	w.invalidate()
 }
 
@@ -536,7 +567,7 @@ func (w *window) refreshMachines() {
 			_ = w.fleet.Reach()
 		}()
 	}
-	w.setNotice("已刷新机器列表")
+	w.setNotice(locales.AppRefreshedMachines())
 	w.invalidate()
 }
 
@@ -588,18 +619,18 @@ func (w *window) reachDialog(c *ui.Context) {
 	open := true
 	ui.Modal(c, &open, func() {
 		ui.Column(c).Gap(10).Padding(18).Width(430).Children(func() {
-			ui.Text(c, "接管 "+name).FontSize(14).FontWeight(600)
-			ui.Text(c, "这个窗口会拿本机的设备密钥向中继申请一枚短时接管令牌，中继核验这台机器是否已注册。拿到之后，同一中继上的机器就都能在这里驱动了。").
+			ui.Text(c, locales.ReachTitle(name)).FontSize(14).FontWeight(600)
+			ui.Text(c, locales.ReachBody()).
 				FontSize(11).TextColor(t.TextMuted)
 			if w.reachErr != "" {
-				ui.Text(c, "中继没有发下接管令牌："+w.reachErr).FontSize(11).TextColor(t.Danger)
+				ui.Text(c, locales.ReachFailed(w.reachErr)).FontSize(11).TextColor(t.Danger)
 			}
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, "取消").Clicked() {
+				if ui.Button(c, locales.ActionCancel()).Clicked() {
 					w.reachPrompt, w.reachErr = "", ""
 					w.machineSel = machineLocal
 				}
-				if ui.PrimaryButton(c, "申请并接管").Clicked() {
+				if ui.PrimaryButton(c, locales.ReachConfirm()).Clicked() {
 					w.askForReach()
 				}
 			})
@@ -639,34 +670,97 @@ func (w *window) currentTermSize() (cols, rows int) {
 // the tab waiting for it.
 func (w *window) newTab() {
 	machine := w.selectedMachine()
+	var tb *tab
 	if machine != "" && machine != machineLocal {
-		w.newTabOn(machine)
-		return
+		tb = w.startTabOn(machine)
+	} else {
+		tb = w.startLocalTab()
 	}
-	w.openTab(machineLocal, "")
-	cols, rows := w.currentTermSize()
-	w.local.create(cols, rows, w.cwd, w.shell)
+	if tb != nil {
+		w.showInFocus(tb)
+	}
 }
 
-// newTabOn asks another machine's hub for a shell there and gives it a tab here,
-// the same act as New Tab on a machine the window reaches through the relay. The
-// far hub names the shell, its `created` frame binds the waiting tab, and the
-// tab that was opened for it is the tab watching it.
+// startLocalTab asks this machine's hub for a shell and gives it a tab to land
+// in. It runs on the window's own thread — the tab is window state, and a
+// goroutine that opened one would race the frame that draws it — and the hub's
+// answer arrives as a `created` frame that adopts the tab waiting for it.
 //
-// Nothing about the shell is guessed here: an empty cwd and shell mean the far
-// machine's own defaults, which is what a person sitting at it would get.
-func (w *window) newTabOn(machine string) {
+// The shell opens where the shell on screen stands (see followOn), falling back
+// to the configured directory and then to the home directory, so a second tab
+// continues where the first one is rather than at the top of the house.
+func (w *window) startLocalTab() *tab {
+	// What the new shell opens beside is read before the tab is opened: opening
+	// one makes it the shell on screen, and the shell to follow is the one that
+	// was on screen until now.
+	from, dir := w.followOn(machineLocal)
+	if dir == "" {
+		dir = w.cwd
+	}
+	tb := w.openTab(machineLocal, "")
+	if tb == nil {
+		w.linkNote = w.noLinkReason(machineLocal)
+		return nil
+	}
+	cols, rows := w.currentTermSize()
+	w.local.create(cols, rows, dir, w.shell, from)
+	return tb
+}
+
+// startTabOn asks another machine's hub for a shell there and gives it a tab
+// here, the same act as New Tab on a machine the window reaches through the
+// relay. The far hub names the shell, its `created` frame binds the waiting
+// tab, and the tab that was opened for it is the tab watching it.
+//
+// Nothing about the shell is guessed here beyond the directory to open in: an
+// empty cwd and shell mean the far machine's own defaults, which is what a
+// person sitting at it would get.
+func (w *window) startTabOn(machine string) *tab {
+	// Read before the tab is opened, for the same reason as the local one: the
+	// shell to follow is the one on screen until the new tab takes its place.
+	from, dir := w.followOn(machine)
 	tb := w.openTab(machine, "")
 	if tb == nil {
 		w.linkNote = w.noLinkReason(machine)
-		return
+		return nil
 	}
 	w.linkNote = ""
 	// The link may still be waiting for the relay to route it; the frame waits
 	// with it rather than being dropped, which is what the panel's click would
 	// otherwise do on the first use of a machine.
 	cols, rows := w.currentTermSize()
-	w.linkFor(machine).create(cols, rows, "", "")
+	w.linkFor(machine).create(cols, rows, dir, "", from)
+	return tb
+}
+
+// followOn is what a new shell on machine opens beside: the session to follow
+// and the directory to fall back to when that session cannot be asked where it
+// stands — a machine that does not answer, or a session on its way out. The far
+// side answers with the directory the followed shell stands in now, so the new
+// one continues there. With nothing to follow — the first shell, or one on
+// another machine — both are empty and the far side uses its own default.
+func (w *window) followOn(machine string) (session, dir string) {
+	tb := w.activeTab()
+	if tb == nil || tb.id == "" {
+		return "", ""
+	}
+	if tb.machine != machine && !(tb.machine == "" && machine == machineLocal) {
+		return "", ""
+	}
+	return tb.id, tb.cwd
+}
+
+// showInFocus puts a tab on screen: in the focused pane when the body is split,
+// and as the selected tab otherwise. A split keeps its shape when a new shell
+// arrives — the shell lands in the pane a person is working in, and the tab it
+// replaces stays in the strip, still running.
+func (w *window) showInFocus(tb *tab) {
+	if w.split != nil && w.focus != nil && w.focus.leaf() {
+		w.focus.tab = tb
+		w.selectTabRaw(tb)
+		return
+	}
+	w.selectTab(tb)
 }
 
 // kill ends the shell behind a tab — this machine's or another one's, through
@@ -743,6 +837,11 @@ func (w *window) reconcile(live []protocol.Summary) {
 		if tb == nil || tb.machine != machineLocal || tb.id == "" || present[tb.id] || tb.alive || tb.done {
 			continue
 		}
+		// A pane showing this tab goes with it, the way removeTab takes one:
+		// the tree is settled below, once the tab set has stopped moving.
+		if n := w.leafOf(tb); n != nil {
+			w.collapseLeaf(n, false)
+		}
 		tb.close()
 		delete(w.tabs, key)
 		w.order = dropKey(w.order, key)
@@ -761,6 +860,13 @@ func (w *window) reconcile(live []protocol.Summary) {
 			if tb.program == "" && s.Shell != "" {
 				tb.program = programName(s.Shell)
 			}
+			// The hub owns the name: a rename from anywhere — this window, a
+			// browser, a phone — arrives here, and a cleared title arrives as
+			// the empty string, which is the shell going back to its program.
+			tb.setTitle(s.Title)
+			// The directory the hub last saw this shell in, which is where a
+			// shell opened beside it will open.
+			tb.cwd = s.Cwd
 			continue
 		}
 		if w.dismissed[s.SessionID] {
@@ -777,6 +883,10 @@ func (w *window) reconcile(live []protocol.Summary) {
 	if w.selected < 0 {
 		w.selected = 0
 	}
+	// A shell that appeared — started from a browser, say — has a tab and the
+	// strip now points at it; with panes on screen the strip follows the pane
+	// instead.
+	w.syncSplit()
 }
 
 // nextOrdinal finds the lowest unused 1-based index for tabs on the given machine.
@@ -952,6 +1062,12 @@ func (w *window) removeTab(tb *tab) {
 	if key < 0 {
 		return
 	}
+	// A pane showing this tab goes with it, quietly: the tree is settled after
+	// the tab set has moved, because selecting the pane that is left would name
+	// a strip index that is about to change.
+	if n := w.leafOf(tb); n != nil {
+		w.collapseLeaf(n, false)
+	}
 	if tb.id != "" && tb.machine == machineLocal {
 		if w.dismissed == nil {
 			w.dismissed = make(map[string]bool)
@@ -967,6 +1083,7 @@ func (w *window) removeTab(tb *tab) {
 	if w.selected < 0 {
 		w.selected = 0
 	}
+	w.syncSplit()
 }
 
 // tabOfSession is the tab a session belongs to, found through the session
@@ -994,8 +1111,13 @@ func (w *window) tabOf(machine, sessionID string) *tab {
 	return nil
 }
 
-// activeTab is the tab on screen, or nil with none open.
+// activeTab is the tab on screen, or nil with none open. With a split open
+// that is the focused pane's shell: the composer types into it, the header and
+// the status bar describe it, and a new shell opens beside it.
 func (w *window) activeTab() *tab {
+	if w.split != nil && w.focus != nil && w.focus.tab != nil {
+		return w.focus.tab
+	}
 	if w.selected < 0 || w.selected >= len(w.order) {
 		return nil
 	}
@@ -1141,7 +1263,9 @@ func (h tabHandlers) Exit(code int) {
 	w := h.w
 	// The line goes straight to the terminal: the hub has already flushed the
 	// shell's last output, and this is the window's own word on the end.
-	h.conn.feed([]byte(fmt.Sprintf("\r\n\x1b[2m[进程已退出，退出码 %d]\x1b[0m\r\n", code)), false)
+	// The marker is one message in both languages, escape bytes and all: the
+	// catalog carries the whole line the terminal is fed.
+	h.conn.feed([]byte(locales.TermExitMarker(code)), false)
 	w.update(func() {
 		if tb := h.tab(); tb != nil {
 			tb.finish(code)
@@ -1193,7 +1317,7 @@ func (h tabHandlers) Failed(code, message string) {
 		// under the machines, which is where a refusal that belongs to a whole
 		// machine is explained.
 		w.update(func() {
-			w.linkNote = "这台机器不允许其他客户端控制它：在它的 设置 → 服务 → 允许被控制 里打开。"
+			w.linkNote = locales.AppControlOff()
 			// A create that was refused leaves the tab that was waiting for a shell
 			// with nothing to wait for, which is a tab nobody can do anything with.
 			if tb := h.tab(); tb != nil && tb.id == "" {
@@ -1270,6 +1394,11 @@ type tab struct {
 	// does; it is this window's own record, not the shell's, because a shell
 	// reached through the relay does not hand its history over.
 	sent []string
+
+	// cwd is the directory the hub last reported for this shell. It is where a
+	// shell opened beside this one falls back to when the machine cannot say
+	// where its processes stand, and what the tab's own inspection shows.
+	cwd string
 }
 
 // bind gives the tab its session id, once the hub has named it. Until then the
@@ -1412,17 +1541,17 @@ func (t *tab) nameLocked() string {
 		}
 		switch {
 		case t.program != "" && ordinal > 0:
-			name = fmt.Sprintf("%s %d", t.program, ordinal)
+			name = locales.TabProgramOrdinal(t.program, ordinal)
 		case t.program != "":
 			name = t.program
 		case ordinal > 0:
-			name = fmt.Sprintf("终端 %d", ordinal)
+			name = locales.TabOrdinal(ordinal)
 		case strings.HasPrefix(t.id, "s"):
-			name = "终端 " + t.id[1:]
+			name = locales.TabById(t.id[1:])
 		case t.id != "":
-			name = "终端 " + t.id
+			name = locales.TabById(t.id)
 		default:
-			name = "终端"
+			name = locales.TabFallback()
 		}
 	}
 	return name
@@ -1437,7 +1566,7 @@ func (t *tab) exitLine() string {
 	if !t.done {
 		return ""
 	}
-	return fmt.Sprintf("已退出（退出码 %d）", t.exit)
+	return locales.TabExitedCode(t.exit)
 }
 
 // isPending reports whether this tab is still waiting for the hub to assign a session id.
@@ -1503,16 +1632,16 @@ func (w *window) serviceLabel() string {
 	if url := w.fleet.BaseURL(); url != "" {
 		parts = append(parts, url)
 	} else {
-		parts = append(parts, "本机服务已关闭")
+		parts = append(parts, locales.ServiceOff())
 	}
 	if w.relayOn() {
 		switch st := w.fleet.RelayState(); {
 		case st.Connected:
-			parts = append(parts, "中继已连接")
+			parts = append(parts, locales.RelayConnected())
 		case st.Connecting:
-			parts = append(parts, "中继连接中…")
+			parts = append(parts, locales.RelayConnecting())
 		default:
-			parts = append(parts, "中继断开")
+			parts = append(parts, locales.RelayDown())
 		}
 	}
 	return strings.Join(parts, " · ")

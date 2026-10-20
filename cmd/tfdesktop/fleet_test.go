@@ -45,7 +45,7 @@ func TestServerToggleKeepsSessions(t *testing.T) {
 
 	// No shell name, so this exercises the platform's own default, which is the
 	// only choice that also works on Windows.
-	s, err := f.Hub().Create("", 80, 24, "", "")
+	s, err := f.Hub().Create("", 80, 24, "", "", "")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}

@@ -268,8 +268,17 @@ export class Fleet {
     this.send({ t: CT.list })
   }
 
-  create(opts: { cols: number; rows: number; cwd?: string; shell?: string; title?: string }): void {
+  create(opts: { cols: number; rows: number; cwd?: string; shell?: string; title?: string; from?: string }): void {
     this.send({ t: CT.create, ...opts })
+  }
+
+  /**
+   * Name a session. The hub keeps the title and broadcasts it, so every client
+   * watching the shell reads the new name; an empty title clears it and the
+   * shell goes back to being named after its program.
+   */
+  rename(sessionId: string, title: string): void {
+    this.send({ t: CT.rename, sessionId, title })
   }
 
   attach(sessionId: string, cursor = 0): void {

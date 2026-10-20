@@ -17,6 +17,7 @@ export const CT = {
   claim: 'claim',
   release: 'release',
   close: 'close',
+  rename: 'rename',
 } as const
 
 /** Server -> client frame kinds. */
@@ -92,6 +93,12 @@ export interface Msg {
   cwd?: string
   shell?: string
   title?: string
+  /**
+   * Session whose working directory a create opens in: the directory that
+   * shell stands in now, so a new tab continues where the one beside it is
+   * rather than at the home directory. Absent means the daemon's own default.
+   */
+  from?: string
 
   /** Byte offset into the session output stream. Absent means 0. */
   cursor?: number

@@ -25,6 +25,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 func main() {
@@ -84,6 +85,10 @@ func main() {
 	// a machine that was left read-only for other clients must not be reachable
 	// for the moment it takes the window to open.
 	f.SetRemoteControl(!saved.ControlOff)
+	// The interface language, applied before the first frame is drawn: the
+	// window's chrome says its first word in the language the person chose, or
+	// in the one their system says they read.
+	applyLanguage(saved.Language)
 	if err := f.SetRelay(saved.RelayURL, saved.DeviceID, saved.DeviceSecret, saved.RelayCA, saved.RelayOn); err != nil {
 		log.Printf("tfdesktop: relay: %v", err)
 	}
@@ -121,7 +126,7 @@ func main() {
 	// fleet is doing, rather than leaving a machine that looks joined and
 	// answers nothing.
 	if startupErr != nil {
-		app.setNotice("本机服务没能启动（" + startupErr.Error() + "）：浏览器和手机连不进来。窗口里的终端不受影响。")
+		app.setNotice(locales.AppServiceStartFailed(startupErr.Error()))
 	}
 	// The link reports its own health from the agent's goroutine, so the pane
 	// that shows it has to be told to repaint.

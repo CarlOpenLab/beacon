@@ -1,10 +1,14 @@
 {
   "name": "term-fleet",
   "identifier": "dev.carl.termfleet",
-  "version": "0.4.20",
+  "version": "0.4.21",
   "main": "./cmd/tfdesktop",
   "buildCommand": "pnpm run build:web",
   "icon": "resources/icon.png",
+  "i18n": {
+    "dir": "locales",
+    "source": "zh-Hans"
+  },
   "updates": {
     "publicKey": "TrArfm6lgx1xL79ce7aP/w0odLED0aJo+OgJTGUinCs=",
     "github": "CarlOpenLab/term-fleet"

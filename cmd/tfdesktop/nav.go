@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // The column's measurements: what it is wide, what its panels ask for.
@@ -67,13 +68,13 @@ func (w *window) sidebar(c *ui.Context, mode string) {
 		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
 		w.machinePanel(c)
 		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
-		settings := ui.Row(c).Height(36).FillWidth().PaddingX(12).Gap(8).AlignItems(ui.Center).Label("设置")
+		settings := ui.Row(c).Height(36).FillWidth().PaddingX(12).Gap(8).AlignItems(ui.Center).Label(locales.ActionSettings())
 		if settings.Hovered() {
 			settings.Background(t.SurfaceHover)
 		}
 		settings.Children(func() {
 			ui.Icon(c, iconSettings).FontSize(14).TextColor(t.TextMuted)
-			ui.Text(c, "设置").FontSize(12).TextColor(t.TextMuted)
+			ui.Text(c, locales.ActionSettings()).FontSize(12).TextColor(t.TextMuted)
 		})
 		if settings.Clicked() {
 			w.openSettings()
@@ -98,12 +99,12 @@ func (w *window) sessionPanel(c *ui.Context) {
 		// ending it is the row's own 结束 button. The two used to be the same
 		// button, which meant "close this tab" killed a process on a machine
 		// somewhere — for every client watching it, not just this window.
-		panelHead(c, "会话", len(entries), func() {
+		panelHead(c, locales.SessionPanel(), len(entries), func() {
 			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-				if iconButton(c, iconRefresh, "刷新会话 ⌘R", 24).Clicked() {
+				if iconButton(c, iconRefresh, locales.SessionRefresh(), 24).Clicked() {
 					w.refreshSessions(w.selectedMachine())
 				}
-				if iconButton(c, iconPlus, "新建终端 ⌘T", 24).Clicked() {
+				if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), 24).Clicked() {
 					w.newTab()
 				}
 			})
@@ -203,11 +204,11 @@ func (w *window) sessionEntries() []sessionEntry {
 			if prog := programName(summary.Shell); prog != "" {
 				name = prog
 			} else if strings.HasPrefix(summary.SessionID, "s") {
-				name = "终端 " + summary.SessionID[1:]
+				name = locales.TabById(summary.SessionID[1:])
 			} else if summary.SessionID != "" {
-				name = "终端 " + summary.SessionID
+				name = locales.TabById(summary.SessionID)
 			} else {
-				name = "终端"
+				name = locales.TabFallback()
 			}
 		}
 		// A shell the window already has a tab for is on screen when that tab is
@@ -262,35 +263,49 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 	row.Children(func() {
 		dot := w.leaseColor(t, e.machine, e.session, e.holder, e.alive)
 		ui.Box(c).Size(7, 7).Radius(4).Background(dot)
-		name := e.label
-		if len([]rune(name)) > 24 {
-			name = string([]rune(name)[:23]) + "…"
-		}
-		label := ui.Text(c, name).FontSize(12).SingleLine().Grow(1).Shrink(1)
-		if e.active {
-			label.TextColor(t.Text)
+		if w.renamingIs(e.machine, e.session) {
+			// The name, being edited: a field in the name's place, which Enter
+			// commits and Escape lets go of.
+			w.renameField(c)
+		} else {
+			name := e.label
+			if len([]rune(name)) > 24 {
+				name = string([]rune(name)[:23]) + "…"
+			}
+			label := ui.Text(c, name).FontSize(12).SingleLine().Grow(1).Shrink(1)
+			if e.active {
+				label.TextColor(t.Text)
+			}
 		}
 		if badge, color, ok := w.leaseBadge(t, e); ok {
 			badgeChip(c, badge, color)
 		}
-		if e.close != nil && iconButton(c, iconClose, "关闭 "+e.label, 20).Shrink(0).Clicked() {
+		if e.close != nil && iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Shrink(0).Clicked() {
 			e.close()
 			return
 		}
 	})
 	row.ContextMenu(func(m *ui.Menu) {
-		if e.close != nil && m.Item("关闭标签页").Chosen() {
+		if m.Item(locales.TabRename()).Chosen() {
+			w.beginRename(e.machine, e.session)
+		}
+		if e.close != nil && m.Item(locales.TabClose()).Chosen() {
 			e.close()
 		}
 		m.EditItems()
 		if e.alive && e.end != nil {
-			if m.Item("结束进程…").Chosen() {
+			if m.Item(locales.TabEndProcess()).Chosen() {
 				e.end()
 			}
 		}
 	})
 	if row.Clicked() {
 		e.pick()
+	}
+	// A double-click on the row names the shell, the way every list on a Mac
+	// renames what it lists.
+	if row.DoubleClicked() {
+		w.beginRename(e.machine, e.session)
 	}
 }
 
@@ -305,24 +320,24 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 // would name this window to itself as the one to be read-only about. The tab
 // knows whether the lease is this window's; the summary does not.
 func (w *window) sessionMeta(e sessionEntry) string {
-	parts := []string{or(e.session, "待创建")}
+	parts := []string{or(e.session, locales.LabelPending())}
 	if e.meta != "" {
 		parts = append(parts, e.meta)
 	}
 	switch {
 	case e.session == "":
-		parts = append(parts, "创建中")
+		parts = append(parts, locales.StatePending())
 	case !e.alive:
-		parts = append(parts, "已退出")
+		parts = append(parts, locales.StateEnded())
 	case w.holds(e):
-		parts = append(parts, "控制中")
+		parts = append(parts, locales.StateControlling())
 	case e.holder != "":
-		parts = append(parts, "只读 "+e.holder)
+		parts = append(parts, locales.StateReadonly()+" "+e.holder)
 	default:
 		// Neither this window's nor anybody else's. 控制中 here would say a
 		// person has a keyboard that nobody has, over a shell whose pane says
 		// 只读 — which is what it said before there was a word for this.
-		parts = append(parts, "无人控制")
+		parts = append(parts, locales.StateNobody())
 	}
 	return strings.Join(parts, " · ")
 }
@@ -348,21 +363,21 @@ func (w *window) holds(e sessionEntry) bool {
 func (w *window) leaseBadge(t *ui.Theme, e sessionEntry) (string, ui.Color, bool) {
 	if tb := w.tabOf(e.machine, e.session); tb != nil {
 		if tb.isEnded() {
-			return "已退出", t.Danger, true
+			return locales.StateEnded(), t.Danger, true
 		}
 		if tb.isPending() {
-			return "创建中", shellColorsFor(t).quiet, true
+			return locales.StatePending(), shellColorsFor(t).quiet, true
 		}
 		if readOnly(tb) {
-			return "只读", t.Warning, true
+			return locales.StateReadonly(), t.Warning, true
 		}
 		return "", t.Success, false
 	}
 	if !e.alive {
-		return "已退出", t.Danger, true
+		return locales.StateEnded(), t.Danger, true
 	}
 	if e.holder != "" {
-		return "只读", t.Warning, true
+		return locales.StateReadonly(), t.Warning, true
 	}
 	return "", t.Success, false
 }
@@ -379,11 +394,11 @@ func (w *window) sessionTooltip(e sessionEntry) string {
 		// This window is a client like any other, and on this machine's panel it
 		// is the one holding the lease of the shell it is showing. 当前无人控制
 		// here would be the window denying itself.
-		lines = append(lines, "控制端 本窗口")
+		lines = append(lines, locales.StateControllerSelf())
 	case e.holder != "":
-		lines = append(lines, "控制端 "+e.holder)
+		lines = append(lines, locales.StateControllerOther(e.holder))
 	default:
-		lines = append(lines, "当前无人控制")
+		lines = append(lines, locales.StateControllerNobody())
 	}
 	return strings.Join(lines, "\n")
 }
@@ -418,9 +433,28 @@ func (w *window) newestTabOn(machine string) *tab {
 
 // selectTab puts a tab on screen, and with it the machine the panels are about:
 // the 机器 and 会话 panels follow the shell a person is looking at, so switching
-// to a shell on another machine moves them there rather than leaving them on a
-// machine that is no longer on screen.
+// to a shell on another machine moves them there rather than leaving them on
+// a machine that is no longer on screen.
+//
+// With a split open, a tab already on screen in a pane becomes the focused
+// pane, and any other tab lands in the focused pane — picking a third shell
+// beside two others is asking to look at it beside them, not to lose them.
 func (w *window) selectTab(tb *tab) {
+	if w.split != nil {
+		if n := w.leafOf(tb); n != nil {
+			w.focusSplit(n)
+			return
+		}
+		w.showInFocus(tb)
+		return
+	}
+	w.selectTabRaw(tb)
+}
+
+// selectTabRaw is selectTab without the split: it names the tab the strip is
+// about and syncs the size of a shell this window holds. The split's own paths
+// call it once they have decided which pane is on screen.
+func (w *window) selectTabRaw(tb *tab) {
 	for i, key := range w.order {
 		if w.tabs[key] != tb {
 			continue
@@ -546,8 +580,8 @@ func (w *window) machinePanel(c *ui.Context) {
 	itemsH := float32(rows)*rowH + float32(max(0, rows-1))*gap
 	contentH := headH + padTop + padBottom + itemsH
 	ui.Column(c).Height(min(180, contentH)).Children(func() {
-		panelHead(c, "机器", w.machineCount(), func() {
-			if iconButton(c, iconRefresh, "刷新机器 ⌘R", 24).Clicked() {
+		panelHead(c, locales.MachinePanel(), w.machineCount(), func() {
+			if iconButton(c, iconRefresh, locales.MachineRefresh(), 24).Clicked() {
 				w.refreshMachines()
 			}
 		})
@@ -603,7 +637,7 @@ func (w *window) machineChoice(c *ui.Context, m tunnel.Machine) {
 		}
 		ui.Text(c, name).FontSize(12).SingleLine().Grow(1).Shrink(1)
 		if m.ID != machineLocal && !m.Online {
-			badgeChip(c, "离线", t.TextMuted)
+			badgeChip(c, locales.MachineOffline(), t.TextMuted)
 		}
 	})
 	if row.Clicked() {
@@ -638,7 +672,7 @@ func (w *window) machineName(id string) string {
 		return m.Name
 	}
 	if id == machineLocal {
-		return "本机"
+		return locales.MachineLocal()
 	}
 	return id
 }
@@ -655,9 +689,9 @@ func (w *window) lookAtMachine(machine string) {
 // machineState is what a roster machine's tooltip says about it.
 func machineState(m tunnel.Machine) string {
 	if m.Online {
-		return "在线"
+		return locales.MachineOnline()
 	}
-	return "离线"
+	return locales.MachineOffline()
 }
 
 // leaseColor is a shell's dot: the same three states the row's words and badge
@@ -689,13 +723,13 @@ func (w *window) leaseColor(t *ui.Theme, machine, sessionID, controller string, 
 func (w *window) localMachine() (name, meta string) {
 	host := w.hostName()
 	if host == "" {
-		host = "本机"
+		host = locales.MachineLocal()
 	}
 	if w.fleet == nil {
-		return host, "平台未知"
+		return host, locales.MachinePlatformUnknown()
 	}
 	h := w.fleet.Host()
-	return host, h.Platform + "/" + h.Arch + " · " + fmt.Sprintf("%d 个会话", len(w.order))
+	return host, h.Platform + "/" + h.Arch + " · " + locales.MachineSessionsCount(len(w.order))
 }
 
 // hostName is what this machine calls itself.
@@ -717,12 +751,12 @@ func (w *window) relayOn() bool {
 // "where are my other machines?".
 func (w *window) machineNote() string {
 	if !w.relayOn() {
-		return "只列本机：在 设置 → 远程 接入中继后，同一中继上的其他机器会出现在这里。"
+		return locales.MachineNoteLocalOnly()
 	}
 	if w.fleet.RelayClient() == nil {
-		return "点另一台机器会向中继申请一枚短时接管令牌；中继没发下来的原因在 设置 → 远程。"
+		return locales.MachineNoteNoToken()
 	}
-	return "点一台机器就切过去，它会成为上面「会话」的对象。"
+	return locales.MachineNoteReady()
 }
 
 // machineCount is what the panel's title counts: this machine, and every other

@@ -20,6 +20,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/relay"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // The whole reach, over real sockets: a relay, another machine's daemon dialled
@@ -79,15 +80,15 @@ func TestWindowTakesOverAnotherMachinesShell(t *testing.T) {
 	sw := newSettingsWindow(w, store, f)
 	tt := ui.NewTester(sw.view, 640, 640)
 	tt.Frame()
-	if err := tt.Click("远程"); err != nil {
-		t.Fatalf("Click(远程): %v", err)
+	if err := tt.Click(locales.SettingsPaneRelay()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneRelay(), err)
 	}
 	tt.Frame()
 	sw.relay, sw.device, sw.secret = "ws"+strings.TrimPrefix(ts.URL, "http")+"/relay/agent", "desk-1", "desksec"
 	sw.relayOn = true
 	tt.Frame()
-	if err := tt.Click("应用"); err != nil {
-		t.Fatalf("Click(应用): %v", err)
+	if err := tt.Click(locales.SettingsApply()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsApply(), err)
 	}
 	tt.Frame()
 	if f.RelayClient() == nil {
@@ -106,7 +107,7 @@ func TestWindowTakesOverAnotherMachinesShell(t *testing.T) {
 	})
 
 	// A shell on the other machine, started from there.
-	remote, err := other.Hub().Create("", 80, 24, "", "/bin/sh")
+	remote, err := other.Hub().Create("", 80, 24, "", "/bin/sh", "")
 	if err != nil {
 		t.Fatalf("remote shell: %v", err)
 	}
@@ -398,7 +399,7 @@ func TestTwoDesktopsDriveEachOther(t *testing.T) {
 		{"alpha drives beta", alphaDesk, betaID, beta, betaDesk},
 		{"beta drives alpha", betaDesk, alphaID, alpha, alphaDesk},
 	} {
-		s, err := side.host.Hub().Create("", 80, 24, "", "/bin/sh")
+		s, err := side.host.Hub().Create("", 80, 24, "", "/bin/sh", "")
 		if err != nil {
 			t.Fatalf("shell on %s: %v", side.target, err)
 		}
@@ -523,18 +524,18 @@ func deskFleet(t *testing.T, url, deviceID, secret string) (*fleet, *window) {
 	sw := newSettingsWindow(w, store, f)
 	tt := ui.NewTester(sw.view, 640, 640)
 	tt.Frame()
-	if err := tt.Click("远程"); err != nil {
-		t.Fatalf("Click(远程): %v", err)
+	if err := tt.Click(locales.SettingsPaneRelay()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneRelay(), err)
 	}
 	tt.Frame()
 	sw.relay, sw.device, sw.secret, sw.relayOn = url, deviceID, secret, true
 	tt.Frame()
-	if err := tt.Click("应用"); err != nil {
-		t.Fatalf("Click(应用): %v", err)
+	if err := tt.Click(locales.SettingsApply()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsApply(), err)
 	}
 	tt.Frame()
 	if !f.RelayOn() {
-		t.Fatalf("%s is not on the relay after 应用", deviceID)
+		t.Fatalf("%s is not on the relay after %s", deviceID, locales.SettingsApply())
 	}
 	if f.RelayClient() == nil {
 		t.Fatalf("%s has no client link: %s", deviceID, f.RelayClientErr())
@@ -625,7 +626,7 @@ func TestDesktopNewTabWithActiveLocalTabCreatesOnRemoteMachine(t *testing.T) {
 
 	// Start with an active local tab on alphaDesk.
 	localTab := alphaDesk.openTab(machineLocal, "")
-	alphaDesk.local.create(80, 24, "", "")
+	alphaDesk.local.create(80, 24, "", "", "")
 	waitSessions(alpha, 1)
 	settleTabs(t, alphaDesk, 1)
 	alphaDesk.drain()
@@ -687,7 +688,7 @@ func TestTheLeaseFollowsTheShellOnScreen(t *testing.T) {
 	})
 
 	// A shell of this machine's own, so 切到本机 has something to go back to.
-	own, err := alpha.Hub().Create("", 80, 24, "", "/bin/sh")
+	own, err := alpha.Hub().Create("", 80, 24, "", "/bin/sh", "")
 	if err != nil {
 		t.Fatalf("shell on this machine: %v", err)
 	}
@@ -699,7 +700,7 @@ func TestTheLeaseFollowsTheShellOnScreen(t *testing.T) {
 	})
 
 	// A shell on the other machine, held by that machine's own window.
-	far, err := beta.Hub().Create("", 80, 24, "", "/bin/sh")
+	far, err := beta.Hub().Create("", 80, 24, "", "/bin/sh", "")
 	if err != nil {
 		t.Fatalf("shell on the far machine: %v", err)
 	}

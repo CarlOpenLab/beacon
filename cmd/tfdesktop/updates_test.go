@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // updateStub replaces the three calls the 更新 pane makes into mygo's updater
@@ -37,8 +39,8 @@ func openUpdatesPane(t *testing.T, sw *settingsWindow) *ui.Tester {
 	t.Helper()
 	tt := ui.NewTester(sw.view, 720, 560)
 	tt.Frame()
-	if err := tt.Click("更新"); err != nil {
-		t.Fatalf("Click(更新): %v", err)
+	if err := tt.Click(locales.SettingsPaneUpdates()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneUpdates(), err)
 	}
 	tt.Frame()
 	return tt
@@ -69,29 +71,29 @@ func TestUpdatesPaneShowsTheVersionAndThePluginSwitches(t *testing.T) {
 	if !tt.HasText(lastCheckLabel(last)) {
 		t.Errorf("the pane does not show the last check (%s): %q", lastCheckLabel(last), tt.Texts())
 	}
-	for _, label := range []string{"自动检查更新", "自动下载更新"} {
+	for _, label := range []string{locales.UpdateAutoCheck(), locales.UpdateAutoDownload()} {
 		if _, ok := tt.Find(label); !ok {
 			t.Errorf("%s is missing from an updatable build's pane", label)
 		}
 	}
 
-	if err := tt.Click("检查更新…"); err != nil {
-		t.Fatalf("Click(检查更新…): %v", err)
+	if err := tt.Click(locales.UpdateCheckNow()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.UpdateCheckNow(), err)
 	}
 	tt.Frame()
 	if stub.checks != 1 {
-		t.Errorf("检查更新… asked the plugin %d times, want 1", stub.checks)
+		t.Errorf("checking for updates asked the plugin %d times, want 1", stub.checks)
 	}
 
-	clickAndSettle(t, tt, "自动检查更新")
+	clickAndSettle(t, tt, locales.UpdateAutoCheck())
 	if stub.saves != 1 || !stub.prefs.automaticChecks || stub.prefs.automaticDownloads {
-		t.Errorf("toggling 自动检查更新 wrote %+v after %d saves, want checks on and downloads off",
+		t.Errorf("toggling the automatic check wrote %+v after %d saves, want checks on and downloads off",
 			stub.prefs, stub.saves)
 	}
 
-	clickAndSettle(t, tt, "自动下载更新")
+	clickAndSettle(t, tt, locales.UpdateAutoDownload())
 	if !stub.prefs.automaticChecks || !stub.prefs.automaticDownloads {
-		t.Errorf("toggling 自动下载更新 wrote %+v, want both on", stub.prefs)
+		t.Errorf("toggling the automatic download wrote %+v, want both on", stub.prefs)
 	}
 }
 
@@ -103,16 +105,16 @@ func TestUpdatesPaneExplainsABuildThatCannotUpdateItself(t *testing.T) {
 	stub := stubUpdates(t, updatePrefs{})
 
 	tt := openUpdatesPane(t, sw)
-	if !tt.HasText("还没有检查过") {
+	if !tt.HasText(locales.UpdateNever()) {
 		t.Errorf("an unchecked build should say so: %q", tt.Texts())
 	}
-	if !tt.HasText("不可用") {
+	if !tt.HasText(locales.UpdateUnavailable()) {
 		t.Errorf("the pane does not mark the switches as unavailable: %q", tt.Texts())
 	}
-	if _, ok := tt.Find("检查更新…"); ok {
-		t.Error("检查更新… should not be offered by a build that cannot update itself")
+	if _, ok := tt.Find(locales.UpdateCheckNow()); ok {
+		t.Error("checking for updates should not be offered by a build that cannot update itself")
 	}
-	for _, label := range []string{"自动检查更新", "自动下载更新"} {
+	for _, label := range []string{locales.UpdateAutoCheck(), locales.UpdateAutoDownload()} {
 		clickAndSettle(t, tt, label)
 	}
 	if stub.saves != 0 || stub.checks != 0 {
@@ -121,7 +123,7 @@ func TestUpdatesPaneExplainsABuildThatCannotUpdateItself(t *testing.T) {
 }
 
 func TestLastCheckLabel(t *testing.T) {
-	if got := lastCheckLabel(time.Time{}); got != "还没有检查过" {
+	if got := lastCheckLabel(time.Time{}); got != locales.UpdateNever() {
 		t.Errorf("lastCheckLabel(zero) = %q", got)
 	}
 	when := time.Date(2026, 10, 16, 9, 20, 0, 0, time.Local)

@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // The appearance preference is stored as one of these ids. The empty id is the
@@ -20,9 +21,9 @@ const (
 // it. The rail's entry, the settings control and the stored value all read this
 // list, so the three cannot drift apart.
 var themeChoices = []struct{ id, label string }{
-	{themeSystem, "跟随系统"},
-	{themeLight, "白天"},
-	{themeDark, "暗黑"},
+	{themeSystem, locales.ThemeSystem()},
+	{themeLight, locales.ThemeLight()},
+	{themeDark, locales.ThemeDark()},
 }
 
 // normalizeTheme maps anything unrecognised onto the system default: a stale or
@@ -89,9 +90,9 @@ func flipTheme(mode string, dark bool) string {
 // themeActionLabel names what a click on the rail's appearance entry will do.
 func themeActionLabel(mode string, dark bool) string {
 	if flipTheme(mode, dark) == themeDark {
-		return "切换到暗黑"
+		return locales.ThemeToDark()
 	}
-	return "切换到白天"
+	return locales.ThemeToLight()
 }
 
 // setTheme saves an appearance and repaints every window the shell has open, so

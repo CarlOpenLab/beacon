@@ -346,7 +346,9 @@ export class App {
           const summary = list.find((s) => s.sessionId === tab.sessionId)
           if (!summary) continue
           tab.alive = summary.alive
-          if (summary.title) tab.title = summary.title
+          // The hub owns the title — a rename anywhere, or a clear, is what
+          // this says — so the strip reads it rather than keeping its own copy.
+          tab.title = summary.title
         }
         this.renderTabs()
         this.renderBanner()
@@ -867,6 +869,58 @@ export class App {
     }
   }
 
+  /**
+   * Rename a shell in place: the tab's label becomes a field, Enter commits
+   * the name to the hub and Escape or a blur leaves the shell as it was. The
+   * name travels as the session's title, so the sidebar row and every other
+   * client watching the shell read it too.
+   */
+  private renameTab(tab: Tab, label: HTMLElement): void {
+    if (!tab.sessionId) {
+      this.toast('会话还没有创建，稍等一下再命名', 'warn')
+      return
+    }
+    const fleet = this.fleetOf(tab)
+    if (!fleet?.online) {
+      this.toast('尚未连接到任何主机', 'warn')
+      return
+    }
+    const input = el('input', 'tf-tab-rename') as HTMLInputElement
+    input.type = 'text'
+    input.value = tab.title || ''
+    input.placeholder = '终端名称'
+    input.title = '回车命名，Esc 取消'
+    label.replaceWith(input)
+    input.focus()
+    input.select()
+
+    let done = false
+    const finish = (commit: boolean) => {
+      if (done) return
+      done = true
+      const title = input.value.trim()
+      input.replaceWith(label)
+      if (commit && title !== (tab.title || '')) {
+        // Optimistic: the label moves at once, and the broadcast that follows
+        // confirms it for every client, this one included.
+        tab.title = title
+        fleet.rename(tab.sessionId!, title)
+        this.renderTabs()
+      }
+    }
+    input.onkeydown = (ev) => {
+      ev.stopPropagation()
+      if (ev.key === 'Enter') {
+        ev.preventDefault()
+        finish(true)
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault()
+        finish(false)
+      }
+    }
+    input.onblur = () => finish(true)
+  }
+
   private renderTabs(): void {
     this.tabStrip.replaceChildren()
     for (const tab of this.tabs) {
@@ -892,6 +946,15 @@ export class App {
         this.closeTab(tab)
       }
       btn.append(close)
+
+      // A double-click on the tab's name renames the shell: the hub keeps the
+      // title and every client watching the shell reads it, which is what makes
+      // two shells started in the same directory tellable apart.
+      btn.ondblclick = (ev) => {
+        if (ev.target === close) return
+        ev.preventDefault()
+        this.renameTab(tab, label)
+      }
 
       // Two shells started in the same directory look identical in the strip,
       // so the tooltip carries what distinguishes them.
@@ -1270,12 +1333,18 @@ export class App {
       this.toast(`${mv.label} 尚未连接`, 'warn')
       return
     }
+    // The new shell opens where the shell on screen stands, so a second tab
+    // continues in the directory the first one is in rather than at home. The
+    // first tab of a machine has nothing to follow and gets the default. Read
+    // before the tab is opened: opening one selects it.
+    const onScreen = this.current()
+    const from = onScreen && onScreen.machineId === mv.id ? onScreen.sessionId : ''
     const tab = this.openTab(mv.id, '')
     const { cols, rows } = this.fitTab(tab)
     tab.title = '新终端'
     // Size is sent with the request so the shell is born at the right width
     // instead of being resized a frame later.
-    mv.fleet.create({ cols, rows })
+    mv.fleet.create({ cols, rows, from })
     this.renderTabs()
   }
 

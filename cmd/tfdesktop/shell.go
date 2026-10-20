@@ -4,10 +4,10 @@ import (
 	_ "embed"
 	"fmt"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/locales"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -80,12 +80,12 @@ func (w *window) header(c *ui.Context) {
 		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
 		DragWindow().
 		Children(func() {
-			if w.sidebarHidden && iconButton(c, iconSettings, "设置", headerButtonSize).Clicked() {
+			if w.sidebarHidden && iconButton(c, iconSettings, locales.ActionSettings(), headerButtonSize).Clicked() {
 				w.openSettings()
 			}
-			name := "本机 / 终端"
+			name := locales.HeaderTitle()
 			if tb := w.activeTab(); tb != nil {
-				name = w.machineName(tb.machine) + " / " + tb.name()
+				name = locales.HeaderMachineShell(w.machineName(tb.machine), tb.name())
 			}
 			ui.Text(c, name).FontSize(12).SingleLine().Shrink(1).MaxWidth(300)
 			ui.Spacer(c)
@@ -116,12 +116,12 @@ func (w *window) headerActions(c *ui.Context) {
 			Height(22).PaddingX(10).Radius(radiusPill).
 			AlignItems(ui.Center).Justify(ui.Center).Shrink(0).
 			Background(col.field).BorderWidth(1).BorderColor(col.line).
-			Label("释放控制权").Tooltip("释放控制权：转为只读观察模式，终端继续在后台运行")
+			Label(locales.ActionRelease()).Tooltip(locales.ActionReleaseTip())
 		if rel.Hovered() {
 			rel.Background(t.SurfaceHover)
 		}
 		rel.Children(func() {
-			ui.Text(c, "释放控制权").FontSize(11).TextColor(t.TextMuted)
+			ui.Text(c, locales.ActionRelease()).FontSize(11).TextColor(t.TextMuted)
 		})
 		if rel.Clicked() {
 			w.releaseLease(tb)
@@ -148,12 +148,12 @@ func (w *window) headerBanner(c *ui.Context) {
 		}
 		tooltip := action
 		switch action {
-		case "接管":
-			tooltip = "接管输入：获取键盘操作权限，即可在终端内输入"
-		case "拿回控制权":
-			tooltip = "拿回控制权：本机恢复键盘输入权限"
-		case "关闭标签":
-			tooltip = "关闭当前终端标签页"
+		case locales.ActionTakeOver():
+			tooltip = locales.ActionTakeOverTip()
+		case locales.ActionTakeBack():
+			tooltip = locales.ActionTakeBackTip()
+		case locales.TabCloseTab():
+			tooltip = locales.TabCloseTabTip()
 		}
 		act := ui.Box(c).
 			Height(20).PaddingX(9).Radius(radiusPill).
@@ -189,30 +189,30 @@ func (w *window) bannerState(c *ui.Context) (text, action string, tone ui.Color,
 		// The window says the state and offers the one thing left to do with it.
 		// The sentence does not name the button: a banner that reads
 		// "…关闭标签 [关闭标签]" is a banner nobody reads twice.
-		return "会话已退出，最后几行仍可读取。", "关闭标签", t.Danger, func() {
+		return locales.BannerEnded(), locales.TabCloseTab(), t.Danger, func() {
 			w.removeTab(tb)
 		}
 	}
 	if tb.isPending() {
-		return "正在创建终端…", "", t.TextMuted, nil
+		return locales.BannerCreating(), "", t.TextMuted, nil
 	}
 	if holder := tb.holder(); readOnly(tb) {
 		// This machine's own shell is taken back; another machine's was never
 		// this window's to begin with, so it is taken over.
-		take := "拿回控制权"
+		take := locales.ActionTakeBack()
 		if tb.machine != machineLocal {
-			take = "接管"
+			take = locales.ActionTakeOver()
 		}
 		if holder == "" {
 			// Nobody's, and said as such: a band that named a holder here would
 			// have a blank where the name goes. The way in is the same button —
 			// a claim on a free lease is honoured at once, with no one to steal
 			// it from and no one to tell.
-			return "只读：当前无人控制", take, t.Warning, func() {
+			return locales.BannerReadonlyNobody(), take, t.Warning, func() {
 				w.reclaim(tb)
 			}
 		}
-		return "只读：该会话正被 " + holder + " 控制", take, t.Warning, func() {
+		return locales.BannerReadonlyHolder(holder), take, t.Warning, func() {
 			w.reclaim(tb)
 		}
 	}
@@ -276,7 +276,7 @@ func (w *window) fleetColor(t *ui.Theme) ui.Color {
 // window, not a crash: it is the state the shell starts in.
 func (w *window) serviceLine() string {
 	if w.fleet == nil {
-		return "本机服务已关闭"
+		return locales.ServiceOff()
 	}
 	return w.serviceLabel()
 }
@@ -292,10 +292,10 @@ func (w *window) statusHostLine() string {
 	}
 	line := w.machineName(tb.machine)
 	if m, ok := w.machineByID(tb.machine); ok && m.Host.Platform != "" {
-		line = fmt.Sprintf("%s · %s/%s", line, m.Host.Platform, m.Host.Arch)
+		line = line + " · " + m.Host.Platform + "/" + m.Host.Arch
 	}
 	if n := len(w.sessionsOn(tb.machine)); n > 0 {
-		line = fmt.Sprintf("%s · %d 个会话", line, n)
+		return locales.StatusHostSessions(line, n)
 	}
 	return line
 }
@@ -309,15 +309,15 @@ func (w *window) statusSessionLine() string {
 	role := "—"
 	switch {
 	case tb.isEnded():
-		role = "已退出"
+		role = locales.StateEnded()
 	case tb.isPending():
-		role = "创建中"
+		role = locales.StatePending()
 	case tb.held():
-		role = "控制中"
+		role = locales.StateControlling()
 	case tb.controller != "":
-		role = "只读"
+		role = locales.StateReadonly()
 	}
-	line := or(tb.id, "待创建")
+	line := or(tb.id, locales.LabelPending())
 	if role != "—" {
 		line = fmt.Sprintf("%s · %s", line, role)
 	}
@@ -335,167 +335,37 @@ func (w *window) sessionsOn(machine string) []protocol.Summary {
 	return w.remoteSessions[machine]
 }
 
-// tabStrip is the row of open shells: a pill per tab, whichever machine it runs
-// on, with the machine named in a chip when there is more than one machine in
-// play, a dot for the shell's state, and a way to close it. The pill on screen
-// is raised off the strip; the rest sit flat on it.
-func (w *window) tabStrip(c *ui.Context) {
-	col := shellColorsFor(c.Theme())
-
-	ui.Row(c).
-		Height(tabBarHeight).PaddingX(10).Gap(4).
-		AlignItems(ui.Center).
-		Background(col.pane).
-		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
-		Children(func() {
-			ui.Scroll(c).Fill().Children(func() {
-				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-					for i, key := range w.order {
-						tb := w.tabs[key]
-						if tb == nil {
-							continue
-						}
-						w.tab(c, tb, i == w.selected)
-					}
-					// One more shell, where the browser client puts its ＋.
-					add := ui.Box(c).
-						Size(30, 30).Radius(radiusPill).
-						AlignItems(ui.Center).Justify(ui.Center).
-						Label("新建标签页").Tooltip("新建终端 ⌘T")
-					if add.Hovered() {
-						add.Background(col.field)
-					}
-					add.Children(func() {
-						ui.Icon(c, iconPlus).FontSize(14).TextColor(col.icon)
-					})
-					if add.Clicked() {
-						w.newTab()
-					}
-				})
-			})
-		})
-}
-
-// tab is one tab in the strip: its machine, its state, its name, and a way to
-// close it. Closing a tab stops watching the shell; ending the shell is the
-// panel's own action, so the two are not the same button.
-func (w *window) tab(c *ui.Context, tb *tab, active bool) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-
-	pill := ui.Row(c).
-		Height(30).PaddingStart(11).PaddingEnd(6).Gap(7).
-		Radius(radiusPill).
-		AlignItems(ui.Center).
-		MaxWidth(230).
-		Label(tb.name()).Tooltip(tabTooltip(tb, w.machineName(tb.machine)))
-	if active {
-		// The pill on screen is raised: a step up from the strip's own face, a
-		// hairline all round, and the light that falls on a raised thing.
-		pill.Background(col.tabOn).
-			BorderWidth(1).BorderColor(col.line).
-			Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.35))
-	} else if pill.Hovered() {
-		pill.Background(col.field)
-	}
-	if tb.isEnded() {
-		pill.Opacity(0.6)
-	}
-
-	pill.Children(func() {
-		ui.Box(c).Size(7, 7).Radius(3.5).Background(w.leaseColor(t, tb.machine, tb.id, tb.holder(), tb.alive))
-		// The machine's chip only when more than one machine is in play: on a
-		// single-machine window it is a fact the sidebar already states. It is
-		// the browser client's chip to the pixel — 86 wide at most, one line,
-		// cut — because a hostname that wraps inside a 16-high chip is a chip
-		// with three lines of text spilling out of it.
-		if w.multiMachine() {
-			machine := ui.Box(c).Height(16).MaxWidth(86).Shrink(0).
-				PaddingX(6).Radius(radiusSmall).
-				AlignItems(ui.Center).Justify(ui.Center).
-				Background(col.field).BorderWidth(1).BorderColor(col.line)
-			machine.Tooltip(w.machineName(tb.machine))
-			machine.Children(func() {
-				ui.Text(c, w.machineName(tb.machine)).FontSize(10).TextColor(col.quiet).SingleLine()
-			})
-		}
-		// One line, cut with an ellipsis, the way the browser client's
-		// .tf-tab-label is: the tab is a pill of a fixed 30, so a name that wraps
-		// inside it spills out of the strip. What the strip does not show — the
-		// whole name, the machine, the exit code — is in the tooltip, and a shell
-		// that has ended is the dimmed pill with the dot in the exit's colour.
-		name := ui.Text(c, tb.name()).FontSize(12.5).SingleLine().Shrink(1)
-		if active {
-			name.TextColor(t.Text)
-		} else {
-			name.TextColor(t.TextMuted)
-		}
-		// Closing a tab stops watching the shell; the shell keeps running, and
-		// ending it is the panel's own action. So the × is on the tab, and the
-		// 结束 that kills a process is not.
-		close := ui.Box(c).
-			Size(18, 18).Radius(radiusPill).Shrink(0).
-			AlignItems(ui.Center).Justify(ui.Center).
-			Label("关闭标签页").Tooltip("关闭标签页（仅停止观看，不结束进程）")
-		if close.Hovered() {
-			close.Background(col.field)
-		}
-		close.Children(func() {
-			ui.Icon(c, iconClose).FontSize(11).TextColor(col.icon)
-		})
-		if close.Clicked() {
-			w.removeTab(tb)
-			return
-		}
-	})
-
-	if pill.Clicked() {
-		w.selectTab(tb)
-	}
-}
-
-// tabTooltip is what a tab says on hover: the shell's name, the machine it runs
-// on, and — for a shell that has ended — the code it ended with, which is the
-// one thing about it the strip has no room for.
-func tabTooltip(tb *tab, machine string) string {
-	lines := []string{tb.name(), machine}
-	if line := tb.exitLine(); line != "" {
-		lines = append(lines, line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// multiMachine reports whether this window has shells on more than one machine,
-// which is what decides whether a tab names the machine it belongs to.
-func (w *window) multiMachine() bool {
-	first := ""
-	for _, key := range w.order {
-		tb := w.tabs[key]
-		if tb == nil {
-			continue
-		}
-		if first == "" {
-			first = tb.machine
-			continue
-		}
-		if tb.machine != first {
-			return true
-		}
-	}
-	return false
-}
-
 // body is the shell itself, or, with nothing open, the empty state. The terminal
 // sits on a sheet of its own — inset from the window's ground, rounded, with a
 // hairline off its edge — the way the browser client draws its panes, and a
 // shell that is not this window's to type into is marked on the sheet rather
 // than behind it.
+//
+// With a split open the body is a tree of panes instead of one, and each pane
+// is the same sheet: see splitView. What only the focused pane gets is the
+// keyboard, the light along its edge and the panel about who holds its shell.
 func (w *window) body(c *ui.Context) {
 	if len(w.order) == 0 {
 		w.emptyState(c)
 		return
 	}
+	if w.split != nil {
+		ui.Box(c).Fill().Children(func() { w.splitView(c, w.split) })
+		return
+	}
 	tb := w.activeTab()
+	if tb == nil || tb.term == nil {
+		return
+	}
+	w.paneSheet(c, tb, true, nil)
+}
+
+// paneSheet is one shell on its sheet: the terminal itself, the marks on the
+// sheet, and — for the focused pane of a split — the light along the edge and
+// the panel about who holds the shell. focus, when it is not nil, is what a
+// click on the sheet or the terminal taking the keyboard does: it makes this
+// the pane on screen.
+func (w *window) paneSheet(c *ui.Context, tb *tab, focused bool, focus func()) {
 	if tb == nil || tb.term == nil {
 		return
 	}
@@ -511,9 +381,21 @@ func (w *window) body(c *ui.Context) {
 	ui.Box(c).Fill().Children(func() {
 		sheet := ui.Box(c).Fill().Margin(paneInset).
 			Background(terminalGround)
+		if focus != nil && sheet.Clicked() {
+			focus()
+		}
 		sheet.Children(func() {
 			ui.Box(c).Fill().Children(func() {
-				terminal.View(c, tb.term).Fill().AutoFocus()
+				view := terminal.View(c, tb.term).Fill()
+				if focused {
+					view.AutoFocus()
+				}
+				// A click on a terminal gives it the keyboard, which is how a
+				// person moves between panes: the pane the keyboard is in is the
+				// pane on screen.
+				if focus != nil && view.Focused() {
+					focus()
+				}
 			})
 			if tb.isEnded() {
 				// A shell that has ended says so on the sheet: the tab and the
@@ -527,8 +409,10 @@ func (w *window) body(c *ui.Context) {
 		// What is left below is the shell that is somebody else's or nobody's. A
 		// shell that has ended is not that — the banner has already said what
 		// happened to it — and a panel offering 拿回控制权 over a process the hub
-		// has forgotten would be offering a button that cannot work.
-		if tb.isEnded() || tb.isPending() || !readOnly(tb) {
+		// has forgotten would be offering a button that cannot work. It is also
+		// only ever about the pane on screen: a panel over a shell nobody is
+		// working on is a panel in the way.
+		if !focused || tb.isEnded() || tb.isPending() || !readOnly(tb) {
 			return
 		}
 
@@ -569,12 +453,12 @@ func (w *window) body(c *ui.Context) {
 // that reads the same everywhere, so a shell this window only watches still says
 // what it is without shouting.
 func readOnlyBadge(c *ui.Context) {
-	badge(c, "只读", c.Theme().Warning)
+	badge(c, locales.StateReadonly(), c.Theme().Warning)
 }
 
 // endedBadge is the same mark for a shell that has exited.
 func endedBadge(c *ui.Context) {
-	badge(c, "已退出", c.Theme().Danger)
+	badge(c, locales.StateEnded(), c.Theme().Danger)
 }
 
 // badge draws a state word in the sheet's top-right corner, as an overlay the
@@ -612,7 +496,7 @@ func (w *window) releaseLease(tb *tab) {
 	// back and must not open the popover or tear the link down.
 	tb.letGoLease()
 	tb.conn.releasing()
-	w.setNotice("已释放控制权：已转为只读观察，" + tb.name() + " 在后台继续运行")
+	w.setNotice(locales.AppReleasedLease(tb.name()))
 }
 
 // emptyState is the window with nothing open. It is not a dead end: it says what
@@ -636,14 +520,14 @@ func (w *window) emptyState(c *ui.Context) {
 					markTile(c, 30)
 				})
 				ui.Box(c).Height(4)
-				ui.Text(c, "还没有打开的终端").FontSize(15).FontWeight(600)
+				ui.Text(c, locales.EmptyTitle()).FontSize(15).FontWeight(600)
 				ui.Text(c, w.emptyLine()).FontSize(12.5).TextColor(t.TextMuted)
 				ui.Box(c).Height(6)
 				ui.Row(c).Gap(8).Children(func() {
-					if ui.Button(c, "新建终端").Tooltip("新建终端 ⌘T").Clicked() {
+					if ui.Button(c, locales.ActionNewTerminal()).Tooltip(locales.ActionNewTerminalTip()).Clicked() {
 						w.newTab()
 					}
-					if ui.Button(c, "设置…").Clicked() {
+					if ui.Button(c, locales.MenuSettings()).Clicked() {
 						w.openSettings()
 					}
 				})
@@ -656,15 +540,15 @@ func (w *window) emptyState(c *ui.Context) {
 func (w *window) emptyLine() string {
 	machine := w.selectedMachine()
 	if w.fleet == nil {
-		return "本机服务已关闭。打开设置可以把它重新起起来。"
+		return locales.EmptyServiceOff()
 	}
 	if machine != machineLocal {
-		return w.machineName(machine) + " 上还没有会话。新建一个，或在别的客户端上开一个再来看。"
+		return locales.EmptyRemoteNone(w.machineName(machine))
 	}
 	if n := len(w.sessionEntries()); n > 0 {
-		return "左侧有 " + strconv.Itoa(n) + " 个会话。选一个，或者新建一个终端。"
+		return locales.EmptySidebarSessions(n)
 	}
-	return "在侧栏点击 + 新建终端，或在机器列表中选择远端会话。"
+	return locales.EmptyHint()
 }
 
 // statusBar is the quiet line along the bottom: the state of the local service,
@@ -731,7 +615,7 @@ func (w *window) statusLeaseBar(c *ui.Context) {
 	if tb.isEnded() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(6, 6).Radius(3).Background(t.Danger)
-			ui.Text(c, "已退出").FontSize(11).TextColor(t.Danger)
+			ui.Text(c, locales.StateEnded()).FontSize(11).TextColor(t.Danger)
 		})
 		return
 	}
@@ -739,23 +623,23 @@ func (w *window) statusLeaseBar(c *ui.Context) {
 		col := shellColorsFor(t)
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(6, 6).Radius(3).Background(col.quiet)
-			ui.Text(c, "创建中…").FontSize(11).TextColor(col.quiet)
+			ui.Text(c, locales.StatusCreating()).FontSize(11).TextColor(col.quiet)
 		})
 		return
 	}
 	if readOnly(tb) {
 		holder := tb.holder()
-		label := "只读"
+		label := locales.StateReadonly()
 		if holder != "" {
-			label = "只读（" + holder + " 操作中）"
+			label = locales.StatusReadonlyHolder(holder)
 		} else {
-			label = "只读模式"
+			label = locales.StatusReadonlyNone()
 		}
-		take := "拿回控制权"
-		takeTip := "本机拿回控制：恢复键盘输入权限"
+		take := locales.ActionTakeBack()
+		takeTip := locales.StatusTakeBackTip()
 		if tb.machine != machineLocal {
-			take = "接管"
-			takeTip = "接管输入：获取键盘操作权限（对方转为只读）"
+			take = locales.ActionTakeOver()
+			takeTip = locales.StatusTakeOverTip()
 		}
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
@@ -784,7 +668,7 @@ func (w *window) statusLeaseBar(c *ui.Context) {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(6, 6).Radius(3).Background(t.Success)
-				ui.Text(c, "控制中").FontSize(11).TextColor(t.Success)
+				ui.Text(c, locales.StateControlling()).FontSize(11).TextColor(t.Success)
 			})
 			if tb.machine != machineLocal {
 				rel := ui.Box(c).
@@ -792,12 +676,12 @@ func (w *window) statusLeaseBar(c *ui.Context) {
 					AlignItems(ui.Center).Justify(ui.Center).
 					Background(shellColorsFor(t).field).
 					BorderWidth(1).BorderColor(shellColorsFor(t).line).
-					Label("释放控制权").Tooltip("释放控制权：转为只读观察模式，终端继续在后台运行")
+					Label(locales.ActionRelease()).Tooltip(locales.ActionReleaseTip())
 				if rel.Hovered() {
 					rel.Background(t.SurfaceHover)
 				}
 				rel.Children(func() {
-					ui.Text(c, "释放控制权").FontSize(10.5).TextColor(t.TextMuted)
+					ui.Text(c, locales.ActionRelease()).FontSize(10.5).TextColor(t.TextMuted)
 				})
 				if rel.Clicked() {
 					w.releaseLease(tb)

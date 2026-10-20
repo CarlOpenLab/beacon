@@ -1,0 +1,1046 @@
+{
+  "@@locale": "zh-Hans",
+  "app_link_not_ready": "本机链路未就绪",
+  "@app_link_not_ready": {
+    "description": "The machines panel, when this machine's own link is not up yet."
+  },
+  "app_not_enrolled": "未接入中继",
+  "@app_not_enrolled": {
+    "description": "The machines panel, when this machine joins no relay."
+  },
+  "app_client_link_failed": "客户端链路失败：{reason}",
+  "@app_client_link_failed": {
+    "description": "The machines panel, when the client link to the relay failed.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "app_no_client_token": "没有客户端令牌，无法连接其他机器",
+  "@app_no_client_token": {
+    "description": "The machines panel, when the fleet's client token is missing."
+  },
+  "app_machine_took_back": "{name} 拿回了控制权：与它的连接已断开",
+  "@app_machine_took_back": {
+    "description": "The status bar, when a machine this window drove became unreachable.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "app_refreshed_all": "已刷新终端与机器状态",
+  "@app_refreshed_all": {
+    "description": "The status bar, after a refresh of everything."
+  },
+  "app_refreshed_local": "已刷新本机会话",
+  "@app_refreshed_local": {
+    "description": "The status bar, after refreshing this machine's sessions."
+  },
+  "app_refreshed_machine": "已刷新 {name} 会话",
+  "@app_refreshed_machine": {
+    "description": "The status bar, after refreshing another machine's sessions.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "app_refreshed_machines": "已刷新机器列表",
+  "@app_refreshed_machines": {
+    "description": "The status bar, after asking the relay for its roster."
+  },
+  "app_service_start_failed": "本机服务没能启动（{reason}）：浏览器和手机连不进来。窗口里的终端不受影响。",
+  "@app_service_start_failed": {
+    "description": "The status bar, when the local service could not listen at startup.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "app_split_closed": "已关闭分栏：{name} 仍在后台运行",
+  "@app_split_closed": {
+    "description": "The status bar, after closing a split pane.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "app_released_lease": "已释放控制权：已转为只读观察，{name} 在后台继续运行",
+  "@app_released_lease": {
+    "description": "The status bar, after giving a shell's lease up.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "app_control_off": "这台机器不允许其他客户端控制它：在它的 设置 → 服务 → 允许被控制 里打开。",
+  "@app_control_off": {
+    "description": "The link note, when a machine refuses other clients' control."
+  },
+  "service_off": "本机服务已关闭",
+  "@service_off": {
+    "description": "The status chip and settings, when the local service is not listening."
+  },
+  "relay_connected": "中继已连接",
+  "@relay_connected": {
+    "description": "The status chip, when the relay link is up."
+  },
+  "relay_connecting": "中继连接中…",
+  "@relay_connecting": {
+    "description": "The status chip, while the relay link is being established."
+  },
+  "relay_down": "中继断开",
+  "@relay_down": {
+    "description": "The status chip, when the relay link is down."
+  },
+  "reach_title": "接管 {name}",
+  "@reach_title": {
+    "description": "The dialog's title, naming the machine to be driven.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reach_body": "这个窗口会拿本机的设备密钥向中继申请一枚短时接管令牌，中继核验这台机器是否已注册。拿到之后，同一中继上的机器就都能在这里驱动了。",
+  "@reach_body": {
+    "description": "The dialog's explanation of what the token is for."
+  },
+  "reach_failed": "中继没有发下接管令牌：{reason}",
+  "@reach_failed": {
+    "description": "The dialog, when the relay refused the token.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "action_cancel": "取消",
+  "@action_cancel": {
+    "description": "The button that dismisses a dialog without acting."
+  },
+  "reach_confirm": "申请并接管",
+  "@reach_confirm": {
+    "description": "The dialog's button that asks for the token."
+  },
+  "tab_ordinal": "终端 {ordinal}",
+  "@tab_ordinal": {
+    "description": "A tab's fallback name, by its number on this machine.",
+    "placeholders": {
+      "ordinal": {
+        "type": "int"
+      }
+    }
+  },
+  "tab_program_ordinal": "{program} {ordinal}",
+  "@tab_program_ordinal": {
+    "description": "A tab's name from its shell and number, before the shell sets a title.",
+    "placeholders": {
+      "program": {
+        "type": "String"
+      },
+      "ordinal": {
+        "type": "int"
+      }
+    }
+  },
+  "tab_by_id": "终端 {id}",
+  "@tab_by_id": {
+    "description": "A tab's name from its session id, with no program to name.",
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "tab_fallback": "终端",
+  "@tab_fallback": {
+    "description": "A tab's name with nothing at all to name it by."
+  },
+  "tab_exited_code": "已退出（退出码 {code}）",
+  "@tab_exited_code": {
+    "description": "The tab's tooltip, for a shell that ended.",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "term_exit_marker": "\r\n\u001b[2m[进程已退出，退出码 {code}]\u001b[0m\r\n",
+  "@term_exit_marker": {
+    "description": "The line the window writes into the terminal when its shell exits.",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "tab_new": "新建标签页",
+  "@tab_new": {
+    "description": "The strip's add button."
+  },
+  "tab_close": "关闭标签页",
+  "@tab_close": {
+    "description": "The tab's close button and its row's menu item."
+  },
+  "tab_close_tip": "关闭标签页（仅停止观看，不结束进程）",
+  "@tab_close_tip": {
+    "description": "The tab's close button, saying what it does not do."
+  },
+  "tab_close_named": "关闭 {name}",
+  "@tab_close_named": {
+    "description": "The session row's close button, naming the shell.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "tab_end_process": "结束进程…",
+  "@tab_end_process": {
+    "description": "The session row's menu item that ends a shell."
+  },
+  "tab_close_tab": "关闭标签",
+  "@tab_close_tab": {
+    "description": "The banner's button for a shell that has ended."
+  },
+  "tab_close_tab_tip": "关闭当前终端标签页",
+  "@tab_close_tab_tip": {
+    "description": "The banner's close button, saying what it closes."
+  },
+  "tab_rename": "重命名",
+  "@tab_rename": {
+    "description": "The tab's menu item that renames a shell."
+  },
+  "tab_rename_tip": "重命名这个终端（双击标签页）",
+  "@tab_rename_tip": {
+    "description": "The tab's rename item, naming the gesture that does the same."
+  },
+  "rename_placeholder": "终端名称",
+  "@rename_placeholder": {
+    "description": "The rename field's placeholder."
+  },
+  "header_title": "本机 / 终端",
+  "@header_title": {
+    "description": "The band's title with nothing open."
+  },
+  "header_machine_shell": "{machine} / {shell}",
+  "@header_machine_shell": {
+    "description": "The band's title: the machine and the shell on screen.",
+    "placeholders": {
+      "machine": {
+        "type": "String"
+      },
+      "shell": {
+        "type": "String"
+      }
+    }
+  },
+  "action_settings": "设置",
+  "@action_settings": {
+    "description": "The button that opens the settings window."
+  },
+  "action_release": "释放控制权",
+  "@action_release": {
+    "description": "The band's button that gives a shell's lease up."
+  },
+  "action_release_tip": "释放控制权：转为只读观察模式，终端继续在后台运行",
+  "@action_release_tip": {
+    "description": "The band's release button, saying what it leaves running."
+  },
+  "action_new_terminal": "新建终端",
+  "@action_new_terminal": {
+    "description": "The band's accent button."
+  },
+  "action_new_terminal_tip": "新建终端 ⌘T",
+  "@action_new_terminal_tip": {
+    "description": "The band's new terminal button, with its shortcut."
+  },
+  "banner_ended": "会话已退出，最后几行仍可读取。",
+  "@banner_ended": {
+    "description": "The banner, for a shell that has ended."
+  },
+  "banner_creating": "正在创建终端…",
+  "@banner_creating": {
+    "description": "The banner, while a shell is on its way."
+  },
+  "action_take_back": "拿回控制权",
+  "@action_take_back": {
+    "description": "The button that reclaims a shell this machine lost."
+  },
+  "action_take_over": "接管",
+  "@action_take_over": {
+    "description": "The button that takes a shell this window never held."
+  },
+  "banner_readonly_nobody": "只读：当前无人控制",
+  "@banner_readonly_nobody": {
+    "description": "The banner, for a shell with no holder."
+  },
+  "banner_readonly_holder": "只读：该会话正被 {holder} 控制",
+  "@banner_readonly_holder": {
+    "description": "The banner, for a shell somebody else holds.",
+    "placeholders": {
+      "holder": {
+        "type": "String"
+      }
+    }
+  },
+  "action_take_over_tip": "接管输入：获取键盘操作权限，即可在终端内输入",
+  "@action_take_over_tip": {
+    "description": "The takeover button, saying what it grants."
+  },
+  "action_take_back_tip": "拿回控制权：本机恢复键盘输入权限",
+  "@action_take_back_tip": {
+    "description": "The take-back button, saying what it restores."
+  },
+  "state_readonly": "只读",
+  "@state_readonly": {
+    "description": "The chip and badge on a shell another client holds."
+  },
+  "state_ended": "已退出",
+  "@state_ended": {
+    "description": "The chip and badge on a shell that has ended."
+  },
+  "state_controlling": "控制中",
+  "@state_controlling": {
+    "description": "The row's word for a shell this window drives."
+  },
+  "state_pending": "创建中",
+  "@state_pending": {
+    "description": "The row's word for a shell on its way."
+  },
+  "state_nobody": "无人控制",
+  "@state_nobody": {
+    "description": "The row's word for a shell no client holds."
+  },
+  "state_controller_self": "控制端 本窗口",
+  "@state_controller_self": {
+    "description": "The row's tooltip, when this window holds the lease."
+  },
+  "state_controller_other": "控制端 {holder}",
+  "@state_controller_other": {
+    "description": "The row's tooltip, naming another holder.",
+    "placeholders": {
+      "holder": {
+        "type": "String"
+      }
+    }
+  },
+  "state_controller_nobody": "当前无人控制",
+  "@state_controller_nobody": {
+    "description": "The row's tooltip, when the lease is free."
+  },
+  "label_pending": "待创建",
+  "@label_pending": {
+    "description": "The inspector and status line, for a tab with no session id yet."
+  },
+  "label_readonly_wait": "只读：等待接管",
+  "@label_readonly_wait": {
+    "description": "The composer's placeholder, for a shell this window may not type into."
+  },
+  "empty_title": "还没有打开的终端",
+  "@empty_title": {
+    "description": "The empty window's title."
+  },
+  "empty_service_off": "本机服务已关闭。打开设置可以把它重新起起来。",
+  "@empty_service_off": {
+    "description": "The empty window, when the local service is off."
+  },
+  "empty_remote_none": "{name} 上还没有会话。新建一个，或在别的客户端上开一个再来看。",
+  "@empty_remote_none": {
+    "description": "The empty window, about another machine.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "empty_sidebar_sessions": "左侧有 {count} 个会话。选一个，或者新建一个终端。",
+  "@empty_sidebar_sessions": {
+    "description": "The empty window, when the sidebar already lists shells.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "empty_hint": "在侧栏点击 + 新建终端，或在机器列表中选择远端会话。",
+  "@empty_hint": {
+    "description": "The empty window's hint."
+  },
+  "status_readonly_holder": "只读（{holder} 操作中）",
+  "@status_readonly_holder": {
+    "description": "The status bar, naming the client typing into the shell.",
+    "placeholders": {
+      "holder": {
+        "type": "String"
+      }
+    }
+  },
+  "status_readonly_none": "只读模式",
+  "@status_readonly_none": {
+    "description": "The status bar, for a shell with no holder."
+  },
+  "status_take_back_tip": "本机拿回控制：恢复键盘输入权限",
+  "@status_take_back_tip": {
+    "description": "The status bar's take-back button."
+  },
+  "status_take_over_tip": "接管输入：获取键盘操作权限（对方转为只读）",
+  "@status_take_over_tip": {
+    "description": "The status bar's takeover button."
+  },
+  "status_host_sessions": "{host} · {count} 个会话",
+  "@status_host_sessions": {
+    "description": "The status bar's machine line.",
+    "placeholders": {
+      "host": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "composer_history": "历史",
+  "@composer_history": {
+    "description": "The row of sent commands above the composer."
+  },
+  "composer_fill": "填入 {text}",
+  "@composer_fill": {
+    "description": "A history chip, putting a command back in the field.",
+    "placeholders": {
+      "text": {
+        "type": "String"
+      }
+    }
+  },
+  "composer_fill_tip": "填入输入框",
+  "@composer_fill_tip": {
+    "description": "A history chip's tooltip."
+  },
+  "action_send": "发送",
+  "@action_send": {
+    "description": "The composer's button."
+  },
+  "composer_send_tip": "把这一行发给终端（{mod}↵）",
+  "@composer_send_tip": {
+    "description": "The composer's send button, with its shortcut.",
+    "placeholders": {
+      "mod": {
+        "type": "String"
+      }
+    }
+  },
+  "composer_send_button": "发送 {mod}↵",
+  "@composer_send_button": {
+    "description": "The words on the composer's send button.",
+    "placeholders": {
+      "mod": {
+        "type": "String"
+      }
+    }
+  },
+  "composer_no_session": "尚未创建会话",
+  "@composer_no_session": {
+    "description": "The composer's placeholder, with no shell."
+  },
+  "composer_exited": "会话已退出",
+  "@composer_exited": {
+    "description": "The composer's placeholder, for a shell that ended."
+  },
+  "composer_placeholder": "输入命令，回车发送（Shift+回车换行）",
+  "@composer_placeholder": {
+    "description": "The composer's placeholder, when the shell takes typing."
+  },
+  "inspect_title": "会话检视",
+  "@inspect_title": {
+    "description": "The inspector column's title."
+  },
+  "inspect_hide": "收起会话检视",
+  "@inspect_hide": {
+    "description": "The inspector column's close button."
+  },
+  "inspect_session": "会话",
+  "@inspect_session": {
+    "description": "The inspector's session id row."
+  },
+  "inspect_machine": "机器",
+  "@inspect_machine": {
+    "description": "The inspector's machine row."
+  },
+  "inspect_size": "尺寸",
+  "@inspect_size": {
+    "description": "The inspector's terminal size row."
+  },
+  "inspect_state": "状态",
+  "@inspect_state": {
+    "description": "The inspector's state row."
+  },
+  "inspect_ended_note": "会话已结束",
+  "@inspect_ended_note": {
+    "description": "The inspector's note beside an ended state."
+  },
+  "inspect_self": "本端",
+  "@inspect_self": {
+    "description": "The inspector's note beside a controlled state."
+  },
+  "inspect_program": "程序",
+  "@inspect_program": {
+    "description": "The inspector's program row."
+  },
+  "inspect_cwd": "目录",
+  "@inspect_cwd": {
+    "description": "The inspector's working directory row."
+  },
+  "inspect_exit_code": "退出码",
+  "@inspect_exit_code": {
+    "description": "The inspector's exit code row."
+  },
+  "lease_who": "{holder} 正在控制这个终端",
+  "@lease_who": {
+    "description": "The popover, naming the holder.",
+    "placeholders": {
+      "holder": {
+        "type": "String"
+      }
+    }
+  },
+  "lease_who_nobody": "当前无人控制这个终端",
+  "@lease_who_nobody": {
+    "description": "The popover, for a shell with no holder."
+  },
+  "lease_outcome_back": "{holder} 会变成只读，之后仍能看着这个终端。",
+  "@lease_outcome_back": {
+    "description": "The popover, what taking a shell back does to its holder.",
+    "placeholders": {
+      "holder": {
+        "type": "String"
+      }
+    }
+  },
+  "lease_outcome_over": "接管会通知 {holder}，对方会变成只读。",
+  "@lease_outcome_over": {
+    "description": "The popover, what taking over another machine's shell does.",
+    "placeholders": {
+      "holder": {
+        "type": "String"
+      }
+    }
+  },
+  "lease_tip_over": "接管输入：取得操作权限（{holder} 会变成只读）",
+  "@lease_tip_over": {
+    "description": "The popover's takeover button.",
+    "placeholders": {
+      "holder": {
+        "type": "String"
+      }
+    }
+  },
+  "lease_tip_back": "拿回控制权：本机恢复输入（{holder} 会变成只读）",
+  "@lease_tip_back": {
+    "description": "The popover's take-back button.",
+    "placeholders": {
+      "holder": {
+        "type": "String"
+      }
+    }
+  },
+  "lease_tip_free": "取得控制权后即可在终端内输入",
+  "@lease_tip_free": {
+    "description": "The popover's claim button, for a shell nobody holds."
+  },
+  "lease_outcome_free": "取得控制权后你就能继续输入。",
+  "@lease_outcome_free": {
+    "description": "The popover, for a shell nobody holds."
+  },
+  "lease_readonly_note": "当前为只读观察模式，你的输入不会送进 shell。",
+  "@lease_readonly_note": {
+    "description": "The popover, what read-only means here."
+  },
+  "lease_stay": "保持只读",
+  "@lease_stay": {
+    "description": "The popover's button that closes it without claiming."
+  },
+  "lease_stay_tip": "仅实时查看画面，不发送键盘输入",
+  "@lease_stay_tip": {
+    "description": "The popover's stay-read-only button."
+  },
+  "update_never": "还没有检查过",
+  "@update_never": {
+    "description": "The updates pane, before the first check."
+  },
+  "update_current": "当前版本",
+  "@update_current": {
+    "description": "The updates pane's version row."
+  },
+  "update_last_check": "上次检查",
+  "@update_last_check": {
+    "description": "The updates pane's last check row."
+  },
+  "update_auto_check": "自动检查更新",
+  "@update_auto_check": {
+    "description": "The updates pane's switch."
+  },
+  "update_auto_download": "自动下载更新",
+  "@update_auto_download": {
+    "description": "The updates pane's switch."
+  },
+  "update_unavailable": "不可用",
+  "@update_unavailable": {
+    "description": "The updates pane, for a switch a build cannot offer."
+  },
+  "update_daily_note": "每天在后台问一次；打开自动下载后，新版本装好，下次启动就是新版本。",
+  "@update_daily_note": {
+    "description": "The updates pane's note under the switches."
+  },
+  "update_check_now": "检查更新…",
+  "@update_check_now": {
+    "description": "The updates pane's button."
+  },
+  "update_found_note": "发现新版本时会弹出窗口，列出版本说明，可以安装、稍后提醒或跳过这一版。",
+  "@update_found_note": {
+    "description": "The updates pane's note under the button."
+  },
+  "update_unavailable_note": "这份构建不能自我更新：开发构建，或由包管理器（.deb 等）安装，更新交给它。用安装器或 tar.gz 装的版本会自己更新。",
+  "@update_unavailable_note": {
+    "description": "The updates pane, for a build with no updater."
+  },
+  "update_source_note": "更新源：github.com/CarlOpenLab/term-fleet 的正式发布版，包带签名校验。",
+  "@update_source_note": {
+    "description": "The updates pane's note about where updates come from."
+  },
+  "theme_system": "跟随系统",
+  "@theme_system": {
+    "description": "The appearance choice that follows the system."
+  },
+  "theme_light": "白天",
+  "@theme_light": {
+    "description": "The light appearance."
+  },
+  "theme_dark": "暗黑",
+  "@theme_dark": {
+    "description": "The dark appearance."
+  },
+  "theme_to_dark": "切换到暗黑",
+  "@theme_to_dark": {
+    "description": "What a click on the appearance entry will do."
+  },
+  "theme_to_light": "切换到白天",
+  "@theme_to_light": {
+    "description": "What a click on the appearance entry will do."
+  },
+  "menu_settings": "设置…",
+  "@menu_settings": {
+    "description": "The app menu's item that opens the settings window."
+  },
+  "settings_title": "设置",
+  "@settings_title": {
+    "description": "The settings window's toolbar title."
+  },
+  "settings_dirty": "有未保存的改动",
+  "@settings_dirty": {
+    "description": "The settings window's toolbar, while the draft differs from disk."
+  },
+  "settings_restore": "恢复默认",
+  "@settings_restore": {
+    "description": "The settings window's toolbar button."
+  },
+  "settings_apply": "应用",
+  "@settings_apply": {
+    "description": "The settings window's toolbar button."
+  },
+  "settings_close": "关闭设置",
+  "@settings_close": {
+    "description": "The settings window's close button."
+  },
+  "settings_pane_terminal": "终端",
+  "@settings_pane_terminal": {
+    "description": "The settings pane with the font and the language."
+  },
+  "settings_pane_relay": "远程",
+  "@settings_pane_relay": {
+    "description": "The settings pane with the relay."
+  },
+  "settings_pane_server": "服务",
+  "@settings_pane_server": {
+    "description": "The settings pane with the local service and control."
+  },
+  "settings_pane_updates": "更新",
+  "@settings_pane_updates": {
+    "description": "The settings pane with the updater."
+  },
+  "settings_font": "字体",
+  "@settings_font": {
+    "description": "The terminal pane's font field."
+  },
+  "settings_font_size": "字号",
+  "@settings_font_size": {
+    "description": "The terminal pane's font size field."
+  },
+  "settings_font_note": "字体和字号同时用于这个窗口里已经打开的终端。",
+  "@settings_font_note": {
+    "description": "The terminal pane's note."
+  },
+  "settings_font_system": "系统等宽",
+  "@settings_font_system": {
+    "description": "The font field's entry for the system monospaced font."
+  },
+  "settings_language": "语言",
+  "@settings_language": {
+    "description": "The terminal pane's language field."
+  },
+  "settings_language_note": "界面语言立即生效；终端里跑的程序用什么语言是它自己的事。",
+  "@settings_language_note": {
+    "description": "The terminal pane's note under the language."
+  },
+  "settings_lang_zh": "中文",
+  "@settings_lang_zh": {
+    "description": "The language field's Chinese entry."
+  },
+  "settings_lang_en": "English",
+  "@settings_lang_en": {
+    "description": "The language field's English entry."
+  },
+  "settings_relay_url": "公网地址",
+  "@settings_relay_url": {
+    "description": "The remote pane's relay address field."
+  },
+  "settings_relay_device": "设备 ID",
+  "@settings_relay_device": {
+    "description": "The remote pane's device id field."
+  },
+  "settings_relay_secret": "设备密钥",
+  "@settings_relay_secret": {
+    "description": "The remote pane's device secret field."
+  },
+  "settings_relay_ca": "CA 证书",
+  "@settings_relay_ca": {
+    "description": "The remote pane's certificate field."
+  },
+  "settings_ca_empty_hint": "留空则用系统证书库",
+  "@settings_ca_empty_hint": {
+    "description": "The certificate field's placeholder."
+  },
+  "settings_ca_fetch": "从服务器获取",
+  "@settings_ca_fetch": {
+    "description": "The button that fetches the relay's certificate."
+  },
+  "settings_ca_pick": "选择文件…",
+  "@settings_ca_pick": {
+    "description": "The button that opens a file picker."
+  },
+  "settings_ca_clear": "清除",
+  "@settings_ca_clear": {
+    "description": "The button that clears the pinned certificate."
+  },
+  "settings_relay_on": "接入",
+  "@settings_relay_on": {
+    "description": "The remote pane's switch that joins the relay."
+  },
+  "settings_ca_note_empty": "自签证书的中继必须填这一栏；用公共 CA 签发的中继可以留空。",
+  "@settings_ca_note_empty": {
+    "description": "The line under the certificate field, with nothing pinned."
+  },
+  "settings_ca_unreadable": "读不到这个文件：{reason}",
+  "@settings_ca_unreadable": {
+    "description": "The line under the certificate field, for a file that cannot be read.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_ca_invalid": "这不是有效的证书文件：{reason}",
+  "@settings_ca_invalid": {
+    "description": "The line under the certificate field, for a file that is not a certificate.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_ca_pinned": "已固定 {subject}（{fingerprint}…），{expires} 到期。",
+  "@settings_ca_pinned": {
+    "description": "The line under the certificate field, naming what is pinned.",
+    "placeholders": {
+      "subject": {
+        "type": "String"
+      },
+      "fingerprint": {
+        "type": "String"
+      },
+      "expires": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_ca_expired": "这张证书已经过期。",
+  "@settings_ca_expired": {
+    "description": "The line under the certificate field, for a certificate past its date."
+  },
+  "settings_relay_help": "地址形如 wss://relay.example/relay/agent。中继用自签或私有 CA 证书时，点「从服务器获取」直接把它取回来并固定，或点「选择文件…」指定已经下载好的 PEM。填完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。",
+  "@settings_relay_help": {
+    "description": "The remote pane's explanation of the address and the certificate."
+  },
+  "settings_token_help": "接入后，这台机器会拿自己的设备密钥向中继换一枚短时接管令牌（默认 15 分钟），用来自动找到同一中继上的其他机器并接管它们的会话——不需要在这里填任何密码。令牌到期会自动再换一枚。",
+  "@settings_token_help": {
+    "description": "The remote pane's explanation of the takeover token."
+  },
+  "settings_relay_connected": "● {detail}",
+  "@settings_relay_connected": {
+    "description": "The remote pane's line, with the relay link up.",
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_relay_detail": "○ {detail}",
+  "@settings_relay_detail": {
+    "description": "The remote pane's line, with the relay link's own state.",
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_relay_connecting": "○ 正在接入…",
+  "@settings_relay_connecting": {
+    "description": "The remote pane's line, while the relay link is being established."
+  },
+  "settings_reach_ready_left": "● 可以接管同一中继上的其他机器（接管令牌还有 {left}）",
+  "@settings_reach_ready_left": {
+    "description": "The remote pane's line, with a takeover token and time left on it.",
+    "placeholders": {
+      "left": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_reach_ready": "● 可以接管同一中继上的其他机器",
+  "@settings_reach_ready": {
+    "description": "The remote pane's line, with a takeover token."
+  },
+  "settings_reach_failed": "○ 接管链接没接上：{reason}",
+  "@settings_reach_failed": {
+    "description": "The remote pane's line, when the client link failed.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_reach_asking": "○ 正在向中继申请接管令牌…",
+  "@settings_reach_asking": {
+    "description": "The remote pane's line, while the token is being minted."
+  },
+  "settings_ca_need_url": "先填上面的「公网地址」，再从服务器获取证书。",
+  "@settings_ca_need_url": {
+    "description": "The note when fetching a certificate with no address."
+  },
+  "settings_ca_fetching": "正在从 {relay} 获取证书…",
+  "@settings_ca_fetching": {
+    "description": "The note while a certificate is being fetched.",
+    "placeholders": {
+      "relay": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_ca_fetch_failed": "获取失败：{reason}",
+  "@settings_ca_fetch_failed": {
+    "description": "The note when a certificate could not be fetched.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_ca_dialog_title": "选择 CA 证书（PEM）",
+  "@settings_ca_dialog_title": {
+    "description": "The file picker's title."
+  },
+  "settings_ca_filter": "证书文件",
+  "@settings_ca_filter": {
+    "description": "The file picker's filter name."
+  },
+  "settings_server": "本机服务",
+  "@settings_server": {
+    "description": "The service pane's switch."
+  },
+  "settings_server_desc": "开启后本机会开一个只监听 127.0.0.1 的端口。macOS 第一次见到监听中的程序会问一次「是否允许接受传入连接」，点允许即可，之后不再问。",
+  "@settings_server_desc": {
+    "description": "The service pane's description of the switch."
+  },
+  "settings_control": "允许被控制",
+  "@settings_control": {
+    "description": "The service pane's switch for other clients."
+  },
+  "settings_control_desc": "关闭后别的客户端仍然能看，但不能接管。",
+  "@settings_control_desc": {
+    "description": "The service pane's description of the switch."
+  },
+  "settings_server_url_line": "这台机器上的浏览器可以打开 {url}，看到的是窗口里同一批会话。",
+  "@settings_server_url_line": {
+    "description": "The service pane, while the local service listens.",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_server_off_line": "本机服务已关闭：不再为浏览器开端口。窗口照常可用，正在跑的终端也不会停。",
+  "@settings_server_off_line": {
+    "description": "The service pane, while the local service is off."
+  },
+  "settings_control_on_line": "别的客户端可以接管这台机器的终端：浏览器、手机，或同一中继上的另一台电脑。夺回控制权永远是本机的一键。",
+  "@settings_control_on_line": {
+    "description": "The service pane, while other clients may take over."
+  },
+  "settings_control_off_line": "别的客户端只能只读观看，不能接管、也不能在这台机器上新开终端；本机窗口不受影响。",
+  "@settings_control_off_line": {
+    "description": "The service pane, while other clients may only watch."
+  },
+  "settings_save_failed": "设置没保存：{reason}",
+  "@settings_save_failed": {
+    "description": "The status line, when the draft could not be written.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_relay_failed": "远程渠道没接上：{reason}",
+  "@settings_relay_failed": {
+    "description": "The status line, when the relay could not be applied.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_token_failed": "接管令牌没申请下来：{reason}",
+  "@settings_token_failed": {
+    "description": "The status line, when the token could not be minted.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_client_failed": "客户端链接没断开：{reason}",
+  "@settings_client_failed": {
+    "description": "The status line, when the client link could not be dropped.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_server_failed": "本机服务没起来：{reason}",
+  "@settings_server_failed": {
+    "description": "The status line, when the local service could not be applied.",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_saved_at": "已保存 {at}",
+  "@settings_saved_at": {
+    "description": "The status line, after a save.",
+    "placeholders": {
+      "at": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_service_url": "本机服务 {url}",
+  "@settings_service_url": {
+    "description": "The status line's summary, with the service listening.",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_joined": "已接入 {url}",
+  "@settings_joined": {
+    "description": "The status line's summary, with a relay joined.",
+    "placeholders": {
+      "url": {
+        "type": "String"
+      }
+    }
+  },
+  "settings_can_reach": "可接管其他机器",
+  "@settings_can_reach": {
+    "description": "The status line's summary, with a takeover token."
+  },
+  "machine_panel": "机器",
+  "@machine_panel": {
+    "description": "The machines panel's title."
+  },
+  "machine_refresh": "刷新机器 ⌘R",
+  "@machine_refresh": {
+    "description": "The machines panel's refresh button."
+  },
+  "machine_local": "本机",
+  "@machine_local": {
+    "description": "The local machine's row and name."
+  },
+  "machine_online": "在线",
+  "@machine_online": {
+    "description": "A roster machine's state."
+  },
+  "machine_offline": "离线",
+  "@machine_offline": {
+    "description": "A roster machine's state."
+  },
+  "machine_platform_unknown": "平台未知",
+  "@machine_platform_unknown": {
+    "description": "The local machine's row, with no host description."
+  },
+  "machine_sessions_count": "{count} 个会话",
+  "@machine_sessions_count": {
+    "description": "The local machine's row, counting the window's shells.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "machine_note_local_only": "只列本机：在 设置 → 远程 接入中继后，同一中继上的其他机器会出现在这里。",
+  "@machine_note_local_only": {
+    "description": "The machines panel's note, with no relay."
+  },
+  "machine_note_no_token": "点另一台机器会向中继申请一枚短时接管令牌；中继没发下来的原因在 设置 → 远程。",
+  "@machine_note_no_token": {
+    "description": "The machines panel's note, with no token yet."
+  },
+  "machine_note_ready": "点一台机器就切过去，它会成为上面「会话」的对象。",
+  "@machine_note_ready": {
+    "description": "The machines panel's note, with the fleet reachable."
+  },
+  "session_panel": "会话",
+  "@session_panel": {
+    "description": "The sessions panel's title."
+  },
+  "session_refresh": "刷新会话 ⌘R",
+  "@session_refresh": {
+    "description": "The sessions panel's refresh button."
+  },
+  "status_creating": "创建中…",
+  "@status_creating": {
+    "description": "The status bar, while a shell is on its way."
+  },
+  "settings_lang_system": "跟随系统",
+  "@settings_lang_system": {
+    "description": "The language field's entry that follows the languages the system says the person reads."
+  }
+}

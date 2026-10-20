@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -846,4 +847,152 @@ func TestTheMachinesOwnWindowCanLetAShellGo(t *testing.T) {
 	owner.waitFor("the close lands once this client is the controller", func(m protocol.Msg) bool {
 		return m.T == protocol.STExit
 	})
+}
+
+// A shell that follows another opens where that one stands — the directory it
+// is in now, after whatever the person typed into it, not the directory it was
+// started in. A split pane and a second tab both want this: the alternative is
+// a new shell at the home directory and a cd to type every time.
+func TestANewShellOpensWhereTheShellItFollowsStands(t *testing.T) {
+	ts := newTestHub(t)
+	c := dialTest(t, ts)
+
+	start := t.TempDir()
+	c.send(protocol.Msg{T: protocol.CTCreate, SessionID: "src", Cols: 80, Rows: 24, Cwd: start, Shell: "/bin/sh"})
+	c.waitFor("created", func(m protocol.Msg) bool {
+		return m.T == protocol.STCreated && m.SessionID == "src"
+	})
+
+	// The shell is driven somewhere else, the way a person drives one.
+	elsewhere := t.TempDir()
+	c.send(protocol.Msg{T: protocol.CTInput, SessionID: "src", Data: []byte("cd " + elsewhere + "\n")})
+	c.waitOutput(elsewhere)
+
+	c.send(protocol.Msg{T: protocol.CTCreate, SessionID: "next", Cols: 80, Rows: 24, From: "src"})
+	c.waitFor("created", func(m protocol.Msg) bool {
+		return m.T == protocol.STCreated && m.SessionID == "next"
+	})
+
+	c.send(protocol.Msg{T: protocol.CTList, ReqID: "after-follow"})
+	list := c.waitFor("the roster after the follow", func(m protocol.Msg) bool {
+		return m.T == protocol.STSessions && m.ReqID == "after-follow"
+	})
+	for _, s := range list.Sessions {
+		if s.SessionID != "next" {
+			continue
+		}
+		if got, want := resolved(t, s.Cwd), resolved(t, elsewhere); got != want {
+			t.Fatalf("the following shell opened in %q, want %q", got, want)
+		}
+		return
+	}
+	t.Fatalf("the roster does not hold the following shell: %+v", list.Sessions)
+}
+
+// resolved resolves symlinks so a comparison holds on a machine where the
+// temporary directory is one: macOS keeps /var as a link, and the operating
+// system answers with the real path.
+func resolved(t *testing.T, dir string) string {
+	t.Helper()
+	got, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return dir
+	}
+	return got
+}
+
+// A follow of a shell that is not there — gone, or never was — is a directory
+// nobody can name, so the create keeps the directory the client asked for.
+func TestAFollowOfAGoneShellKeepsTheAskedForDirectory(t *testing.T) {
+	ts := newTestHub(t)
+	c := dialTest(t, ts)
+
+	dir := t.TempDir()
+	c.send(protocol.Msg{T: protocol.CTCreate, SessionID: "next", Cols: 80, Rows: 24, Cwd: dir, From: "nope"})
+	c.waitFor("created", func(m protocol.Msg) bool {
+		return m.T == protocol.STCreated && m.SessionID == "next"
+	})
+
+	c.send(protocol.Msg{T: protocol.CTList, ReqID: "after-gone"})
+	list := c.waitFor("the roster after the gone follow", func(m protocol.Msg) bool {
+		return m.T == protocol.STSessions && m.ReqID == "after-gone"
+	})
+	for _, s := range list.Sessions {
+		if s.SessionID != "next" {
+			continue
+		}
+		if got := s.Cwd; got != dir {
+			t.Fatalf("the shell opened in %q, want the asked-for directory %q", got, dir)
+		}
+		return
+	}
+	t.Fatalf("the roster does not hold the shell: %+v", list.Sessions)
+}
+
+// A rename is a label every client reads, so the hub keeps it and tells
+// everybody: the tab, the row and the inspector all name the shell by it until
+// the shell sets a title of its own. An empty title clears it, which is how a
+// shell goes back to being named after its program.
+func TestARenameReachesEveryClient(t *testing.T) {
+	ts := newTestHub(t)
+	owner := dialTest(t, ts)
+	watcher := dialTest(t, ts)
+
+	owner.send(protocol.Msg{T: protocol.CTCreate, SessionID: "s1", Cols: 80, Rows: 24, Shell: "/bin/sh"})
+	owner.waitFor("created", func(m protocol.Msg) bool {
+		return m.T == protocol.STCreated && m.SessionID == "s1"
+	})
+
+	owner.send(protocol.Msg{T: protocol.CTRename, SessionID: "s1", Title: "  build box  "})
+
+	// The watcher — a second client, not the one that asked — hears the new
+	// name in the session list. The list is broadcast more than once around a
+	// rename, so the frame that carries the name is the one to read.
+	if seen := titleInRoster(t, watcher, "s1", "build box"); seen != "build box" {
+		t.Fatalf("the roster names the shell %q, want the name it was given, trimmed", seen)
+	}
+
+	// And an empty name clears it, rather than leaving the old one stuck.
+	owner.send(protocol.Msg{T: protocol.CTRename, SessionID: "s1", Title: ""})
+	if seen := titleInRoster(t, watcher, "s1", ""); seen != "" {
+		t.Fatalf("the roster still names the shell %q after the title was cleared", seen)
+	}
+}
+
+// titleInRoster is the title the session lists give a session, read until one
+// says want: the broadcasts around a change carry the old name first, and a
+// title that is cleared is only visible once a list says so.
+func titleInRoster(t *testing.T, c *conn, id, want string) string {
+	t.Helper()
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		m := c.recv()
+		if m.T != protocol.STSessions {
+			continue
+		}
+		for _, s := range m.Sessions {
+			if s.SessionID != id {
+				continue
+			}
+			if s.Title == want {
+				return s.Title
+			}
+			break
+		}
+	}
+	return ""
+}
+
+// A rename of a shell that is not there is answered, not dropped: the client
+// that asked is told there is no such session, the way every other frame about
+// a session that is gone is.
+func TestARenameOfAGoneShellIsRefused(t *testing.T) {
+	ts := newTestHub(t)
+	c := dialTest(t, ts)
+
+	c.send(protocol.Msg{T: protocol.CTRename, SessionID: "nope", Title: "x"})
+	err := c.waitFor("the refusal", func(m protocol.Msg) bool { return m.T == protocol.STError })
+	if err.Code != protocol.ErrNoSession {
+		t.Fatalf("renaming a gone shell was answered %q, want %q", err.Code, protocol.ErrNoSession)
+	}
 }

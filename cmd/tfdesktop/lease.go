@@ -27,6 +27,7 @@ import (
 	_ "embed"
 	"time"
 
+	"github.com/CarlOpenLab/term-fleet/locales"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/shader"
 )
@@ -161,26 +162,26 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 
 	// The word is about which machine the shell runs on: one this window never
 	// drove is 接管, one it drove and lost is 拿回.
-	take := "拿回控制权"
+	take := locales.ActionTakeBack()
 	if steal {
-		take = "接管"
+		take = locales.ActionTakeOver()
 	}
-	who := holder + " 正在控制这个终端"
-	outcome := holder + " 会变成只读，之后仍能看着这个终端。"
-	tip := "接管输入：取得操作权限（" + holder + " 会变成只读）"
+	who := locales.LeaseWho(holder)
+	outcome := locales.LeaseOutcomeBack(holder)
+	tip := locales.LeaseTipOver(holder)
 	if holder == "" {
 		// Nobody's shell: the panel says so rather than leaving a blank where a
 		// name goes, and the button promises nothing about a person who is not
 		// there.
-		who = "当前无人控制这个终端"
-		outcome = "取得控制权后你就能继续输入。"
-		tip = "取得控制权后即可在终端内输入"
+		who = locales.LeaseWhoNobody()
+		outcome = locales.LeaseOutcomeFree()
+		tip = locales.LeaseTipFree()
 	} else if steal {
 		// Another machine's shell: this window never had it, so it is taken
 		// rather than taken back, and the holder is told.
-		outcome = "接管会通知 " + holder + "，对方会变成只读。"
+		outcome = locales.LeaseOutcomeOver(holder)
 	} else {
-		tip = "拿回控制权：本机恢复输入（" + holder + " 会变成只读）"
+		tip = locales.LeaseTipBack(holder)
 	}
 
 	ui.Popover(c, anchor, open, func() {
@@ -192,12 +193,12 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 				ui.Text(c, who).
 					FontSize(13).FontWeight(600).SingleLine()
 			})
-			ui.Text(c, "当前为只读观察模式，你的输入不会送进 shell。").
+			ui.Text(c, locales.LeaseReadonlyNote()).
 				FontSize(11.5).TextColor(t.TextMuted)
 			ui.Text(c, outcome).
 				FontSize(11.5).TextColor(t.TextMuted)
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, "保持只读").Tooltip("仅实时查看画面，不发送键盘输入").Clicked() {
+				if ui.Button(c, locales.LeaseStay()).Tooltip(locales.LeaseStayTip()).Clicked() {
 					*open = false
 				}
 				if ui.PrimaryButton(c, take).Tooltip(tip).Clicked() {

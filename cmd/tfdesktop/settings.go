@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,12 +14,58 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/fonts"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // systemFamily is what the font list shows for "no family set", which the
 // terminal plugin resolves to the system's monospaced font. It reads as a label
 // rather than a family name, so it cannot collide with a font someone installs.
-const systemFamily = "系统等宽"
+// It is a call rather than a constant because the label is translated.
+func systemFamily() string { return locales.SettingsFontSystem() }
+
+// languageChoices are the interface languages, in the order the settings window
+// offers them. The first follows the languages the system says the person
+// reads, which is what a first run gets; the others are the languages the app
+// is written in, in the order its catalogs list them.
+var languageChoices = []struct {
+	tag   string
+	label func() string
+}{
+	{"", locales.SettingsLangSystem},
+	{"zh-Hans", locales.SettingsLangZh},
+	{"en", locales.SettingsLangEn},
+}
+
+// normalizeLanguage maps anything unrecognised onto following the system: a
+// stale or hand-edited settings file must not leave the shell in a language it
+// cannot show.
+func normalizeLanguage(tag string) string {
+	tag = strings.TrimSpace(tag)
+	for _, choice := range languageChoices {
+		if choice.tag == tag {
+			return tag
+		}
+	}
+	return ""
+}
+
+// languageIndex is where tag sits in languageChoices, which is what the
+// settings window's segmented control works in.
+func languageIndex(tag string) int {
+	tag = normalizeLanguage(tag)
+	for i, choice := range languageChoices {
+		if choice.tag == tag {
+			return i
+		}
+	}
+	return 0
+}
+
+// applyLanguage makes the window show a language at once. An empty tag follows
+// the languages the system says the person reads again.
+func applyLanguage(tag string) {
+	mygo.App.SetLocale(normalizeLanguage(tag))
+}
 
 // knownFamilies are suggested on top of whatever is installed on this machine.
 // They are a floor for machines whose fonts cannot be read (a bare container,
@@ -64,7 +109,7 @@ func termFont(s settings.Settings) terminal.Font {
 
 // familyFromLabel maps the window's font entry back to what the store keeps.
 func familyFromLabel(label string) string {
-	if label == systemFamily {
+	if label == systemFamily() {
 		return ""
 	}
 	return strings.TrimSpace(label)
@@ -73,7 +118,7 @@ func familyFromLabel(label string) string {
 // labelForFamily is the inverse, for showing a stored family in the window.
 func labelForFamily(family string) string {
 	if strings.TrimSpace(family) == "" {
-		return systemFamily
+		return systemFamily()
 	}
 	return family
 }
@@ -104,6 +149,9 @@ type settingsWindow struct {
 	// inverse of settings.ControlOff, because the switch reads better as the
 	// thing it allows.
 	control bool
+	// language is the interface language: "" follows the languages the system
+	// says the person reads, and a tag such as "en" or "zh-Hans" is a choice.
+	language string
 
 	// caNote is the one line under the CA field: which certificate is pinned,
 	// or why the last attempt failed. It is state, not a transient message,
@@ -130,18 +178,19 @@ type settingsWindow struct {
 func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsWindow {
 	cur := store.Get()
 	s := &settingsWindow{
-		desk:    desk,
-		store:   store,
-		fleet:   f,
-		family:  labelForFamily(cur.FontFamily),
-		size:    cur.FontSize,
-		relay:   cur.RelayURL,
-		device:  cur.DeviceID,
-		secret:  cur.DeviceSecret,
-		ca:      cur.RelayCA,
-		relayOn: cur.RelayOn,
-		server:  !cur.ServerOff,
-		control: !cur.ControlOff,
+		desk:     desk,
+		store:    store,
+		fleet:    f,
+		family:   labelForFamily(cur.FontFamily),
+		size:     cur.FontSize,
+		relay:    cur.RelayURL,
+		device:   cur.DeviceID,
+		secret:   cur.DeviceSecret,
+		ca:       cur.RelayCA,
+		relayOn:  cur.RelayOn,
+		server:   !cur.ServerOff,
+		control:  !cur.ControlOff,
+		language: normalizeLanguage(cur.Language),
 	}
 	if s.size <= 0 {
 		s.size = settings.DefaultFontSize
@@ -175,8 +224,8 @@ func (s *settingsWindow) installedFamilies() []string {
 // families actually installed, then the well-known ones that are not installed
 // already. Suggestions only — the field accepts any name.
 func (s *settingsWindow) familyChoices() []string {
-	choices := []string{systemFamily}
-	seen := map[string]bool{systemFamily: true}
+	choices := []string{systemFamily()}
+	seen := map[string]bool{systemFamily(): true}
 	for _, list := range [][]string{s.installedFamilies(), knownFamilies} {
 		for _, name := range list {
 			if name = strings.TrimSpace(name); name == "" || seen[name] {
@@ -214,6 +263,7 @@ func (s *settingsWindow) draft() settings.Settings {
 	cur.RelayOn = s.relayOn
 	cur.ServerOff = !s.server
 	cur.ControlOff = !s.control
+	cur.Language = normalizeLanguage(s.language)
 	return cur
 }
 
@@ -230,19 +280,19 @@ func (s *settingsWindow) dirty() bool {
 func caNoteFor(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return "自签证书的中继必须填这一栏；用公共 CA 签发的中继可以留空。"
+		return locales.SettingsCaNoteEmpty()
 	}
 	pemBytes, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Sprintf("读不到这个文件：%v", err)
+		return locales.SettingsCaUnreadable(err.Error())
 	}
 	info, err := agent.DescribeCert(pemBytes)
 	if err != nil {
-		return fmt.Sprintf("这不是有效的证书文件：%v", err)
+		return locales.SettingsCaInvalid(err.Error())
 	}
-	note := fmt.Sprintf("已固定 %s（%s…），%s 到期。", info.Subject, info.Fingerprint[:16], info.NotAfter.Format("2006-01-02"))
+	note := locales.SettingsCaPinned(info.Subject, info.Fingerprint[:16], info.NotAfter.Format("2006-01-02"))
 	if time.Now().After(info.NotAfter) {
-		note += " 这张证书已经过期。"
+		note += " " + locales.SettingsCaExpired()
 	}
 	return note
 }
@@ -256,22 +306,27 @@ func (s *settingsWindow) view(c *ui.Context) {
 	dirty := s.dirty()
 	ui.Column(c).Fill().Children(func() {
 		ui.Toolbar(c, func() {
-			ui.Text(c, "设置")
+			ui.Text(c, locales.SettingsTitle())
 			ui.Spacer(c)
 			if dirty {
-				ui.Text(c, "有未保存的改动").FontSize(12).TextColor(t.Warning)
+				ui.Text(c, locales.SettingsDirty()).FontSize(12).TextColor(t.Warning)
 			}
-			if ui.Button(c, "恢复默认").Clicked() {
+			if ui.Button(c, locales.SettingsRestore()).Clicked() {
 				s.restoreDefaults()
 			}
-			if dirty && ui.PrimaryButton(c, "应用").Clicked() {
+			if dirty && ui.PrimaryButton(c, locales.SettingsApply()).Clicked() {
 				s.commit()
 			}
-			if iconButton(c, iconClose, "关闭设置", 28).Clicked() && s.desk != nil {
+			if iconButton(c, iconClose, locales.SettingsClose(), 28).Clicked() && s.desk != nil {
 				s.desk.settingsOpen = false
 			}
 		})
-		paneTabs(c, &s.pane, "终端", "远程", "服务", "更新")
+		paneTabs(c, &s.pane,
+			locales.SettingsPaneTerminal(),
+			locales.SettingsPaneRelay(),
+			locales.SettingsPaneServer(),
+			locales.SettingsPaneUpdates(),
+		)
 		// The pane is the whole window, so it scrolls rather than clips: a short
 		// window must not hide the 接入 switch under the fold.
 		ui.Scroll(c).Fill().Children(func() {
@@ -347,48 +402,69 @@ func paneTabs(c *ui.Context, selected *int, names ...string) {
 	})
 }
 
+// paneNote is a line of prose in a pane's own column: a field with no label,
+// so it starts where the controls start rather than at the pane's edge. A note
+// hanging at the left margin under a form whose controls sit in a column of
+// their own is the one thing that makes a settings pane read as unaligned.
+func paneNote(c *ui.Context, text string, color ui.Color) {
+	ui.Field(c, "", func() {
+		ui.Text(c, text).FontSize(11).TextColor(color)
+	})
+}
+
 func (s *settingsWindow) terminalPane(c *ui.Context) {
 	t := c.Theme()
 	ui.Form(c, func() {
-		ui.Field(c, "字体", func() {
+		ui.Field(c, locales.SettingsFont(), func() {
 			// Suggestions only, and no commit on change: this field takes free text,
 			// so committing per keystroke would rewrite the settings and rebuild
 			// the relay link on every character. Text fields save on 应用.
 			ui.Autocomplete(c, &s.family, s.familyChoices()).Fill()
 		})
-		ui.Field(c, "字号", func() {
+		ui.Field(c, locales.SettingsFontSize(), func() {
 			// A stepper stretched across the window reads as a text field; a
 			// number is a short thing and gets a short box.
 			ui.NumberInput(c, &s.size, 8, 32, 1).Width(110).AlignSelf(ui.Start).
 				OnChange(func() { s.commit() })
 		})
+		// The language applies on the click, like the switches: a person who
+		// picks another language wants to see it, not to look for 应用.
+		lang := languageIndex(s.language)
+		ui.Field(c, locales.SettingsLanguage(), func() {
+			seg := ui.Segmented(c, &lang,
+				locales.SettingsLangSystem(), locales.SettingsLangZh(), locales.SettingsLangEn())
+			seg.OnChange(func() {
+				s.language = languageChoices[lang].tag
+				s.commit()
+			})
+		}).Description(locales.SettingsLanguageNote())
+		paneNote(c, locales.SettingsFontNote(), t.TextMuted)
 	})
-	ui.Text(c, "字体和字号同时用于这个窗口里已经打开的终端。").FontSize(11).TextColor(t.TextMuted)
 }
 
 func (s *settingsWindow) relayPane(c *ui.Context) {
 	t := c.Theme()
 	ui.Form(c, func() {
-		ui.Field(c, "公网地址", func() {
+		ui.Field(c, locales.SettingsRelayUrl(), func() {
 			ui.TextInput(c, &s.relay).Placeholder("wss://relay.example/relay/agent").Fill()
 		})
-		ui.Field(c, "设备 ID", func() {
+		ui.Field(c, locales.SettingsRelayDevice(), func() {
 			ui.TextInput(c, &s.device).Placeholder("mac-mini").Fill()
 		})
-		ui.Field(c, "设备密钥", func() {
+		ui.Field(c, locales.SettingsRelaySecret(), func() {
 			ui.TextInput(c, &s.secret).Password().Fill()
 		})
-		ui.Field(c, "CA 证书", func() {
+		ui.Field(c, locales.SettingsRelayCa(), func() {
 			ui.Column(c).Gap(6).Children(func() {
-				ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
+				ui.TextInput(c, &s.ca).Placeholder(locales.SettingsCaEmptyHint()).Fill()
 				ui.Row(c).Gap(8).Children(func() {
-					if ui.Button(c, "从服务器获取").Clicked() {
+					if ui.Button(c, locales.SettingsCaFetch()).Clicked() {
 						s.fetchCA()
 					}
-					if ui.Button(c, "选择文件…").Clicked() {
+					if ui.Button(c, locales.SettingsCaPick()).Clicked() {
 						s.pickCA()
 					}
-					if s.ca != "" && ui.Button(c, "清除").Clicked() {
+					if s.ca != "" && ui.Button(c, locales.SettingsCaClear()).Clicked() {
 						s.ca = ""
 						s.commit()
 					}
@@ -396,40 +472,40 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 				ui.Text(c, s.caNote).FontSize(11).TextColor(t.TextMuted)
 			})
 		})
-		ui.Field(c, "接入", func() {
+		ui.Field(c, locales.SettingsRelayOn(), func() {
 			// AlignSelf(Start): the field's control column stretches, and a
 			// stretched switch would sit at the far end of the row, away from
 			// the label it belongs to.
 			ui.Switch(c, &s.relayOn).AlignSelf(ui.Start).OnChange(func() { s.commit() })
 		})
-	})
-	// The link's own colour: green while it is up, amber while it is not, so
-	// the state is readable without parsing the sentence. An unused relay has
-	// nothing to report — the agent's state is reset when the link is dropped,
-	// and "connecting" about a link nobody asked for would be a lie.
-	if s.relayOn {
-		if line := s.relayStatusLine(); line != "" {
+		// The link's own colour: green while it is up, amber while it is not, so
+		// the state is readable without parsing the sentence. An unused relay has
+		// nothing to report — the agent's state is reset when the link is dropped,
+		// and "connecting" about a link nobody asked for would be a lie.
+		//
+		// The client link is a second connection with a credential of its own,
+		// so it gets its own line: a fleet with nothing in it and a link that was
+		// refused look the same on the 机器 panel, and this is where the
+		// difference is read.
+		if s.relayOn {
+			if line := s.relayStatusLine(); line != "" {
+				color := t.Warning
+				if s.fleet != nil && s.fleet.RelayState().Connected {
+					color = t.Success
+				}
+				paneNote(c, line, color)
+			}
+		}
+		if line := s.reachStatusLine(); line != "" {
 			color := t.Warning
-			if s.fleet != nil && s.fleet.RelayState().Connected {
+			if strings.HasPrefix(line, locales.SettingsReachReady()) {
 				color = t.Success
 			}
-			ui.Text(c, line).FontSize(11).TextColor(color)
+			paneNote(c, line, color)
 		}
-	}
-	// The client link is a second connection with a credential of its own, so it
-	// gets its own line: a fleet with nothing in it and a link that was refused
-	// look the same on the 机器 panel, and this is where the difference is read.
-	if line := s.reachStatusLine(); line != "" {
-		color := t.Warning
-		if strings.HasPrefix(line, "●") {
-			color = t.Success
-		}
-		ui.Text(c, line).FontSize(11).TextColor(color)
-	}
-	ui.Text(c, "地址形如 wss://relay.example/relay/agent。中继用自签或私有 CA 证书时，点「从服务器获取」直接把它取回来并固定，或点「选择文件…」指定已经下载好的 PEM。填完点「应用」。接入后，登录同一中继的浏览器和手机就能打开这台机器上的会话。").
-		FontSize(11).TextColor(t.TextMuted)
-	ui.Text(c, "接入后，这台机器会拿自己的设备密钥向中继换一枚短时接管令牌（默认 15 分钟），用来自动找到同一中继上的其他机器并接管它们的会话——不需要在这里填任何密码。令牌到期会自动再换一枚。").
-		FontSize(11).TextColor(t.TextMuted)
+		paneNote(c, locales.SettingsRelayHelp(), t.TextMuted)
+		paneNote(c, locales.SettingsTokenHelp(), t.TextMuted)
+	})
 }
 
 // relayStatusLine says what the link is actually doing. Without it, a wrong
@@ -442,11 +518,11 @@ func (s *settingsWindow) relayStatusLine() string {
 	st := s.fleet.RelayState()
 	switch {
 	case st.Connected:
-		return "● " + st.Detail
+		return locales.SettingsRelayConnected(st.Detail)
 	case st.Detail != "":
-		return "○ " + st.Detail
+		return locales.SettingsRelayDetail(st.Detail)
 	default:
-		return "○ 正在接入…"
+		return locales.SettingsRelayConnecting()
 	}
 }
 
@@ -462,14 +538,14 @@ func (s *settingsWindow) reachStatusLine() string {
 	case s.fleet.RelayClient() != nil:
 		if exp := s.fleet.ControlExpiry(); !exp.IsZero() {
 			if left := time.Until(exp).Round(time.Minute); left > 0 {
-				return "● 可以接管同一中继上的其他机器（接管令牌还有 " + left.String() + "）"
+				return locales.SettingsReachReadyLeft(left.String())
 			}
 		}
-		return "● 可以接管同一中继上的其他机器"
+		return locales.SettingsReachReady()
 	case s.fleet.RelayClientErr() != "":
-		return "○ 接管链接没接上：" + s.fleet.RelayClientErr()
+		return locales.SettingsReachFailed(s.fleet.RelayClientErr())
 	default:
-		return "○ 正在向中继申请接管令牌…"
+		return locales.SettingsReachAsking()
 	}
 }
 
@@ -481,14 +557,14 @@ func (s *settingsWindow) reachStatusLine() string {
 func (s *settingsWindow) fetchCA() {
 	relay := strings.TrimSpace(s.relay)
 	if relay == "" {
-		s.setNote("先填上面的「公网地址」，再从服务器获取证书。")
+		s.setNote(locales.SettingsCaNeedUrl())
 		return
 	}
-	s.setNote("正在从 " + relay + " 获取证书…")
+	s.setNote(locales.SettingsCaFetching(relay))
 	go func() {
 		path, err := fetchAndPinCA(relay, s.store.Dir(), 15*time.Second)
 		if err != nil {
-			s.setNote("获取失败：" + err.Error())
+			s.setNote(locales.SettingsCaFetchFailed(err.Error()))
 			return
 		}
 		s.pinCA(path)
@@ -532,9 +608,9 @@ func (s *settingsWindow) pickCA() {
 		}
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
 			Parent: parent,
-			Title:  "选择 CA 证书（PEM）",
+			Title:  locales.SettingsCaDialogTitle(),
 			Filters: []mygo.FileFilter{
-				{Name: "证书文件", Extensions: []string{"pem", "crt", "cer"}},
+				{Name: locales.SettingsCaFilter(), Extensions: []string{"pem", "crt", "cer"}},
 			},
 		})
 		if err != nil || len(paths) == 0 || paths[0] == "" {
@@ -569,34 +645,30 @@ func (s *settingsWindow) serverPane(c *ui.Context) {
 		// the only way through is the user clicking 允许 once, after which it
 		// never asks again. A person who meets that prompt cold reads it as the
 		// app doing something suspicious, so it is named here, before it happens.
-		ui.Field(c, "本机服务", func() {
+		ui.Field(c, locales.SettingsServer(), func() {
 			ui.Switch(c, &s.server).AlignSelf(ui.Start).OnChange(func() { s.commit() })
-		}).Description("开启后本机会开一个只监听 127.0.0.1 的端口。macOS 第一次见到监听中的程序会问一次「是否允许接受传入连接」，点允许即可，之后不再问。")
+		}).Description(locales.SettingsServerDesc())
 		// The machine's own shells, and who may type into them. It is here rather
 		// than on the remote pane because it is not about the relay: a browser on
 		// the LAN answers to it too. It applies on the click, like the switch
 		// above, because a switch that guards a machine should not wait for 应用.
-		ui.Field(c, "允许被控制", func() {
+		ui.Field(c, locales.SettingsControl(), func() {
 			ui.Switch(c, &s.control).AlignSelf(ui.Start).OnChange(func() { s.commit() })
-		}).Description("关闭后别的客户端仍然能看，但不能接管。")
+		}).Description(locales.SettingsControlDesc())
+		if url := s.fleet.BaseURL(); url != "" {
+			paneNote(c, locales.SettingsServerUrlLine(url), t.TextMuted)
+		} else {
+			paneNote(c, locales.SettingsServerOffLine(), t.TextMuted)
+		}
+		// What the switch means, said the way the fleet works: joining a relay is
+		// the consent, so this is a way to say no — not a confirmation anyone has
+		// to give for each machine that wants in.
+		if s.control {
+			paneNote(c, locales.SettingsControlOnLine(), t.TextMuted)
+		} else {
+			paneNote(c, locales.SettingsControlOffLine(), t.Warning)
+		}
 	})
-	if url := s.fleet.BaseURL(); url != "" {
-		ui.Text(c, "这台机器上的浏览器可以打开 "+url+"，看到的是窗口里同一批会话。").
-			FontSize(11).TextColor(t.TextMuted)
-	} else {
-		ui.Text(c, "本机服务已关闭：不再为浏览器开端口。窗口照常可用，正在跑的终端也不会停。").
-			FontSize(11).TextColor(t.TextMuted)
-	}
-	// What the switch means, said the way the fleet works: joining a relay is the
-	// consent, so this is a way to say no — not a confirmation anyone has to give
-	// for each machine that wants in.
-	if s.control {
-		ui.Text(c, "别的客户端可以接管这台机器的终端：浏览器、手机，或同一中继上的另一台电脑。夺回控制权永远是本机的一键。").
-			FontSize(11).TextColor(t.TextMuted)
-	} else {
-		ui.Text(c, "别的客户端只能只读观看，不能接管、也不能在这台机器上新开终端；本机窗口不受影响。").
-			FontSize(11).TextColor(t.Warning)
-	}
 }
 
 // commit writes the draft to disk and applies it to the running shell: the font
@@ -609,13 +681,17 @@ func (s *settingsWindow) commit() {
 		*v = draft
 	})
 	if err != nil {
-		s.fail("设置没保存：" + err.Error())
+		s.fail(locales.SettingsSaveFailed(err.Error()))
 		return
 	}
 	s.caNote = caNoteFor(s.ca)
 	s.desk.reletter(termFont(stored))
+	// The language is applied here rather than on a keystroke, like the relay:
+	// the window redraws in the new language at once, which is the answer to
+	// the click that chose it.
+	applyLanguage(stored.Language)
 	if err := s.fleet.SetRelay(stored.RelayURL, stored.DeviceID, stored.DeviceSecret, stored.RelayCA, stored.RelayOn); err != nil {
-		s.fail("远程渠道没接上：" + err.Error())
+		s.fail(locales.SettingsRelayFailed(err.Error()))
 		return
 	}
 	// The client link is a second connection with a credential of its own: the
@@ -625,15 +701,15 @@ func (s *settingsWindow) commit() {
 	// the relay above.
 	if stored.RelayOn && stored.RelayURL != "" {
 		if err := s.fleet.Reach(); err != nil {
-			s.fail("接管令牌没申请下来：" + err.Error())
+			s.fail(locales.SettingsTokenFailed(err.Error()))
 			return
 		}
 	} else if err := s.fleet.SetRelayClient("", "", ""); err != nil {
-		s.fail("客户端链接没断开：" + err.Error())
+		s.fail(locales.SettingsClientFailed(err.Error()))
 		return
 	}
 	if err := s.fleet.SetServer(!stored.ServerOff); err != nil {
-		s.fail("本机服务没起来：" + err.Error())
+		s.fail(locales.SettingsServerFailed(err.Error()))
 		return
 	}
 	// Who may drive this machine's shells. It is applied to the hub, so a client
@@ -653,23 +729,23 @@ func (s *settingsWindow) fail(message string) {
 }
 
 func (s *settingsWindow) summary(stored settings.Settings) string {
-	parts := []string{"已保存 " + s.savedAt.Format("15:04:05")}
+	parts := []string{locales.SettingsSavedAt(s.savedAt.Format("15:04:05"))}
 	if url := s.fleet.BaseURL(); url != "" {
-		parts = append(parts, "本机服务 "+url)
+		parts = append(parts, locales.SettingsServiceUrl(url))
 	} else {
-		parts = append(parts, "本机服务已关闭")
+		parts = append(parts, locales.ServiceOff())
 	}
 	if stored.RelayOn && stored.RelayURL != "" {
-		parts = append(parts, "已接入 "+stored.RelayURL)
+		parts = append(parts, locales.SettingsJoined(stored.RelayURL))
 	}
 	if s.fleet.RelayClient() != nil {
-		parts = append(parts, "可接管其他机器")
+		parts = append(parts, locales.SettingsCanReach())
 	}
 	return strings.Join(parts, " · ")
 }
 
 func (s *settingsWindow) restoreDefaults() {
-	s.family = systemFamily
+	s.family = systemFamily()
 	s.size = settings.DefaultFontSize
 	s.relay = ""
 	s.device = ""
@@ -679,5 +755,9 @@ func (s *settingsWindow) restoreDefaults() {
 	s.relayOn = false
 	s.server = true
 	s.control = true
+	// The language goes back to following the system, like every other default:
+	// a person who restore-defaults their way out of a language they cannot
+	// read gets the one their system is in.
+	s.language = ""
 	s.commit()
 }

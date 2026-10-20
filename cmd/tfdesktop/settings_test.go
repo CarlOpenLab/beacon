@@ -19,6 +19,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/relay"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // newTestSettingsWindow opens the settings window over a throwaway store. The
@@ -38,30 +39,30 @@ func TestSettingsPanesRenderAndSwitch(t *testing.T) {
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
 
-	if !tt.HasText("字体") || !tt.HasText("字号") {
+	if !tt.HasText(locales.SettingsFont()) || !tt.HasText(locales.SettingsFontSize()) {
 		t.Fatalf("the terminal pane is missing its fields: %q", tt.Texts())
 	}
 
-	if err := tt.Click("远程"); err != nil {
-		t.Fatalf("Click(远程): %v", err)
+	if err := tt.Click(locales.SettingsPaneRelay()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneRelay(), err)
 	}
 	tt.Frame()
-	if !tt.HasText("公网地址") || !tt.HasText("接入") {
+	if !tt.HasText(locales.SettingsRelayUrl()) || !tt.HasText(locales.SettingsRelayOn()) {
 		t.Fatalf("the remote pane did not open: %q", tt.Texts())
 	}
 
-	if err := tt.Click("服务"); err != nil {
-		t.Fatalf("Click(服务): %v", err)
+	if err := tt.Click(locales.SettingsPaneServer()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneServer(), err)
 	}
 	tt.Frame()
-	if !tt.HasText("本机服务") {
+	if !tt.HasText(locales.SettingsServer()) {
 		t.Fatalf("the server pane did not open: %q", tt.Texts())
 	}
 	// The firewall prompt is named before it happens. macOS shows it the first
 	// time a listening socket appears and offers no way for an app to
 	// pre-authorise itself, so the only thing that can be done is tell the
 	// person what the prompt is and that clicking 允许 settles it for good.
-	if !tt.HasText("允许接受传入连接") {
+	if !tt.HasText(locales.SettingsServerDesc()) {
 		t.Fatalf("the server pane does not explain the macOS firewall prompt: %q", tt.Texts())
 	}
 }
@@ -76,13 +77,13 @@ func TestSettingsRestoreDefaultsResetsTheDraft(t *testing.T) {
 
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
-	if err := tt.Click("恢复默认"); err != nil {
-		t.Fatalf("Click(恢复默认): %v", err)
+	if err := tt.Click(locales.SettingsRestore()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsRestore(), err)
 	}
 	tt.Frame()
 
-	if sw.family != systemFamily {
-		t.Errorf("family after restore = %q, want %q", sw.family, systemFamily)
+	if sw.family != systemFamily() {
+		t.Errorf("family after restore = %q, want %q", sw.family, systemFamily())
 	}
 	if sw.size != settings.DefaultFontSize {
 		t.Errorf("size after restore = %v, want %v", sw.size, settings.DefaultFontSize)
@@ -110,8 +111,8 @@ func TestSettingsApplyWritesTheStore(t *testing.T) {
 
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
-	if err := tt.Click("应用"); err != nil {
-		t.Fatalf("Click(应用): %v", err)
+	if err := tt.Click(locales.SettingsApply()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsApply(), err)
 	}
 	tt.Frame()
 
@@ -128,7 +129,7 @@ func TestSettingsApplyWritesTheStore(t *testing.T) {
 	if got.ServerOff {
 		t.Error("the local service was left off although its switch is on")
 	}
-	if sw.status == "" || strings.HasPrefix(sw.status, "设置没保存") {
+	if sw.status == "" || strings.HasPrefix(sw.status, locales.SettingsSaveFailed("")) {
 		t.Errorf("status after apply = %q, want a success summary", sw.status)
 	}
 }
@@ -141,8 +142,8 @@ func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 	sw, _ := newTestSettingsWindow(t)
 	tt := ui.NewTester(sw.view, 640, 640)
 	tt.Frame()
-	if err := tt.Click("远程"); err != nil {
-		t.Fatalf("Click(远程): %v", err)
+	if err := tt.Click(locales.SettingsPaneRelay()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneRelay(), err)
 	}
 	tt.Frame()
 
@@ -151,9 +152,9 @@ func TestSettingsRemoteFieldsAcceptTyping(t *testing.T) {
 		typed string
 		draft func() string
 	}{
-		{"公网地址", "wss://relay.example/relay/agent", func() string { return sw.relay }},
-		{"设备 ID", "mac-mini", func() string { return sw.device }},
-		{"设备密钥", "s3cret", func() string { return sw.secret }},
+		{locales.SettingsRelayUrl(), "wss://relay.example/relay/agent", func() string { return sw.relay }},
+		{locales.SettingsRelayDevice(), "mac-mini", func() string { return sw.device }},
+		{locales.SettingsRelaySecret(), "s3cret", func() string { return sw.secret }},
 	}
 	for _, tc := range cases {
 		if _, ok := tt.Find(tc.label); !ok {
@@ -210,21 +211,31 @@ func TestSettingsApplyingTheRelayReachesTheFleet(t *testing.T) {
 
 	tt := ui.NewTester(sw.view, 640, 640)
 	tt.Frame()
-	if err := tt.Click("远程"); err != nil {
-		t.Fatalf("Click(远程): %v", err)
+	if err := tt.Click(locales.SettingsPaneRelay()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneRelay(), err)
 	}
 	tt.Frame()
 	// There is no credential field to fill in: that is the point of the mint.
-	if _, ok := tt.Find("客户端令牌"); ok {
-		t.Fatalf("the pane still asks for a token; texts = %v", tt.Texts())
+	// The relay hands this machine a short-lived credential of its own, so the
+	// pane asks for this device's identity and says nothing about a token.
+	for _, label := range []string{
+		locales.SettingsRelayUrl(),
+		locales.SettingsRelayDevice(),
+		locales.SettingsRelaySecret(),
+		locales.SettingsRelayCa(),
+		locales.SettingsRelayOn(),
+	} {
+		if _, ok := tt.Find(label); !ok {
+			t.Fatalf("the relay pane is missing %q; texts = %v", label, tt.Texts())
+		}
 	}
 
 	// Enrolled with a relay, with nothing else configured.
 	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/relay/agent"
 	sw.relay, sw.device, sw.secret, sw.relayOn = url, thisID, thisSecret, true
 	tt.Frame()
-	if err := tt.Click("应用"); err != nil {
-		t.Fatalf("Click(应用): %v", err)
+	if err := tt.Click(locales.SettingsApply()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsApply(), err)
 	}
 	tt.Frame()
 
@@ -238,13 +249,13 @@ func TestSettingsApplyingTheRelayReachesTheFleet(t *testing.T) {
 	if f.ControlExpiry().IsZero() {
 		t.Error("the link came up with no lifetime recorded for its credential")
 	}
-	if line := sw.reachStatusLine(); !strings.HasPrefix(line, "●") {
+	if line := sw.reachStatusLine(); !strings.HasPrefix(line, locales.SettingsReachReady()) {
 		t.Errorf("the pane says %q, want it to report the fleet is reachable", line)
 	}
 
 	// The roster follows, and the panel stops saying the token is missing.
 	waitForRoster(t, w, otherID)
-	if note := w.machineNote(); strings.Contains(note, "令牌") {
+	if note := w.machineNote(); note != locales.MachineNoteReady() {
 		t.Fatalf("the panel still asks for a token it no longer needs: %q", note)
 	}
 
@@ -287,21 +298,21 @@ func TestSettingsRemotePaneOffersCertHelpers(t *testing.T) {
 	sw, _ := newTestSettingsWindow(t)
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
-	if err := tt.Click("远程"); err != nil {
-		t.Fatalf("Click(远程): %v", err)
+	if err := tt.Click(locales.SettingsPaneRelay()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneRelay(), err)
 	}
 	tt.Frame()
 
 	// Downloading a certificate from the admin page and then finding its path is
 	// the friction these buttons exist to remove, so both must be visible
 	// without filling anything in first.
-	for _, want := range []string{"从服务器获取", "选择文件…"} {
+	for _, want := range []string{locales.SettingsCaFetch(), locales.SettingsCaPick()} {
 		if _, ok := tt.Find(want); !ok {
 			t.Errorf("%q button is missing from the remote pane", want)
 		}
 	}
-	if _, ok := tt.Find("清除"); ok {
-		t.Error("清除 should only appear once a certificate is set")
+	if _, ok := tt.Find(locales.SettingsCaClear()); ok {
+		t.Error("the clear button should only appear once a certificate is set")
 	}
 }
 
@@ -340,8 +351,8 @@ func TestSettingsCANoteDescribesThePinnedCertificate(t *testing.T) {
 	// nobody can read is the same as no feedback at all.
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
-	if err := tt.Click("远程"); err != nil {
-		t.Fatalf("Click(远程): %v", err)
+	if err := tt.Click(locales.SettingsPaneRelay()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneRelay(), err)
 	}
 	tt.Frame()
 	// Find needs the whole element text, so assert on the note verbatim: the
@@ -350,8 +361,8 @@ func TestSettingsCANoteDescribesThePinnedCertificate(t *testing.T) {
 	if _, ok := tt.Find(sw.caNote); !ok {
 		t.Errorf("the certificate note is not rendered in the remote pane; texts = %v", tt.Texts())
 	}
-	if _, ok := tt.Find("清除"); !ok {
-		t.Error("清除 should appear once a certificate is set")
+	if _, ok := tt.Find(locales.SettingsCaClear()); !ok {
+		t.Error("the clear button should appear once a certificate is set")
 	}
 }
 
@@ -359,12 +370,18 @@ func TestSettingsCANoteExplainsAnUnusableFile(t *testing.T) {
 	cases := []struct {
 		name string
 		path func(t *testing.T) string
-		want string
+		want func(t *testing.T, path string) string
 	}{
 		{
 			name: "missing",
 			path: func(t *testing.T) string { return filepath.Join(t.TempDir(), "nope.pem") },
-			want: "读不到",
+			want: func(t *testing.T, path string) string {
+				_, err := os.ReadFile(path)
+				if err == nil {
+					t.Fatal("the file the note is about is readable after all")
+				}
+				return locales.SettingsCaUnreadable(err.Error())
+			},
 		},
 		{
 			name: "not a certificate",
@@ -375,16 +392,27 @@ func TestSettingsCANoteExplainsAnUnusableFile(t *testing.T) {
 				}
 				return p
 			},
-			want: "不是有效的证书",
+			want: func(t *testing.T, path string) string {
+				pemBytes, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = agent.DescribeCert(pemBytes)
+				if err == nil {
+					t.Fatal("the junk file parsed as a certificate")
+				}
+				return locales.SettingsCaInvalid(err.Error())
+			},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sw, _ := newTestSettingsWindow(t)
-			sw.ca = tc.path(t)
+			path := tc.path(t)
+			sw.ca = path
 			sw.commit()
-			if !strings.Contains(sw.caNote, tc.want) {
-				t.Errorf("note = %q, want it to mention %q", sw.caNote, tc.want)
+			if want := tc.want(t, path); sw.caNote != want {
+				t.Errorf("note = %q, want %q", sw.caNote, want)
 			}
 		})
 	}
@@ -394,7 +422,7 @@ func TestSettingsFetchCAWithoutAddressGuidesInsteadOfFailingQuietly(t *testing.T
 	sw, _ := newTestSettingsWindow(t)
 	sw.relay = ""
 	sw.fetchCA()
-	if !strings.Contains(sw.caNote, "公网地址") {
+	if sw.caNote != locales.SettingsCaNeedUrl() {
 		t.Errorf("note = %q, want it to point at the address field", sw.caNote)
 	}
 }
@@ -482,22 +510,22 @@ func TestSettingsToolbarShowsPendingChangesAndClearsThem(t *testing.T) {
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
 
-	if _, ok := tt.Find("有未保存的改动"); ok {
+	if _, ok := tt.Find(locales.SettingsDirty()); ok {
 		t.Fatal("the pending-changes marker is shown before anything was edited")
 	}
 
 	sw.relay = "wss://relay.example/relay/agent"
 	tt.Frame()
-	if _, ok := tt.Find("有未保存的改动"); !ok {
+	if _, ok := tt.Find(locales.SettingsDirty()); !ok {
 		t.Fatalf("no pending-changes marker after editing; texts = %v", tt.Texts())
 	}
 
-	if err := tt.Click("应用"); err != nil {
-		t.Fatalf("Click(应用): %v", err)
+	if err := tt.Click(locales.SettingsApply()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsApply(), err)
 	}
 	tt.Frame()
-	if _, ok := tt.Find("有未保存的改动"); ok {
-		t.Fatalf("the pending-changes marker survived 应用; texts = %v", tt.Texts())
+	if _, ok := tt.Find(locales.SettingsDirty()); ok {
+		t.Fatalf("the pending-changes marker survived the apply; texts = %v", tt.Texts())
 	}
 }
 
@@ -507,7 +535,8 @@ func TestSettingsStatusReportsWhenItSaved(t *testing.T) {
 	sw, _ := newTestSettingsWindow(t)
 	sw.commit()
 
-	if !strings.Contains(sw.status, "已保存") {
+	saved := locales.SettingsSavedAt(sw.savedAt.Format("15:04:05"))
+	if !strings.HasPrefix(sw.status, saved) {
 		t.Fatalf("status = %q, want it to say the settings were saved", sw.status)
 	}
 	if !strings.Contains(sw.status, sw.savedAt.Format("15:04:05")) {
@@ -536,8 +565,8 @@ func TestSettingsStatusMarksFailures(t *testing.T) {
 	// And the line must look different from a save once it is on screen.
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
-	if err := tt.Click("远程"); err != nil {
-		t.Fatalf("Click(远程): %v", err)
+	if err := tt.Click(locales.SettingsPaneRelay()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneRelay(), err)
 	}
 	tt.Frame()
 	if _, ok := tt.Find(sw.status); !ok {
@@ -560,8 +589,8 @@ func TestSettingsFontChoicesIncludeInstalledFamilies(t *testing.T) {
 	if !contains(choices, "Maple Mono NF") {
 		t.Fatalf("an installed Nerd Font is not offered: %v", choices)
 	}
-	if choices[0] != systemFamily {
-		t.Errorf("choices start with %q, want %q first", choices[0], systemFamily)
+	if choices[0] != systemFamily() {
+		t.Errorf("choices start with %q, want %q first", choices[0], systemFamily())
 	}
 
 	// "Maple Mono" is both installed and well known; it must appear once.
@@ -586,7 +615,7 @@ func TestSettingsFontFieldAcceptsAnUnlistedFamily(t *testing.T) {
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
 
-	rect, ok := tt.Find("字体")
+	rect, ok := tt.Find(locales.SettingsFont())
 	if !ok {
 		t.Fatalf("the font field is missing; texts = %v", tt.Texts())
 	}
@@ -602,8 +631,8 @@ func TestSettingsFontFieldAcceptsAnUnlistedFamily(t *testing.T) {
 	if sw.family != "Maple Mono NF" {
 		t.Fatalf("typed family = %q, want it in the draft", sw.family)
 	}
-	if err := tt.Click("应用"); err != nil {
-		t.Fatalf("Click(应用): %v", err)
+	if err := tt.Click(locales.SettingsApply()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsApply(), err)
 	}
 	tt.Frame()
 
@@ -635,11 +664,11 @@ func TestSettingsControlSwitchReachesTheHub(t *testing.T) {
 
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
-	if err := tt.Click("服务"); err != nil {
-		t.Fatalf("Click(服务): %v", err)
+	if err := tt.Click(locales.SettingsPaneServer()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneServer(), err)
 	}
 	tt.Frame()
-	if _, ok := tt.Find("允许被控制"); !ok {
+	if _, ok := tt.Find(locales.SettingsControl()); !ok {
 		t.Fatalf("the pane has no control switch; texts = %v", tt.Texts())
 	}
 	if !sw.control {
@@ -648,8 +677,8 @@ func TestSettingsControlSwitchReachesTheHub(t *testing.T) {
 
 	// The click a person makes: the label names the control, so clicking it
 	// moves the switch.
-	if err := tt.Click("允许被控制"); err != nil {
-		t.Fatalf("Click(允许被控制): %v", err)
+	if err := tt.Click(locales.SettingsControl()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsControl(), err)
 	}
 	tt.Frame()
 	if sw.control {
@@ -663,13 +692,13 @@ func TestSettingsControlSwitchReachesTheHub(t *testing.T) {
 	}
 	// The pane says what that state means, rather than leaving the switch to be
 	// interpreted.
-	if !tt.HasText("只能只读观看") {
+	if !tt.HasText(locales.SettingsControlOffLine()) {
 		t.Fatalf("the pane does not explain the off state; texts = %v", tt.Texts())
 	}
 
 	// And back on, because a machine that can say no must be able to say yes.
-	if err := tt.Click("允许被控制"); err != nil {
-		t.Fatalf("Click(允许被控制) again: %v", err)
+	if err := tt.Click(locales.SettingsControl()); err != nil {
+		t.Fatalf("Click(%s) again: %v", locales.SettingsControl(), err)
 	}
 	tt.Frame()
 	if !f.Hub().ControlAllowed() || store.Get().ControlOff {

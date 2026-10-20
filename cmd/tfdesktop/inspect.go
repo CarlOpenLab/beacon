@@ -19,6 +19,8 @@ import (
 	"fmt"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // inspectWidth is the browser client's --w-inspect. The two clients show the
@@ -47,27 +49,28 @@ func (w *window) inspectFields() []inspectField {
 		return nil
 	}
 	out := []inspectField{
-		{label: "会话", value: or(tb.id, "待创建")},
-		{label: "机器", value: w.machineName(tb.machine)},
+		{label: locales.InspectSession(), value: or(tb.id, locales.LabelPending())},
+		{label: locales.InspectMachine(), value: w.machineName(tb.machine)},
 	}
 	if tb.term != nil {
 		cols, rows := tb.term.Size()
-		out = append(out, inspectField{label: "尺寸", value: fmt.Sprintf("%d×%d", cols, rows)})
+		out = append(out, inspectField{label: locales.InspectSize(), value: fmt.Sprintf("%d×%d", cols, rows)})
 	}
 	// The lease is the one fact that explains everything else on screen: why
 	// the composer will not take a keystroke, why the pane is marked 只读, why
 	// the banner is up there saying so.
 	switch {
 	case !tb.alive:
-		out = append(out, inspectField{label: "状态", value: "已退出", note: "会话已结束"})
+		out = append(out, inspectField{label: locales.InspectState(), value: locales.StateEnded(), note: locales.InspectEndedNote()})
 	case tb.held():
-		out = append(out, inspectField{label: "状态", value: "控制中", note: "本端"})
+		out = append(out, inspectField{label: locales.InspectState(), value: locales.StateControlling(), note: locales.InspectSelf()})
 	default:
-		out = append(out, inspectField{label: "状态", value: "只读", note: tb.controller})
+		out = append(out, inspectField{label: locales.InspectState(), value: locales.StateReadonly(), note: tb.controller})
 	}
 	out = append(out,
-		inspectField{label: "程序", value: or(tb.program, "—")},
-		inspectField{label: "退出码", value: exitText(tb)},
+		inspectField{label: locales.InspectProgram(), value: or(tb.program, "—")},
+		inspectField{label: locales.InspectCwd(), value: or(tb.cwd, "—")},
+		inspectField{label: locales.InspectExitCode(), value: exitText(tb)},
 	)
 	return out
 }
@@ -106,12 +109,12 @@ func (w *window) inspectPanel(c *ui.Context) {
 			// of the window, with the close button beside the title the way the
 			// browser client's own toggle sits.
 			ui.Row(c).Height(headerHeight).PaddingX(12).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "会话检视").FontSize(12).FontWeight(600)
+				ui.Text(c, locales.InspectTitle()).FontSize(12).FontWeight(600)
 				ui.Spacer(c)
 				hide := ui.Box(c).
 					Size(22, 22).Radius(radiusSmall).
 					AlignItems(ui.Center).Justify(ui.Center).
-					Label("收起会话检视").Tooltip("收起会话检视")
+					Label(locales.InspectHide()).Tooltip(locales.InspectHide())
 				if hide.Hovered() {
 					hide.Background(t.SurfaceHover)
 				}
@@ -174,10 +177,10 @@ func (w *window) inspectBody(c *ui.Context) {
 func inspectRole(t *ui.Theme, tb *tab) (string, ui.Color) {
 	switch {
 	case !tb.alive:
-		return "已退出", t.Danger
+		return locales.StateEnded(), t.Danger
 	case tb.held():
-		return "控制中", t.Success
+		return locales.StateControlling(), t.Success
 	default:
-		return "只读", t.Warning
+		return locales.StateReadonly(), t.Warning
 	}
 }

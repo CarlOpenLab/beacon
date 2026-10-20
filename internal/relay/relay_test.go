@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -688,4 +689,69 @@ func TestAgentReportsWhyTheLinkFailed(t *testing.T) {
 	if !strings.Contains(got.Detail, "连不上") {
 		t.Errorf("failure detail = %q, want it to explain the failure", got.Detail)
 	}
+}
+
+// A create that follows another session carries the follow through the relay:
+// the far hub asks its own machine where the followed process stands and opens
+// the new shell there, so a split or a second tab on a machine reached over the
+// relay lands where the shell beside it is rather than at that machine's home
+// directory. The relay routes bytes and never reads a frame, so this is the
+// whole proof that the field survives the tunnel.
+func TestAFollowedCreateSurvivesTheRelay(t *testing.T) {
+	h := newHarness(t)
+	c := h.dial()
+	c.waitMachinesOnline()
+
+	const stream = 1
+	c.write(tunnel.Frame{T: tunnel.TOpen, Machine: deviceID, Stream: stream})
+	c.waitFor("accept", func(f tunnel.Frame) bool {
+		return f.T == tunnel.TAccept && f.Stream == stream
+	})
+	c.inner(stream, protocol.Msg{T: protocol.CTHello, V: protocol.Version})
+	c.awaitInner(stream, "inner hello", func(m protocol.Msg) bool { return m.T == protocol.STHello })
+
+	dir := t.TempDir()
+	c.inner(stream, protocol.Msg{
+		T: protocol.CTCreate, SessionID: "src", Cols: 80, Rows: 24, Cwd: dir, Shell: "/bin/sh",
+	})
+	c.awaitInner(stream, "created", func(m protocol.Msg) bool {
+		return m.T == protocol.STCreated && m.SessionID == "src"
+	})
+
+	// The shell is driven somewhere else, the way a person drives one.
+	elsewhere := t.TempDir()
+	c.inner(stream, protocol.Msg{
+		T: protocol.CTInput, SessionID: "src", Data: []byte("cd " + elsewhere + "\n"),
+	})
+	c.awaitOutput(stream, elsewhere)
+
+	c.inner(stream, protocol.Msg{
+		T: protocol.CTCreate, SessionID: "next", Cols: 80, Rows: 24, From: "src",
+	})
+	c.awaitInner(stream, "created", func(m protocol.Msg) bool {
+		return m.T == protocol.STCreated && m.SessionID == "next"
+	})
+
+	c.inner(stream, protocol.Msg{T: protocol.CTList, ReqID: "after-follow"})
+	list := c.awaitInner(stream, "the roster after the follow", func(m protocol.Msg) bool {
+		return m.T == protocol.STSessions && m.ReqID == "after-follow"
+	})
+	for _, s := range list.Sessions {
+		if s.SessionID != "next" {
+			continue
+		}
+		want, err := filepath.EvalSymlinks(elsewhere)
+		if err != nil {
+			want = elsewhere
+		}
+		got, err := filepath.EvalSymlinks(s.Cwd)
+		if err != nil {
+			got = s.Cwd
+		}
+		if got != want {
+			t.Fatalf("the followed shell opened in %q, want %q", s.Cwd, want)
+		}
+		return
+	}
+	t.Fatalf("the roster does not hold the followed shell: %+v", list.Sessions)
 }

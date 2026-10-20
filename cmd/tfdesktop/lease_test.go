@@ -9,6 +9,7 @@ import (
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // The pane's 只读 chip and the tab's dot are the two pieces of chrome that say a
@@ -30,7 +31,7 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 	if tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
 		w.body(c)
-	}, 900, 600); tt.HasText("只读") {
+	}, 900, 600); tt.HasText(locales.StateReadonly()) {
 		t.Errorf("a shell this window holds is marked 只读; texts = %v", tt.Texts())
 	}
 
@@ -46,13 +47,13 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 	if tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
 		w.body(c)
-	}, 900, 600); !tt.HasText("只读") {
+	}, 900, 600); !tt.HasText(locales.StateReadonly()) {
 		t.Errorf("the sheet does not mark itself 只读; texts = %v", tt.Texts())
 	}
 
 	// The mark is drawn on the tab's row, too.
 	tt := drawNav(t, w)
-	if !tt.HasText("只读") || !strings.Contains(w.sessionTooltip(w.sessionEntries()[0]), "c9") {
+	if !tt.HasText(locales.StateReadonly()) || !strings.Contains(w.sessionTooltip(w.sessionEntries()[0]), "c9") {
 		t.Fatalf("the tab row does not mark the holder; texts = %v", tt.Texts())
 	}
 
@@ -166,7 +167,7 @@ func TestAnEndedShellIsMarkedOnTheSheet(t *testing.T) {
 		applyTheme(c, w.store.Get().Theme)
 		w.body(c)
 	}, 900, 600)
-	if !tt.HasText("已退出") {
+	if !tt.HasText(locales.StateEnded()) {
 		t.Fatalf("an ended shell is not marked on the sheet; texts = %v", tt.Texts())
 	}
 }
@@ -243,7 +244,7 @@ func TestRefusedInputOpensThePanelThatExplainsIt(t *testing.T) {
 	if w.leaseOpen {
 		t.Error("a control-off refusal opened the lease panel, which names a holder")
 	}
-	if !strings.Contains(w.linkNote, "不允许其他客户端控制") {
+	if !strings.Contains(w.linkNote, locales.AppControlOff()) {
 		t.Errorf("linkNote = %q, want it to say the machine refused", w.linkNote)
 	}
 }
@@ -266,15 +267,15 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 		applyTheme(c, w.store.Get().Theme)
 		w.header(c)
 	}, 720, headerHeight)
-	if !head.HasText("只读：该会话正被 c9 控制") {
+	if !head.HasText(locales.BannerReadonlyHolder("c9")) {
 		t.Fatalf("the header does not name the holder; texts = %v", head.Texts())
 	}
-	if _, ok := head.Find("拿回控制权"); !ok {
+	if _, ok := head.Find(locales.ActionTakeBack()); !ok {
 		t.Fatalf("the header does not offer the shell back; texts = %v", head.Texts())
 	}
 
 	nav := drawNav(t, w)
-	if !nav.HasText("只读") {
+	if !nav.HasText(locales.StateReadonly()) {
 		t.Fatalf("the machine panel does not say a shell is being driven; texts = %v", nav.Texts())
 	}
 
@@ -283,14 +284,14 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 	// and neither the header nor the panel has anything left to say.
 	tb.setLease(protocol.RoleController, "", 5)
 	head.Frame()
-	if head.HasText("只读：该会话正被 c9 控制") {
+	if head.HasText(locales.BannerReadonlyHolder("c9")) {
 		t.Error("the header still names a holder after the lease came back")
 	}
-	if _, ok := head.Find("拿回控制权"); ok {
+	if _, ok := head.Find(locales.ActionTakeBack()); ok {
 		t.Error("the header still offers back a shell this window holds")
 	}
 	nav.Frame()
-	if nav.HasText("正被其他客户端控制") {
+	if nav.HasText(locales.StateReadonly()) {
 		t.Errorf("the machine panel still reports a driven shell; texts = %v", nav.Texts())
 	}
 }
@@ -361,7 +362,7 @@ func TestAMachineTakingItsShellBackKeepsTheWayBack(t *testing.T) {
 	// 接管 for a shell that was never this window's to begin with.
 	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
 	tt.Frame()
-	if !tt.HasText("接管") {
+	if !tt.HasText(locales.ActionTakeOver()) {
 		t.Fatalf("no 接管 button on screen; texts = %v", tt.Texts())
 	}
 }
@@ -380,14 +381,14 @@ func TestLeasePanelStaysInsideThePane(t *testing.T) {
 
 	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
 	tt.Frame()
-	rect, ok := tt.Find("c9 正在控制这个终端")
+	rect, ok := tt.Find(locales.LeaseWho("c9"))
 	if !ok {
 		t.Fatalf("the panel does not name the holder; texts = %v", tt.Texts())
 	}
 	if rect.W > leasePopoverWidth {
 		t.Errorf("the panel's text is %v DIPs wide, want it inside %v", rect.W, leasePopoverWidth)
 	}
-	if _, ok := tt.Find("拿回控制权"); !ok {
+	if _, ok := tt.Find(locales.ActionTakeBack()); !ok {
 		t.Fatalf("the panel lost the way back; texts = %v", tt.Texts())
 	}
 }
@@ -412,20 +413,20 @@ func TestTheLeasePanelNamesNobodyWhenNobodyHoldsTheShell(t *testing.T) {
 
 	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
 	tt.Frame()
-	if !tt.HasText("当前无人控制这个终端") {
+	if !tt.HasText(locales.LeaseWhoNobody()) {
 		t.Fatalf("the panel does not say the shell is nobody's; texts = %v", tt.Texts())
 	}
-	if !tt.HasText("取得控制权后你就能继续输入。") {
+	if !tt.HasText(locales.LeaseOutcomeFree()) {
 		t.Fatalf("the panel does not say what pressing the button does; texts = %v", tt.Texts())
 	}
 	for _, text := range tt.Texts() {
-		if strings.HasPrefix(text, " ") || strings.Contains(text, "通知 ，") {
+		if strings.HasPrefix(text, " ") || text == locales.LeaseOutcomeOver("") {
 			t.Errorf("the panel is about a holder with no name: %q", text)
 		}
 	}
 	// The way in is still on screen: a shell nobody holds is a shell this window
 	// can take without taking it from anyone.
-	if _, ok := tt.Find("接管"); !ok {
+	if _, ok := tt.Find(locales.ActionTakeOver()); !ok {
 		t.Fatalf("the panel lost the way in; texts = %v", tt.Texts())
 	}
 }
@@ -446,10 +447,10 @@ func TestAFreeShellIsMarkedReadOnlyAndOffersTheWayIn(t *testing.T) {
 
 	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
 	tt.Frame()
-	if !tt.HasText("只读：当前无人控制") {
+	if !tt.HasText(locales.BannerReadonlyNobody()) {
 		t.Fatalf("the band does not say the shell is nobody's; texts = %v", tt.Texts())
 	}
-	if _, ok := tt.Find("接管"); !ok {
+	if _, ok := tt.Find(locales.ActionTakeOver()); !ok {
 		t.Fatalf("the band does not offer the way in; texts = %v", tt.Texts())
 	}
 
@@ -458,7 +459,7 @@ func TestAFreeShellIsMarkedReadOnlyAndOffersTheWayIn(t *testing.T) {
 		applyTheme(c, w.store.Get().Theme)
 		w.body(c)
 	}, 900, 600)
-	if !sheet.HasText("只读") {
+	if !sheet.HasText(locales.StateReadonly()) {
 		t.Fatalf("the sheet is not marked 只读; texts = %v", sheet.Texts())
 	}
 
@@ -466,11 +467,11 @@ func TestAFreeShellIsMarkedReadOnlyAndOffersTheWayIn(t *testing.T) {
 	// not about the window having opinions.
 	tb.setLease(protocol.RoleController, "", 3)
 	tt.Frame()
-	if tt.HasText("只读") {
+	if tt.HasText(locales.StateReadonly()) {
 		t.Errorf("a shell this window holds is marked 只读; texts = %v", tt.Texts())
 	}
 	sheet.Frame()
-	if sheet.HasText("只读") {
+	if sheet.HasText(locales.StateReadonly()) {
 		t.Errorf("a shell this window holds is marked on the sheet; texts = %v", sheet.Texts())
 	}
 }
@@ -492,10 +493,10 @@ func TestAShellWhoseLeaseIsNotKnownYetIsNotMarked(t *testing.T) {
 	}
 	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
 	tt.Frame()
-	if tt.HasText("只读") {
+	if tt.HasText(locales.StateReadonly()) {
 		t.Errorf("a shell with no role frame yet is marked 只读; texts = %v", tt.Texts())
 	}
-	if tt.HasText("当前无人控制") {
+	if tt.HasText(locales.BannerReadonlyNobody()) || tt.HasText(locales.LeaseWhoNobody()) {
 		t.Errorf("a shell with no role frame yet names nobody as its holder; texts = %v", tt.Texts())
 	}
 }

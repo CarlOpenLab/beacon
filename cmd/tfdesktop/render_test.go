@@ -13,6 +13,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // The previews are how the shell is looked at: a test can assert that a label is
@@ -58,41 +59,51 @@ func TestRenderShellPreviews(t *testing.T) {
 		// be read, and the way out of that state is on the tab, in the header and
 		// on the row.
 		ended bool
+		// split is the body with two panes: "side" for beside each other (⌘D)
+		// and "stack" for one above the other (⌘⇧D), each with a shell of its
+		// own and the divider the pointer drags between them.
+		split string
 	}{
-		{"shell-dark", themeDark, true, false, false, false, false, false, false, false},
-		{"shell-light", themeLight, true, false, false, false, false, false, false, false},
-		{"empty-dark", themeDark, false, false, false, false, false, false, false, false},
-		{"empty-light", themeLight, false, false, false, false, false, false, false, false},
+		{"shell-dark", themeDark, true, false, false, false, false, false, false, false, ""},
+		{"shell-light", themeLight, true, false, false, false, false, false, false, false, ""},
+		{"empty-dark", themeDark, false, false, false, false, false, false, false, false, ""},
+		{"empty-light", themeLight, false, false, false, false, false, false, false, false, ""},
 		// A shell of this machine's, another client driving it: the light along
 		// the pane's edge, the panel under it, and the mark on its row.
-		{"taken-dark", themeDark, true, true, false, false, false, false, false, false},
-		{"taken-light", themeLight, true, true, false, false, false, false, false, false},
+		{"taken-dark", themeDark, true, true, false, false, false, false, false, false, ""},
+		{"taken-light", themeLight, true, true, false, false, false, false, false, false, ""},
 		// A shell that has ended: 已退出 on the pane, on the tab and on its row,
 		// with 关闭 where a running shell's row has 结束.
-		{"ended-dark", themeDark, true, false, false, false, false, false, false, true},
-		{"ended-light", themeLight, true, false, false, false, false, false, false, true},
+		{"ended-dark", themeDark, true, false, false, false, false, false, false, true, ""},
+		{"ended-light", themeLight, true, false, false, false, false, false, false, true, ""},
 		// A fleet: the 机器 panel as a list you switch between, with this machine
 		// and one other.
-		{"fleet-dark", themeDark, true, false, true, false, false, false, false, false},
-		{"fleet-light", themeLight, true, false, true, false, false, false, false, false},
+		{"fleet-dark", themeDark, true, false, true, false, false, false, false, false, ""},
+		{"fleet-light", themeLight, true, false, true, false, false, false, false, false, ""},
 		// Another machine picked: its row carries the selection, and the 会话 panel
 		// below shows the shells that machine is running rather than this one's.
-		{"fleet-picked-dark", themeDark, true, false, true, true, false, false, false, false},
-		{"fleet-picked-light", themeLight, true, false, true, true, false, false, false, false},
+		{"fleet-picked-dark", themeDark, true, false, true, true, false, false, false, false, ""},
+		{"fleet-picked-light", themeLight, true, false, true, true, false, false, false, false, ""},
 		// Picking an unreachable machine: the dialog that asks the relay for a
 		// short-lived credential first.
-		{"fleet-ask-dark", themeDark, true, false, true, false, true, false, false, false},
-		{"fleet-ask-light", themeLight, true, false, true, false, true, false, false, false},
+		{"fleet-ask-dark", themeDark, true, false, true, false, true, false, false, false, ""},
+		{"fleet-ask-light", themeLight, true, false, true, false, true, false, false, false, ""},
 		// The other machine's shell on screen: its row carries the accent bar the
 		// picked machine carries, and this machine's shell is a tab behind it.
-		{"fleet-remote-dark", themeDark, true, false, true, true, false, true, false, false},
-		{"fleet-remote-light", themeLight, true, false, true, true, false, true, false, false},
+		{"fleet-remote-dark", themeDark, true, false, true, true, false, true, false, false, ""},
+		{"fleet-remote-light", themeLight, true, false, true, true, false, true, false, false, ""},
 		// That same shell driven by the machine it runs on: 只读 on the pane and on
 		// the row, and no light. A pane that lit up for a process on a machine the
 		// person here is not sitting at would be spending the light on a fact they
 		// have no stake in.
-		{"fleet-taken-remote-dark", themeDark, true, false, true, true, false, true, true, false},
-		{"fleet-taken-remote-light", themeLight, true, false, true, true, false, true, true, false},
+		{"fleet-taken-remote-dark", themeDark, true, false, true, true, false, true, true, false, ""},
+		{"fleet-taken-remote-light", themeLight, true, false, true, true, false, true, true, false, ""},
+		// The body split in two, both ways the key makes one: two shells, each on
+		// its own sheet, with the divider between them.
+		{"split-side-dark", themeDark, true, false, false, false, false, false, false, false, "side"},
+		{"split-side-light", themeLight, true, false, false, false, false, false, false, false, "side"},
+		{"split-stack-dark", themeDark, true, false, false, false, false, false, false, false, "stack"},
+		{"split-stack-light", themeLight, true, false, false, false, false, false, false, false, "stack"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := previewWindow(t, tc.mode, tc.shell)
@@ -130,6 +141,24 @@ func TestRenderShellPreviews(t *testing.T) {
 				}
 				w.selectTab(remote)
 			}
+			if tc.split != "" {
+				// The body as ⌘D or ⌘⇧D leaves it: the shell that was on screen
+				// beside a fresh one, each with its own sheet, the fresh pane the
+				// one on screen.
+				fresh := &tab{
+					id: "s3", machine: machineLocal, title: "~/work/api",
+					ordinal: 2, term: fedTerminal(t, previewScreen()), alive: true,
+				}
+				fresh.setLease(protocol.RoleController, "", 2)
+				w.tabs[2] = fresh
+				w.order = append(w.order, 2)
+				w.split = &splitNode{
+					side: tc.split == "side", pct: splitHalf,
+					a: &splitNode{tab: w.tabs[1]}, b: &splitNode{tab: fresh},
+				}
+				w.focus = w.split.b
+				w.selectTabRaw(fresh)
+			}
 			tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, previewWidth, previewHeight)
 			out := filepath.Join(dir, tc.name+".png")
 			file, err := os.Create(out)
@@ -164,14 +193,14 @@ func TestRenderSettingsPreviews(t *testing.T) {
 		pane  int
 		label string
 	}{
-		{"settings-dark-terminal", themeDark, paneTerminal, "终端"},
-		{"settings-dark-relay", themeDark, paneRelay, "远程"},
-		{"settings-dark-server", themeDark, paneServer, "服务"},
-		{"settings-dark-updates", themeDark, paneUpdates, "更新"},
-		{"settings-light-terminal", themeLight, paneTerminal, "终端"},
-		{"settings-light-relay", themeLight, paneRelay, "远程"},
-		{"settings-light-server", themeLight, paneServer, "服务"},
-		{"settings-light-updates", themeLight, paneUpdates, "更新"},
+		{"settings-dark-terminal", themeDark, paneTerminal, locales.SettingsPaneTerminal()},
+		{"settings-dark-relay", themeDark, paneRelay, locales.SettingsPaneRelay()},
+		{"settings-dark-server", themeDark, paneServer, locales.SettingsPaneServer()},
+		{"settings-dark-updates", themeDark, paneUpdates, locales.SettingsPaneUpdates()},
+		{"settings-light-terminal", themeLight, paneTerminal, locales.SettingsPaneTerminal()},
+		{"settings-light-relay", themeLight, paneRelay, locales.SettingsPaneRelay()},
+		{"settings-light-server", themeLight, paneServer, locales.SettingsPaneServer()},
+		{"settings-light-updates", themeLight, paneUpdates, locales.SettingsPaneUpdates()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := settings.Open(t.TempDir())

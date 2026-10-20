@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // A session list is what opens tabs, and it must not open one for a shell that
@@ -104,8 +105,8 @@ func TestTabNameDisambiguatesShellsOfTheSameKind(t *testing.T) {
 
 func TestTabNameFallsBackWhenTheShellIsUnknown(t *testing.T) {
 	tb := &tab{id: "s2", ordinal: 2}
-	if got := tb.name(); got != "终端 2" {
-		t.Fatalf("name = %q, want %q", got, "终端 2")
+	if got := tb.name(); got != locales.TabOrdinal(2) {
+		t.Fatalf("name = %q, want %q", got, locales.TabOrdinal(2))
 	}
 }
 
@@ -119,7 +120,7 @@ func TestATabOfAnEndedShellIsNamedLikeAnyOtherAndKeepsTheCodeForTheTooltip(t *te
 	if got := tb.name(); got != "zsh 1" {
 		t.Fatalf("name = %q, want %q", got, "zsh 1")
 	}
-	if got := tb.exitLine(); got != "已退出（退出码 7）" {
+	if got := tb.exitLine(); got != locales.TabExitedCode(7) {
 		t.Fatalf("exitLine = %q, want the code", got)
 	}
 	// A shell that has not ended has nothing to say about an exit.
@@ -132,12 +133,12 @@ func TestATabOfAnEndedShellIsNamedLikeAnyOtherAndKeepsTheCodeForTheTooltip(t *te
 func TestTabNameNeverShowsBareSessionID(t *testing.T) {
 	// When program and ordinal were unassigned, tabs must never show raw "s1" or "s3".
 	s1 := &tab{id: "s1"}
-	if got := s1.name(); got != "终端 1" {
-		t.Fatalf("s1.name() = %q, want %q", got, "终端 1")
+	if got := s1.name(); got != locales.TabOrdinal(1) {
+		t.Fatalf("s1.name() = %q, want %q", got, locales.TabOrdinal(1))
 	}
 	s3 := &tab{id: "s3"}
-	if got := s3.name(); got != "终端 3" {
-		t.Fatalf("s3.name() = %q, want %q", got, "终端 3")
+	if got := s3.name(); got != locales.TabOrdinal(3) {
+		t.Fatalf("s3.name() = %q, want %q", got, locales.TabOrdinal(3))
 	}
 }
 
@@ -157,4 +158,3 @@ func TestNextOrdinalRecyclesUnusedIndices(t *testing.T) {
 		t.Fatalf("recycled ordinal = %d, want 1", got)
 	}
 }
-

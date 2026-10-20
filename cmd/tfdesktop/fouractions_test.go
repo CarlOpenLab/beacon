@@ -22,6 +22,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // A window that holds the lease is offered 释放, and pressing it gives the lease
@@ -35,7 +36,7 @@ func TestReleasingTheLeaseLeavesTheShellRunning(t *testing.T) {
 	w.local.onGone = w.linkGone
 
 	tb := w.openTab(machineLocal, "")
-	w.local.create(80, 24, "", "")
+	w.local.create(80, 24, "", "", "")
 	waitSessions(f, 1)
 	settleTabs(t, w, 1)
 	w.drain()
@@ -108,10 +109,10 @@ func TestTheLeaseButtonsAreOfferedByState(t *testing.T) {
 	tb.setLease(protocol.RoleController, "", 3)
 	tt := drawWindow()
 	tt.Frame()
-	if !tt.HasText("释放控制权") {
-		t.Fatalf("a window holding the lease is not offered 释放: %v", tt.Texts())
+	if !tt.HasText(locales.ActionRelease()) {
+		t.Fatalf("a window holding the lease is not offered release: %v", tt.Texts())
 	}
-	if tt.HasText("接管") || tt.HasText("拿回控制权") {
+	if tt.HasText(locales.ActionTakeOver()) || tt.HasText(locales.ActionTakeBack()) {
 		t.Fatalf("a window holding the lease is offered a takeover it does not need: %v", tt.Texts())
 	}
 
@@ -119,11 +120,11 @@ func TestTheLeaseButtonsAreOfferedByState(t *testing.T) {
 	tb.setLease(protocol.RoleViewer, "c9", 4)
 	tt = drawWindow()
 	tt.Frame()
-	if !tt.HasText("接管") && !tt.HasText("拿回控制权") {
+	if !tt.HasText(locales.ActionTakeOver()) && !tt.HasText(locales.ActionTakeBack()) {
 		t.Fatalf("a window without the lease is not offered it back: %v", tt.Texts())
 	}
-	if tt.HasText("释放控制权") {
-		t.Fatalf("a window without the lease is offered 释放: %v", tt.Texts())
+	if tt.HasText(locales.ActionRelease()) {
+		t.Fatalf("a window without the lease is offered release: %v", tt.Texts())
 	}
 
 	// The same lease, held on this machine's own shell, is offered nothing: the
@@ -134,8 +135,8 @@ func TestTheLeaseButtonsAreOfferedByState(t *testing.T) {
 	tb.setLease(protocol.RoleController, "", 5)
 	tt = drawWindow()
 	tt.Frame()
-	if tt.HasText("释放控制权") {
-		t.Errorf("this machine's own shell is offered 释放: %v", tt.Texts())
+	if tt.HasText(locales.ActionRelease()) {
+		t.Errorf("this machine's own shell is offered release: %v", tt.Texts())
 	}
 }
 
@@ -151,7 +152,7 @@ func TestClosingATabDoesNotEndTheShell(t *testing.T) {
 	w.local.onGone = w.linkGone
 
 	tb := w.openTab(machineLocal, "")
-	w.local.create(80, 24, "", "")
+	w.local.create(80, 24, "", "", "")
 	waitSessions(f, 1)
 	settleTabs(t, w, 1)
 	w.drain()
@@ -181,7 +182,7 @@ func TestEndingAShellLeavesTheTabToReadIt(t *testing.T) {
 	w.local.onGone = w.linkGone
 
 	tb := w.openTab(machineLocal, "")
-	w.local.create(80, 24, "", "")
+	w.local.create(80, 24, "", "", "")
 	waitSessions(f, 1)
 	settleTabs(t, w, 1)
 	w.drain()
@@ -199,10 +200,10 @@ func TestEndingAShellLeavesTheTabToReadIt(t *testing.T) {
 	drainFor(t, w, func() bool { return liveCount(f) == 0 && !tb.alive })
 
 	if got := liveCount(f); got != 0 {
-		t.Fatalf("结束 left %d live shells, want the process gone", got)
+		t.Fatalf("ending the shell left %d live shells, want the process gone", got)
 	}
 	if len(w.order) != 1 {
-		t.Fatalf("结束 left %d tabs, want the one holding the shell's last output", len(w.order))
+		t.Fatalf("ending the shell left %d tabs, want the one holding the shell's last output", len(w.order))
 	}
 	// And the tab is marked: the exit frame is the hub's word that the shell is
 	// gone, and it is the only word there is. The session list never carries it —

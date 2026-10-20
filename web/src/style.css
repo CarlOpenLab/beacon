@@ -804,6 +804,23 @@ svg {
   font-size: 12.5px;
 }
 
+/* The tab's name, being renamed: the label's own size and place, as a field. */
+.tf-tab-rename {
+  min-width: 60px;
+  max-width: 180px;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm, 6px);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.tf-tab-rename:focus {
+  outline: none;
+}
+
 .tf-tab-close {
   display: flex;
   align-items: center;

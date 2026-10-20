@@ -151,6 +151,24 @@ func (s *Session) SetTitle(title string) {
 	s.mu.Unlock()
 }
 
+// LiveCwd is the directory the shell stands in now, which is not the directory
+// it was started in: a shell that has been cd'd elsewhere since is in that
+// other place, and a client opening a second shell beside it wants that place.
+// It falls back to the directory the session was started in when the platform
+// cannot say where a process stands, and to "" when there is neither.
+func (s *Session) LiveCwd() string {
+	s.mu.Lock()
+	pid, started := s.pid, s.cwd
+	s.mu.Unlock()
+	if pid <= 0 {
+		return started
+	}
+	if live := liveCwd(pid); live != "" {
+		return live
+	}
+	return started
+}
+
 // Summary renders the session into one row of the client-facing list.
 func (s *Session) Summary() protocol.Summary {
 	s.mu.Lock()

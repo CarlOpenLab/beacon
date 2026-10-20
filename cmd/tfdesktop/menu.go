@@ -5,6 +5,8 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
+
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // updaterMenuItem is the 检查更新… item. It is a variable rather than a call so
@@ -35,7 +37,7 @@ func appMenu(w *window) *mygo.Menu {
 			updaterMenuItem(),
 			mygo.Separator(),
 			{
-				Label:       "设置…",
+				Label:       locales.MenuSettings(),
 				Accelerator: "CmdOrCtrl+,",
 				Click: func(*mygo.MenuItem, *mygo.Window) {
 					if w.win != nil {

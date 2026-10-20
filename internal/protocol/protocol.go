@@ -20,6 +20,7 @@ const (
 	CTClaim   = "claim"
 	CTRelease = "release"
 	CTClose   = "close"
+	CTRename  = "rename"
 )
 
 // Server -> client discriminators. STHello deliberately shares the string
@@ -87,6 +88,13 @@ type Msg struct {
 	Cwd   string `json:"cwd,omitempty"`
 	Shell string `json:"shell,omitempty"`
 	Title string `json:"title,omitempty"`
+	// From names a live session of this machine's whose working directory the
+	// new shell opens in — the directory that shell is in *now*, not the one
+	// it was started in, so a split or a new tab continues where the shell
+	// beside it stands rather than at the home directory. A session that is
+	// gone, or a machine that cannot say where its processes stand, falls
+	// back to Cwd and then to the home directory.
+	From string `json:"from,omitempty"`
 
 	// attach / output. Cursor is a byte offset into the session's output
 	// stream; see internal/session.Ring.

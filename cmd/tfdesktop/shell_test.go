@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/CarlOpenLab/term-fleet/locales"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -17,16 +18,16 @@ func TestTheHeaderNamesTheActiveTerminalAndOffersNewTerminal(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.tabs[1].alive = true
 	tt := ui.NewTester(w.view, 900, 600)
-	if !tt.HasText("本机 / one") {
+	if !tt.HasText(locales.HeaderMachineShell(locales.MachineLocal(), "one")) {
 		t.Fatalf("missing terminal title: %v", tt.Texts())
 	}
-	if _, ok := tt.Find("新建终端 ⌘T"); !ok {
+	if _, ok := tt.Find(locales.ActionNewTerminalTip()); !ok {
 		t.Fatal("missing new terminal action")
 	}
-	if _, ok := tt.Find("设置"); !ok {
+	if _, ok := tt.Find(locales.ActionSettings()); !ok {
 		t.Fatal("missing settings action")
 	}
-	if tt.HasText("会话检视") {
+	if tt.HasText(locales.InspectTitle()) {
 		t.Fatal("removed inspector is still visible")
 	}
 }
@@ -40,10 +41,10 @@ func TestEmptyStateInvitesTheFirstShell(t *testing.T) {
 		w.emptyState(c)
 	}, 600, 320)
 
-	if !tt.HasText("还没有打开的终端") {
+	if !tt.HasText(locales.EmptyTitle()) {
 		t.Fatalf("the empty window says nothing; it shows %v", tt.Texts())
 	}
-	if _, ok := tt.Find("新建终端"); !ok {
+	if _, ok := tt.Find(locales.ActionNewTerminal()); !ok {
 		t.Fatalf("the empty window does not offer a way out; texts = %v", tt.Texts())
 	}
 }
@@ -62,7 +63,7 @@ func TestStatusBarNamesTheServiceAndTheMachine(t *testing.T) {
 	if !tt.HasText(w.serviceLine()) {
 		t.Fatalf("the bottom line does not name the service; it shows %v", tt.Texts())
 	}
-	if _, ok := tt.Find("本机服务已关闭"); !ok {
+	if _, ok := tt.Find(locales.ServiceOff()); !ok {
 		t.Fatalf("the status chip is not a chip a pointer can rest on; texts = %v", tt.Texts())
 	}
 }

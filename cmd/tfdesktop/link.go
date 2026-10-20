@@ -153,10 +153,23 @@ func (l *link) resize(id string, cols, rows int) {
 
 // create asks the hub for a new shell and attaches this window to it, so the
 // window holds the lease of what it made, as a browser that creates one does.
-func (l *link) create(cols, rows int, cwd, shell string) {
+// from names a live session of that machine's whose working directory the new
+// shell opens in; see protocol.Msg.From.
+func (l *link) create(cols, rows int, cwd, shell, from string) {
 	l.sendMsg(protocol.Msg{
-		T: protocol.CTCreate, Cols: cols, Rows: rows, Cwd: cwd, Shell: shell,
+		T: protocol.CTCreate, Cols: cols, Rows: rows, Cwd: cwd, Shell: shell, From: from,
 	})
+}
+
+// rename names a session: the title every client's tab and row reads for it.
+// The lease is not this frame's business — a title is a label on a shell
+// everybody watching sees, not the keyboard — so it is sent whatever role this
+// window holds, and the hub's answer is the session list everybody gets.
+func (l *link) rename(id, title string) {
+	if l == nil || id == "" {
+		return
+	}
+	l.sendMsg(protocol.Msg{T: protocol.CTRename, SessionID: id, Title: title})
 }
 
 func (l *link) list() {
