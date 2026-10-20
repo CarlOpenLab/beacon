@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.4.22
+
+**Desktop & agent: a session-id data race closed — 修复会话 ID 的数据竞争**
+
+- **The window no longer reads a session's id unlocked.** The link's reader goroutine gives a session its id when the hub names it, and the UI thread read that id while it drew — the race the detector caught the moment a window was drawn with a `created` frame in flight, in the path that asks for a shell's lease. The id now goes through a locked accessor, as the role and the epoch already did.
+  — 桌面端读取会话 ID 时不再绕过锁：链路的读取 goroutine 在 hub 命名会话时写入 ID，而 UI 线程在绘制时读取它（抢锁请求就走这条路）。现在 ID 通过带锁的访问器读取，与角色、租约纪元一致。
+- **The tests that hid it are honest now.** A test's shell runs `sh` where there is one and `cmd.exe` on Windows; a temporary working directory is used only where the platform can be asked where a process stands, because a ConPTY process holds its directory; and the follow test waits for where the process stands rather than for the echo of the line that moves it.
+  — 顺带修掉掩盖问题的测试：Windows 上用 `cmd.exe`；只在能查询进程目录的平台上使用临时目录；继承测试等待进程真正切换目录，而不是命令回显。
+
 ## 0.4.21
 
 **Desktop: split panes with ⌘D / ⌘⇧D, and every new shell opens where the shell beside it stands — 桌面端分栏终端与工作目录继承**
