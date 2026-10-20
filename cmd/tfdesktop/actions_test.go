@@ -13,6 +13,9 @@ import (
 // Accelerators are written one way in a settings file and drawn another on
 // screen; the round trip is what keeps a rebinding from changing what it means.
 func TestAcceleratorsRoundTrip(t *testing.T) {
+	// The invariant is what the keys mean, not the letters: on Windows and Linux
+	// Ctrl is the platform's shortcut modifier, so a "ctrl+…" binding is written
+	// "cmd+…" there and read back as the same key.
 	for _, accel := range []string{
 		"cmd+t", "cmd+shift+d", "cmd+alt+left", "cmd+bracketright",
 		"ctrl+shift+tab", "cmd+comma", "f5", "cmd+shift+enter", "cmd+0",
@@ -21,8 +24,21 @@ func TestAcceleratorsRoundTrip(t *testing.T) {
 		if !ok {
 			t.Fatalf("%q does not parse", accel)
 		}
+		written := formatAccel(mods, key)
+		gotMods, gotKey, ok := parseAccel(written)
+		if !ok || gotMods != mods || gotKey != key {
+			t.Errorf("%q round-trips through %q to (%v, %v, %v)", accel, written, gotMods, gotKey, ok)
+		}
+	}
+
+	// The spellings this window ships stay exactly as written, everywhere.
+	for _, accel := range []string{
+		"cmd+t", "cmd+shift+d", "cmd+alt+left", "cmd+bracketright",
+		"cmd+comma", "f5", "cmd+shift+enter", "cmd+0",
+	} {
+		mods, key, _ := parseAccel(accel)
 		if got := formatAccel(mods, key); got != accel {
-			t.Errorf("%q round-trips to %q", accel, got)
+			t.Errorf("%q is written %q", accel, got)
 		}
 	}
 	for _, bad := range []string{"", "cmd+", "cmd+nope", "hyper+t"} {
