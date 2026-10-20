@@ -16,8 +16,8 @@ import (
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
@@ -37,6 +37,11 @@ type window struct {
 	// win is the main window handle, kept so a settings change can re-letter
 	// the terminals through Update — they belong to this window's UI thread.
 	win *mygo.Window
+
+	// frameStub stands in for win in a test that draws the window's own
+	// controls: the app always has the real window, and a headless tester has
+	// none. See frame.go.
+	frameStub windowFrame
 
 	settingsContent *settingsWindow
 	settingsOpen    bool
@@ -615,6 +620,10 @@ func (w *window) view(c *ui.Context) {
 		w.settingsDialog(c)
 		w.reachDialog(c)
 		w.paletteView(c, pal)
+		// Last, so the window's own controls are over the dialogs and the
+		// palette: a window's close, minimize and maximize stay where they are
+		// while one of them is open, as the system's do.
+		w.windowControls(c, pal)
 	})
 }
 

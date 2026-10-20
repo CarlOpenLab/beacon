@@ -135,22 +135,26 @@ func main() {
 	f.onState = app.invalidateSettings
 
 	mygo.App.WhenReady(func() {
-		win := mygo.NewWindow(mygo.WindowOptions{
+		win := mygo.NewWindow(framedWindow(mygo.WindowOptions{
 			Title:           "term-fleet",
 			Width:           1180,
 			Height:          760,
 			MinWidth:        720,
 			MinHeight:       420,
 			BackgroundColor: windowGround(saved.Theme, mygo.Theme.IsDark()),
-			TitleBarStyle:   mygo.TitleBarHidden,
 			Vibrancy:        mygo.VibrancySidebar,
 			StateKey:        "main",
 			Content:         ui.View(app.view),
-		})
+		}))
 		win.OnClosed(func() {
 			stop()
 			mygo.App.Quit()
 		})
+		// The maximize control's drawing changes with the state, and the state
+		// can change from outside the view (a double click on the header, the
+		// system's snap). Redraw when it does.
+		win.OnMaximize(app.invalidate)
+		win.OnUnmaximize(app.invalidate)
 		app.win = win
 		// After the window exists and the loop is up: the updater item asks the
 		// plugin, and the menu's 设置… item reopens this window.

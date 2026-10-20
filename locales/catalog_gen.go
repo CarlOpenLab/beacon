@@ -3847,3 +3847,59 @@ func SettingsKeysClear() string { return In(i18n.Locale()).SettingsKeysClear() }
 func (msgs Messages) SettingsKeysClear() string {
 	return Catalog.Format(msgs.locale, "settings_keys_clear", nil)
 }
+
+// WindowMinimize says "最小化"
+// in the language the app shows.
+//
+// The app-drawn window controls (Windows and Linux).
+func WindowMinimize() string { return In(i18n.Locale()).WindowMinimize() }
+
+// WindowMinimize says "最小化"
+// in the language of msgs.
+//
+// The app-drawn window controls (Windows and Linux).
+func (msgs Messages) WindowMinimize() string {
+	return Catalog.Format(msgs.locale, "window_minimize", nil)
+}
+
+// WindowMaximize says "最大化"
+// in the language the app shows.
+//
+// The app-drawn window controls (Windows and Linux).
+func WindowMaximize() string { return In(i18n.Locale()).WindowMaximize() }
+
+// WindowMaximize says "最大化"
+// in the language of msgs.
+//
+// The app-drawn window controls (Windows and Linux).
+func (msgs Messages) WindowMaximize() string {
+	return Catalog.Format(msgs.locale, "window_maximize", nil)
+}
+
+// WindowRestore says "还原窗口"
+// in the language the app shows.
+//
+// The app-drawn window controls (Windows and Linux).
+func WindowRestore() string { return In(i18n.Locale()).WindowRestore() }
+
+// WindowRestore says "还原窗口"
+// in the language of msgs.
+//
+// The app-drawn window controls (Windows and Linux).
+func (msgs Messages) WindowRestore() string {
+	return Catalog.Format(msgs.locale, "window_restore", nil)
+}
+
+// WindowClose says "关闭窗口"
+// in the language the app shows.
+//
+// The app-drawn window controls (Windows and Linux).
+func WindowClose() string { return In(i18n.Locale()).WindowClose() }
+
+// WindowClose says "关闭窗口"
+// in the language of msgs.
+//
+// The app-drawn window controls (Windows and Linux).
+func (msgs Messages) WindowClose() string {
+	return Catalog.Format(msgs.locale, "window_close", nil)
+}

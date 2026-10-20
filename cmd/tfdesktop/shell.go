@@ -25,7 +25,6 @@ import (
 // The terminal fills the workspace without a floating card around it.
 const paneInset = 0
 
-
 //go:embed assets/mark.png
 var markPNG []byte
 
@@ -193,10 +192,10 @@ func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 		// A zoomed pane is the whole body: the others are still there, one ⌘⇧↩
 		// away, which is what kero's zoom means.
 		if w.zoomed && w.focus != nil && w.focus.tab != nil {
-			w.paneCard(c, pal, w.focus.tab, true, func() { w.focusSplit(w.focus) })
+			w.paneCard(c, pal, w.focus.tab, true, true, true, func() { w.focusSplit(w.focus) })
 			return
 		}
-		w.splitView(c, pal, w.split)
+		w.splitView(c, pal, w.split, true, true)
 		return
 	}
 	tb := w.activeTab()
@@ -207,18 +206,29 @@ func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 		ui.Box(c).Fill().Children(func() {
 			card := ui.Column(c).Fill().Radius(uitokens.CardRadius).Clip()
 			raised(card.Background(pal.Card), pal)
-			card.Children(func() { w.emptyState(c, pal) })
+			card.Children(func() {
+				// The card still has a header, even with no shell in it: it is
+				// where the window's own controls sit, and where the pointer
+				// drags the window from. Leaving it out would leave a window with
+				// nothing open with no close or minimize at all.
+				w.emptyCardHeader(c)
+				ui.Box(c).Grow(1).MinHeight(0).Children(func() { w.emptyState(c, pal) })
+			})
 		})
 		return
 	}
-	w.paneCard(c, pal, tb, true, nil)
+	w.paneCard(c, pal, tb, true, true, true, nil)
 }
 
 // paneCard is one shell in a card, kero's way: a header with the shell's name,
 // where it stands and what it is doing, and the terminal under it, the card's
 // corners clipping both. A pane the user is not in fades — its text too — so
 // that a split says which of its halves has the keyboard without a border.
-func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool, focus func()) {
+//
+// top and right say the card touches the window's top and right edges, which is
+// where the window's own controls are drawn: the top-right card keeps that corner
+// of its header clear (see winControlsInset, and windowControls in frame.go).
+func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused, top, right bool, focus func()) {
 	if tb == nil || tb.term == nil {
 		return
 	}
@@ -236,7 +246,8 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 			focus()
 		}
 		card.Children(func() {
-			w.cardHeader(c, pal, tb, focused)
+			w.cardHeader(c, pal, tb, focused, top, right)
+			w.takeoverBar(c, tb, focused)
 			// The terminal fills the card under the header. It draws its own
 			// background, so a full-screen program's color reaches the edges.
 			ui.Box(c).Grow(1).MinHeight(0).Children(func() {
@@ -251,11 +262,6 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 					focus()
 				}
 			})
-			if tb.isEnded() {
-				endedBadge(c)
-			} else if readOnly(tb) && !tb.isPending() {
-				readOnlyBadge(c)
-			}
 			if multi && !focused {
 				// The panes the user is not in fade, text and all. It is drawn at
 				// its full strength rather than faded in: the frame that first
@@ -271,10 +277,21 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 			return
 		}
 		if w.drivenElsewhere(tb) {
-			strength := ui.Box(c).Fill().Animate("lease", 1, glowFade)
+			// The glow covers the body rather than taking a share of it: a Fill
+			// box here would sit beside the card as a second flex item and leave
+			// the pane half its height, with the wash showing through below it.
+			glow := ui.Box(c).Absolute().Top(0).Start(0).End(0).Bottom(0).PassThrough()
+			strength := glow.Animate("lease", 1, glowFade)
 			leaseGlow(c, float64(strength), c.Preferences().ReduceMotion)
 		}
-		marker := ui.Box(c).Absolute().Top(uitokens.HeaderH).Start(uitokens.CardGap).Size(2, 2)
+		// The panel hangs under the header, or under the takeover strip when
+		// there is one: a panel that covered the sentence it belongs to would be
+		// answering a question it hid.
+		top := float32(uitokens.HeaderH)
+		if text, _, _, _ := w.bannerState(c); text != "" {
+			top += takeoverBarH
+		}
+		marker := ui.Box(c).Absolute().Top(top).Start(uitokens.CardGap).Size(2, 2)
 		leasePopover(c, marker, &w.leaseOpen, holder, tb.machine != machineLocal, func() {
 			w.reclaim(tb)
 		})
@@ -282,16 +299,22 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 }
 
 // cardHeader is a card's title row: the state, the shell's name, where it
-// stands, the one sentence the window has to say about it, and — while the
-// pointer is there — the controls that act on the card.
-func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool) {
-	bar := c.TitleBar()
-	left := float32(uitokens.CardGap + 8)
-	if w.sidebarHidden && bar.Left > 0 {
-		left = bar.Left + uitokens.CardGap + 8
+// stands, what it is running, and — while the pointer is there — the controls
+// that act on the card. A pane the window is not in says 只读 or 已退出 here; the
+// pane on screen has the sentence and the button in takeoverBar instead.
+func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused, top, right bool) {
+	left := w.headerLead(c.TitleBar())
+	// The top-right card is under the window's own controls: its header keeps
+	// that corner clear, so the takeover sentence and its button never end up
+	// under the close button.
+	rightPad := float32(10)
+	if top && right && ownWindowControls {
+		// Reserve the corner whether or not the frame is set yet: the first
+		// frame of a new window must not have its header laid out twice.
+		rightPad = winControlsInset
 	}
 	h := ui.Row(c).Height(uitokens.HeaderH).Shrink(0).AlignItems(ui.Center).
-		Padding(0, 10, 0, left).Gap(8)
+		Padding(0, rightPad, 0, left).Gap(8)
 	hovered := h.Hovered()
 	h.DragWindow()
 
@@ -334,41 +357,119 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 			})
 		}
 		ui.Spacer(c)
-		if focused {
-			w.cardBanner(c, pal, tb)
-			if tb.alive && tb.held() && tb.machine != machineLocal {
-				// The lease is state, not a hover: the way to hand a shell back
-				// is on screen while the shell is another machine's.
-				if chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
-					ui.Text(c, locales.ActionRelease()).FontSize(12).SingleLine()
-				}).Clicked() {
-					w.releaseLease(tb)
-				}
-			}
-			if hovered {
-				w.cardActions(c, pal, tb)
+		if !focused {
+			// Every pane says what it is, not only the one on screen: a split
+			// whose other half is somebody else's shell says so in its own header.
+			w.paneStateChip(c, pal, tb)
+			return
+		}
+		// The hover controls come before the release chip on purpose: the chip
+		// keeps its place against the window's controls as they appear, instead
+		// of sliding left under the pointer.
+		if hovered {
+			w.cardActions(c, pal, tb)
+		}
+		if tb.alive && tb.held() && tb.machine != machineLocal {
+			// The lease is state, not a hover: the way to hand a shell back is on
+			// screen while the shell is another machine's.
+			if chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+				ui.Text(c, locales.ActionRelease()).FontSize(12).SingleLine()
+			}).Clicked() {
+				w.releaseLease(tb)
 			}
 		}
 	})
 }
 
-// cardBanner is the one sentence the window has to say about this card — a
-// shell that ended, or one that is not this window's to type into — as a chip
-// whose click answers it. It is the old band's banner, in the header's terms.
-func (w *window) cardBanner(c *ui.Context, pal *uitokens.Palette, tb *tab) {
+// headerLead is where a card's header starts: at its own inset, or after the
+// traffic lights when the sidebar is hidden and they would be under it.
+func (w *window) headerLead(bar ui.TitleBar) float32 {
+	left := float32(uitokens.CardGap + 8)
+	if w.sidebarHidden && bar.Left > 0 {
+		left = bar.Left + uitokens.CardGap + 8
+	}
+	return left
+}
+
+// emptyCardHeader is the header of the card a window with no shell shows. It has
+// nothing to say, but it is still the window's title bar: the pointer drags the
+// window by it, and it keeps the top-right corner clear for the window's own
+// controls, which are drawn above it.
+func (w *window) emptyCardHeader(c *ui.Context) {
+	rightPad := float32(10)
+	if ownWindowControls {
+		rightPad = winControlsInset
+	}
+	ui.Row(c).Height(uitokens.HeaderH).Shrink(0).
+		Padding(0, rightPad, 0, 10).DragWindow()
+}
+
+// takeoverBar is the one sentence the window has to say about the shell on
+// screen — it ended, or it is not this window's to type into — with the button
+// that answers it, on a strip of its own under the card's header.
+//
+// It is a row rather than a chip in the header because it is about the whole
+// pane: the header already carries the shell's name, where it stands and what it
+// is running, and a sentence long enough to name a holder does not fit beside
+// them in a narrow window without becoming an ellipsis. The strip has the card's
+// whole width, so the sentence stays a sentence and the button stays where it is.
+func (w *window) takeoverBar(c *ui.Context, tb *tab, focused bool) {
+	if !focused {
+		return
+	}
 	text, action, tone, run := w.bannerState(c)
 	if text == "" || w.activeTab() != tb {
 		return
 	}
-	box := chipBox(c, pal, tone.Alpha(0.12), tone, func() {
-		ui.Text(c, text).FontSize(12).SingleLine().Ellipsis("…").MaxWidth(280)
-		if action != "" {
-			ui.Text(c, action).FontSize(12).FontWeight(600).TextColor(tone)
-		}
-	})
-	if action != "" && box.Clicked() && run != nil {
-		run()
+	ui.Row(c).Key("pane-banner").Height(takeoverBarH).Shrink(0).AlignItems(ui.Center).
+		Padding(0, 12).Gap(8).
+		Background(tone.Alpha(0.10)).
+		BorderWidth(0, 0, 1, 0).BorderColor(tone.Alpha(0.16)).
+		Children(func() {
+			ui.Box(c).Size(7, 7).Radius(3.5).Background(tone).Shrink(0)
+			ui.Text(c, text).FontSize(12.5).TextColor(tone).
+				SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			if action == "" {
+				return
+			}
+			button := ui.Row(c).Key("banner-action").Height(24).Padding(0, 10).Radius(7).
+				AlignItems(ui.Center).Background(tone.Alpha(0.16)).
+				BorderWidth(1).BorderColor(tone.Alpha(0.26)).Shrink(0)
+			if button.Pressed() {
+				button.Background(tone.Alpha(0.30))
+			} else if button.Hovered() {
+				button.Background(tone.Alpha(0.24))
+			}
+			button.Children(func() {
+				ui.Text(c, action).FontSize(12).FontWeight(600).TextColor(tone).SingleLine()
+			})
+			if button.Clicked() && run != nil {
+				run()
+			}
+		})
+}
+
+// takeoverBarH is the strip's height: a line of the chrome's small text with
+// room around it, short enough not to take a terminal row it does not need.
+const takeoverBarH = float32(34)
+
+// paneStateChip is the mark on a pane the window is not in, in its own header:
+// 只读 when another client drives that shell, 已退出 when it has ended. The pane
+// on screen has the sentence and the button instead (takeoverBar).
+func (w *window) paneStateChip(c *ui.Context, pal *uitokens.Palette, tb *tab) {
+	var text string
+	var tone ui.Color
+	switch {
+	case tb.isEnded():
+		text, tone = locales.StateEnded(), c.Theme().Danger
+	case readOnly(tb) && !tb.isPending():
+		text, tone = locales.StateReadonly(), c.Theme().Warning
+	default:
+		return
 	}
+	chipBox(c, pal, tone.Alpha(0.10), tone, func() {
+		ui.Text(c, text).FontSize(11).SingleLine()
+	})
 }
 
 // cardActions is what a card can be told to do, while the pointer is on it:
@@ -417,39 +518,6 @@ func shortDir(dir string) string {
 		}
 	}
 	return filepath.Base(dir)
-}
-
-// readOnlyBadge is the mark on a sheet another client is typing into, in the
-// corner the browser client puts its own: the word, in the state's colour, on
-// the smallest piece of chrome that can hold it.
-//
-// It is on every shell another client holds, wherever that shell runs. The light
-// along the pane's edge is not: it is drawn for this machine's own shells alone,
-// because "somebody has this machine's terminal" is a fact about the machine a
-// person is sitting at, and a pane that lit up for another machine's shell would
-// be lighting up for something its reader has no stake in. The chip is the part
-// that reads the same everywhere, so a shell this window only watches still says
-// what it is without shouting.
-func readOnlyBadge(c *ui.Context) {
-	badge(c, locales.StateReadonly(), c.Theme().Warning)
-}
-
-// endedBadge is the same mark for a shell that has exited.
-func endedBadge(c *ui.Context) {
-	badge(c, locales.StateEnded(), c.Theme().Danger)
-}
-
-// badge draws a state word in the sheet's top-right corner, as an overlay the
-// pointer goes through: it says what the sheet is without taking any of it.
-func badge(c *ui.Context, text string, color ui.Color) {
-	ui.Box(c).Absolute().Top(12).End(14).PassThrough().Children(func() {
-		chip := ui.Row(c).Height(20).PaddingX(8).Radius(radiusSmall).
-			AlignItems(ui.Center).Justify(ui.Center).
-			Background(color.Alpha(0.12)).BorderWidth(1).BorderColor(color.Alpha(0.42))
-		chip.Children(func() {
-			ui.Text(c, text).FontSize(10).LetterSpacing(0.4).TextColor(color)
-		})
-	})
 }
 
 // reclaim asks for the lease of a shell another client holds. This machine's own

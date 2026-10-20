@@ -1339,5 +1339,21 @@
   "settings_keys_clear": "清除快捷键",
   "@settings_keys_clear": {
     "description": "The × beside a shortcut on the keyboard page."
+  },
+  "window_minimize": "最小化",
+  "@window_minimize": {
+    "description": "The app-drawn window controls (Windows and Linux)."
+  },
+  "window_maximize": "最大化",
+  "@window_maximize": {
+    "description": "The app-drawn window controls (Windows and Linux)."
+  },
+  "window_restore": "还原窗口",
+  "@window_restore": {
+    "description": "The app-drawn window controls (Windows and Linux)."
+  },
+  "window_close": "关闭窗口",
+  "@window_close": {
+    "description": "The app-drawn window controls (Windows and Linux)."
   }
 }

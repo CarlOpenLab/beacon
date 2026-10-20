@@ -499,5 +499,21 @@
   "settings_keys_clear": "Clear the shortcut",
   "@settings_keys_clear": {
     "description": "The × beside a shortcut on the keyboard page."
+  },
+  "window_minimize": "Minimize",
+  "@window_minimize": {
+    "description": "The app-drawn window controls (Windows and Linux)."
+  },
+  "window_maximize": "Maximize",
+  "@window_maximize": {
+    "description": "The app-drawn window controls (Windows and Linux)."
+  },
+  "window_restore": "Restore window",
+  "@window_restore": {
+    "description": "The app-drawn window controls (Windows and Linux)."
+  },
+  "window_close": "Close window",
+  "@window_close": {
+    "description": "The app-drawn window controls (Windows and Linux)."
   }
 }
