@@ -4,6 +4,17 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.5.2
+
+**Desktop: the window draws its own controls, and a taken shell gets a strip of its own — 桌面端自绘窗口按钮，接管提示单独成条**
+
+- **Windows and Linux draw their own minimize, maximize and close.** The system's buttons used to sit over the top-right card's header, on top of the chips and the takeover controls; the view could not tell where they were, and a sentence that ran under them was half readable. The window now hides them (`HideWindowButtons`) and draws the three itself in the card header's corner, as kero does: quiet greys, a danger wash under close, restore while maximized, and Windows 11's snap layouts over the maximize control. macOS keeps its traffic lights.
+  — Windows 与 Linux 不再使用系统按钮：它们原先压在卡片右上角，正好盖住卡片头里的 chip 和接管控件，界面也无从为它们让位，句子压在按钮下面就只读得到一半。现在隐藏系统按钮，由界面在卡片头的同一角自绘最小化、最大化/还原与关闭（对齐 kero）：常态灰色、关闭悬停转危险色、最大化后显示还原图标，最大化按钮悬停仍有 Windows 11 的贴靠布局；macOS 继续用原生红绿灯。
+- **The takeover sentence is a strip under the header, not a chip squeezed into it.** A shell another client holds (or nobody holds), and a shell that has ended, now say so on a full-width strip between the header and the terminal: state dot, the sentence, and the 接管 / 拿回控制权 / 关闭标签 button at its right. The strip is below the window controls, so it cannot be covered by them; the floating 只读 badge that duplicated it is gone, and a split's other panes still mark themselves 只读 or 已退出 in their own headers. A window with no shell open keeps a header too, so it still has a close button.
+  — 接管提示改为卡片头下方、终端上方的一条整宽状态条：状态点、完整句子，以及右侧的「接管 / 拿回控制权 / 关闭标签」按钮；它位于窗口按钮下方，因此不会再被盖住。原先重复的右上角浮动「只读」徽标与卡片头里的 chip 都已移除；分屏中未聚焦的窗格仍在自己头部标注「只读 / 已退出」。窄窗口里句子不再被挤成省略号。没有打开终端时卡片也保留头部，窗口仍然有「关闭」可用。
+- **A taken pane is no longer half a pane.** The glow along a pane another client drives was wrapped in a `Fill` box that laid out beside the card, so the card took half the body and the wash showed below it whenever the light was on. The glow is an overlay now, and the pane keeps its height.
+  — 修复「本机 shell 被其他客户端接管后，卡片只剩半高、下方露出 wash」的缺陷：边缘光效的容器原先是与卡片并列的 Fill 元素，抢走了一半高度；现在光效是真正的覆盖层。
+
 ## 0.5.1
 
 **Every platform records the same shortcut — 三个平台记下的快捷键一致**
