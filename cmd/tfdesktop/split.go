@@ -4,18 +4,20 @@ package main
 // them, with a divider the pointer drags between the panes.
 //
 // A split starts from the pane on screen — ⌘D puts a second shell beside it,
-// ⌘⇧D above or below it — and the new shell is an ordinary tab: it is in the
-// strip, it keeps running when its pane closes, and the 会话 panel lists it
-// like any other. The tree is the window's own view of its tabs, so the strip
-// stays the roster and the panes stay what is on screen.
+// ⌘⇧D above or below it — and the new shell is an ordinary tab: it keeps
+// running when its pane closes, and the sidebar lists it like any other. The
+// tree is the window's own view of its tabs, so the sidebar stays the roster
+// and the panes stay what is on screen.
 //
-// The focused leaf is the pane the window acts on: the composer types into it,
-// the header and the status bar describe it, and ⌘W closes it. It is nil only
-// while the body is not split at all, which is the ordinary single-pane case.
+// The focused leaf is the pane the window acts on: the keyboard types into it,
+// its header names it, and ⌘W closes it. It is nil only while the body is not
+// split at all, which is the ordinary single-pane case.
 
 import (
-	"github.com/CarlOpenLab/term-fleet/locales"
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // splitNode is one leaf or one branch of the split tree. A leaf holds a tab; a
@@ -50,6 +52,18 @@ func (n *splitNode) firstLeaf() *splitNode {
 			n = n.a
 		} else {
 			n = n.b
+		}
+	}
+	return n
+}
+
+// lastLeaf is the leaf a subtree ends at, the mirror of firstLeaf.
+func (n *splitNode) lastLeaf() *splitNode {
+	for n != nil && n.tab == nil {
+		if n.b != nil {
+			n = n.b
+		} else {
+			n = n.a
 		}
 	}
 	return n
@@ -92,6 +106,7 @@ func (w *window) splitFocused(side bool) {
 		return
 	}
 	leaf := &splitNode{tab: fresh}
+	w.zoomed = false
 	w.insertSplit(on, leaf, side)
 	w.focusSplit(leaf)
 }
@@ -176,7 +191,7 @@ func (w *window) settleSplit() {
 		return
 	}
 	tb := w.split.tab
-	w.split, w.focus = nil, nil
+	w.split, w.focus, w.zoomed = nil, nil, false
 	if tb != nil {
 		w.selectTabRaw(tb)
 	}
@@ -255,22 +270,147 @@ func replaceSplit(root, from, to *splitNode) *splitNode {
 	return root
 }
 
-// splitView draws a subtree. A leaf is a shell on its sheet; a branch is two of
-// them with the ui's own divider between, which the pointer drags and the
-// arrows move once it has the focus.
-func (w *window) splitView(c *ui.Context, n *splitNode) {
+// splitView draws a subtree. A leaf is a shell on its card; a branch is two of
+// them with the gap between, which the pointer drags from a grip that shows on
+// the hover, and a double click puts back in the middle.
+func (w *window) splitView(c *ui.Context, pal *uitokens.Palette, n *splitNode) {
 	if n == nil {
 		return
 	}
 	if n.leaf() {
-		w.paneSheet(c, n.tab, n == w.focus, func() { w.focusSplit(n) })
+		w.paneCard(c, pal, n.tab, n == w.focus, func() { w.focusSplit(n) })
 		return
 	}
-	first := func() { w.splitView(c, n.a) }
-	second := func() { w.splitView(c, n.b) }
+	pct := n.pct
+	if pct <= 0 || pct >= 100 {
+		pct = 50
+	}
+	box := ui.Row(c)
+	if !n.side {
+		box = ui.Column(c)
+	}
+	box.Fill().MinWidth(0).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+		first := ui.Column(c).Grow(pct).Basis(0).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
+		first.Children(func() { w.splitView(c, pal, n.a) })
+		w.splitGap(c, pal, n, pct)
+		second := ui.Column(c).Grow(100-pct).Basis(0).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
+		second.Children(func() { w.splitView(c, pal, n.b) })
+	})
+}
+
+// splitGap is the room between two panes, which a drag moves: a gap wide enough
+// to see, and the grip that shows while the pointer is in it.
+func (w *window) splitGap(c *ui.Context, pal *uitokens.Palette, n *splitNode, pct float32) {
+	d := ui.Box(c).Shrink(0)
 	if n.side {
-		ui.SplitPercent(c, &n.pct, first, second).Fill()
+		d.Width(uitokens.PaneGap).Cursor(ui.CursorResizeEW)
+	} else {
+		d.Height(uitokens.PaneGap).Cursor(ui.CursorResizeNS)
+	}
+	hovered := d.Hovered() || d.Pressed()
+	if hovered {
+		// A short grip, so the gap shows it moves.
+		d.Draw(func(p *ui.Painter, r ui.Rect) {
+			if n.side {
+				p.Fill(ui.Rect{X: r.X + r.W/2 - 1.5, Y: r.Y + r.H/2 - 18, W: 3, H: 36}, pal.TextFaint.Alpha(0.7), 1.5)
+			} else {
+				p.Fill(ui.Rect{X: r.X + r.W/2 - 18, Y: r.Y + r.H/2 - 1.5, W: 36, H: 3}, pal.TextFaint.Alpha(0.7), 1.5)
+			}
+		})
+	}
+	if dx, dy, ok := d.Dragged(); ok {
+		b := d.Bounds()
+		size, delta := b.W, dx
+		if !n.side {
+			size, delta = b.H, dy
+		}
+		if size > 0 {
+			n.pct = min(max(pct+delta/size*100, 12), 88)
+		}
+	}
+	if d.DoubleClicked() {
+		n.pct = 50
+	}
+}
+
+// cyclePane moves the focus to the next or previous pane of the split, in the
+// order the body draws them: kero's ⌘] and ⌘[.
+func (w *window) cyclePane(delta int) {
+	leaves := w.workspaceLeaves()
+	if len(leaves) < 2 {
 		return
 	}
-	ui.SplitVerticalPercent(c, &n.pct, first, second).Fill()
+	cur := w.activeTab()
+	at := -1
+	for i, tb := range leaves {
+		if tb == cur {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return
+	}
+	next := (at + delta + len(leaves)) % len(leaves)
+	if n := w.leafOf(leaves[next]); n != nil {
+		w.focusSplit(n)
+	}
+}
+
+// zoomFocused fills the body with the focused pane, and puts the split back on
+// the next press: kero's ⌘⇧↩. It is a view of the split, not another layout.
+func (w *window) zoomFocused() {
+	if w.split == nil {
+		return
+	}
+	w.zoomed = !w.zoomed
+	w.invalidate()
+}
+
+// focusDirection moves the focus to the nearest pane that lies in a direction,
+// walking up the tree until a branch divides that way: kero's ⌘⌥arrows.
+func (w *window) focusDirection(dir string) {
+	leaf := w.focus
+	if w.split == nil || leaf == nil {
+		return
+	}
+	horizontal := dir == "left" || dir == "right"
+	// forward is the side of a division the direction points at: right and down
+	// are the second child, left and up the first.
+	forward := dir == "right" || dir == "down"
+	for n := leaf; ; {
+		parent := w.parentOf(n)
+		if parent == nil {
+			return
+		}
+		if parent.side == horizontal {
+			inFirst := w.contains(parent.a, leaf)
+			// The leaf is on the near side of this division: the pane the
+			// direction points at is the sibling's.
+			if inFirst == forward {
+				var target *splitNode
+				if forward {
+					target = parent.b.firstLeaf()
+				} else {
+					target = parent.a.lastLeaf()
+				}
+				if target != nil {
+					w.focusSplit(target)
+					return
+				}
+			}
+		}
+		n = parent
+	}
+}
+
+// contains reports whether a leaf is inside a subtree.
+func (w *window) contains(n, leaf *splitNode) bool {
+	if n == nil || leaf == nil {
+		return false
+	}
+	if n == leaf {
+		return true
+	}
+	return w.contains(n.a, leaf) || w.contains(n.b, leaf)
 }

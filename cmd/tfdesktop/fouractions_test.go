@@ -94,6 +94,9 @@ func TestTheLeaseButtonsAreOfferedByState(t *testing.T) {
 	// A live shell: the header offers the lease's controls only while there is a
 	// shell to hold, and a tab the test made has not been told it is running.
 	tb.alive = true
+	// The card's header is drawn from the terminal it holds: a tab with no
+	// terminal yet has no card, and the lease's controls live on the card.
+	tb.term = fedTerminal(t, previewScreen())
 
 	// The buttons are in the header, which drawNav does not draw: the panel it
 	// renders is the sidebar, and the lease's own controls sit beside the shell's

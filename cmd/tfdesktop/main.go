@@ -41,7 +41,6 @@ func main() {
 	// privacy question. 设置 → 更新 turns it on, and 检查更新… in the menu works
 	// either way.
 	mygo.Use(native.New(updater.Options{DisableAutomaticChecks: true}))
-	mygo.Theme.SetSource(mygo.ThemeDark)
 
 	addr := flag.String("addr", "127.0.0.1:0",
 		"loopback address for the daemon under the window; port 0 picks a free one")
@@ -89,6 +88,9 @@ func main() {
 	// window's chrome says its first word in the language the person chose, or
 	// in the one their system says they read.
 	applyLanguage(saved.Language)
+	// The appearance, before the first frame: the window's material follows the
+	// mode the person chose, or the system's when they chose nothing.
+	applyAppearance(saved.Theme)
 	if err := f.SetRelay(saved.RelayURL, saved.DeviceID, saved.DeviceSecret, saved.RelayCA, saved.RelayOn); err != nil {
 		log.Printf("tfdesktop: relay: %v", err)
 	}
@@ -139,8 +141,9 @@ func main() {
 			Height:          760,
 			MinWidth:        720,
 			MinHeight:       420,
-			BackgroundColor: windowGround(saved.Theme),
+			BackgroundColor: windowGround(saved.Theme, mygo.Theme.IsDark()),
 			TitleBarStyle:   mygo.TitleBarHidden,
+			Vibrancy:        mygo.VibrancySidebar,
 			StateKey:        "main",
 			Content:         ui.View(app.view),
 		})

@@ -3,12 +3,13 @@ package main
 import (
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
@@ -44,86 +45,6 @@ const (
 	panelButtonSize = 22
 )
 
-// sidebar draws the column beside the strip: the shells on top, the machines
-// under them, with a draggable line between. It is rebuilt from the window's
-// own state on every frame, so a shell that appears — started here, or taken
-// over from another machine later — shows up as soon as its tab does.
-func (w *window) sidebar(c *ui.Context, mode string) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-	bar := c.TitleBar()
-	topHeight := float32(headerHeight)
-	if bar.Height > topHeight {
-		topHeight = bar.Height
-	}
-	ui.Column(c).Width(sidebarWidth).FillHeight().Background(col.side).BorderWidth(0, 1, 0, 0).BorderColor(col.hairline).Children(func() {
-		top := ui.Row(c).Height(topHeight).FillWidth().PaddingX(12).AlignItems(ui.Center).DragWindow()
-		top.Children(func() {
-			if bar.Left > 0 {
-				ui.Box(c).Width(bar.Left)
-			}
-			ui.Spacer(c)
-		})
-		w.sessionPanel(c)
-		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
-		w.machinePanel(c)
-		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
-		settings := ui.Row(c).Height(36).FillWidth().PaddingX(12).Gap(8).AlignItems(ui.Center).Label(locales.ActionSettings())
-		if settings.Hovered() {
-			settings.Background(t.SurfaceHover)
-		}
-		settings.Children(func() {
-			ui.Icon(c, iconSettings).FontSize(14).TextColor(t.TextMuted)
-			ui.Text(c, locales.ActionSettings()).FontSize(12).TextColor(t.TextMuted)
-		})
-		if settings.Clicked() {
-			w.openSettings()
-		}
-	})
-}
-
-// sessionPanel is the top half of the column: what this machine is running, and
-// the two things a shell needs — one more, and an end to this one. The controls
-// sit beside the title rather than across the window, because this is the panel
-// they act on.
-func (w *window) sessionPanel(c *ui.Context) {
-	entries := w.sessionEntries()
-
-	ui.Column(c).Fill().Children(func() {
-		// The title counts what the panel is showing, and the two controls act on
-		// the machine it is showing: 新建 opens a shell there, and the × closes
-		// the tab watching it. A panel whose buttons quietly applied to a
-		// different machine than its list would be the worst of both.
-		//
-		// The × closes the tab and only the tab: the shell keeps running, and
-		// ending it is the row's own 结束 button. The two used to be the same
-		// button, which meant "close this tab" killed a process on a machine
-		// somewhere — for every client watching it, not just this window.
-		panelHead(c, locales.SessionPanel(), len(entries), func() {
-			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-				if iconButton(c, iconRefresh, locales.SessionRefresh(), 24).Clicked() {
-					w.refreshSessions(w.selectedMachine())
-				}
-				if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), 24).Clicked() {
-					w.newTab()
-				}
-			})
-		})
-
-		if len(entries) == 0 {
-			return
-		}
-
-		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Gap(2).Padding(2, 8, 6, 8).Children(func() {
-				for _, e := range entries {
-					w.sessionRow(c, e)
-				}
-			})
-		})
-	})
-}
-
 // sessionEntry is one row of the 会话 panel: what it is called, what it is, and
 // what picking it does. The panel is built from these whether the shells belong
 // to this machine or to another one, so the two cases cannot drift apart.
@@ -148,6 +69,38 @@ type sessionEntry struct {
 	// close stops watching the shell: it closes the tab this row is about and
 	// nothing else. Empty for a row that has no tab of this window's.
 	close func()
+
+	// What the shell is doing, as the daemon last said: the five states, whether
+	// the user has looked at it since, what the program said about it, and when
+	// the state began. The zero value is a shell the list has not described.
+	status   string
+	unread   bool
+	message  string
+	kind     string
+	progress int
+	since    int64
+}
+
+// withStatus fills a row from a session summary.
+func (e sessionEntry) withStatus(sum protocol.Summary) sessionEntry {
+	e.status, e.unread, e.message, e.kind, e.progress, e.since =
+		sum.Status, sum.Unread, sum.Message, sum.Kind, sum.Progress, sum.Since
+	return e
+}
+
+// summaryOf is the last word the window has about a session, from the list its
+// machine pushed.
+func (w *window) summaryOf(machine, id string) (protocol.Summary, bool) {
+	list := w.live
+	if machine != machineLocal {
+		list = w.remoteSessions[machine]
+	}
+	for _, s := range list {
+		if s.SessionID == id {
+			return s, true
+		}
+	}
+	return protocol.Summary{}, false
 }
 
 func dismissedKey(machine, id string) string {
@@ -161,9 +114,137 @@ func dismissedKey(machine, id string) string {
 // this machine, and the shells the picked machine is running when it is on
 // another one.
 func (w *window) sessionEntries() []sessionEntry {
-	machine := w.selectedMachine()
+	return w.entriesFor(w.selectedMachine())
+}
+
+// workspaceLeaves is the tabs the split on screen holds, in the order the body
+// draws them. Nil when the body is one pane, or when a pane is still waiting for
+// the hub to name its shell.
+func (w *window) workspaceLeaves() []*tab {
+	if w.split == nil {
+		return nil
+	}
+	var out []*tab
+	var walk func(*splitNode)
+	walk = func(n *splitNode) {
+		if n == nil {
+			return
+		}
+		if n.tab != nil {
+			out = append(out, n.tab)
+			return
+		}
+		walk(n.a)
+		walk(n.b)
+	}
+	walk(w.split)
+	for _, tb := range out {
+		if tb.id == "" {
+			return nil
+		}
+	}
+	return out
+}
+
+// leavesOn is the split's panes that run on one machine.
+func (w *window) leavesOn(machine string) []*tab {
+	var out []*tab
+	for _, tb := range w.workspaceLeaves() {
+		if tb.machine == machine {
+			out = append(out, tb)
+		}
+	}
+	return out
+}
+
+// workspaceRow is the one row a split earns in the sidebar — kero's session,
+// its panes the bodies of the split. The sidebar lists what a person can switch
+// to, not every shell behind a divider: pressing ⌘D splits the shell on screen,
+// it does not quietly open a second session beside it.
+func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
+	first := leaves[0]
+	entry := sessionEntry{
+		machine: machine,
+		session: first.id,
+		label:   first.name(),
+		meta:    locales.WorkspacePanes(len(leaves)),
+		holder:  first.holder(),
+		active:  true,
+		pick:    func() {
+			if n := w.leafOf(first); n != nil {
+				w.focusSplit(n)
+			}
+		},
+		end:   func() { for _, tb := range leaves { w.kill(tb) } },
+		close: func() { for _, tb := range leaves { w.removeTab(tb) } },
+	}
+	for _, tb := range leaves {
+		if tb.alive {
+			entry.alive = true
+		}
+	}
+	entry.status, entry.unread, entry.progress, entry.since = w.aggregateStatus(leaves)
+	return entry
+}
+
+// aggregateStatus is what the workspace's row says about its panes: the most
+// urgent of them, with that pane's message and clock. The order is the one kero
+// ranks a session's panes by — needs you, then failed, then finished unseen,
+// then working, then quiet.
+func (w *window) aggregateStatus(leaves []*tab) (state string, unread bool, progress int, since int64) {
+	weight := func(sum protocol.Summary) int {
+		switch {
+		case sum.Status == "waiting":
+			return 50
+		case sum.Status == "error":
+			return 40
+		case sum.Status == "idle" && sum.Unread:
+			return 30
+		case sum.Status == "working":
+			return 20
+		case sum.Status == "exited":
+			return 10
+		}
+		return 0
+	}
+	best := -1
+	exited := 0
+	for _, tb := range leaves {
+		sum, ok := w.summaryOf(tb.machine, tb.id)
+		if !ok {
+			continue
+		}
+		if sum.Status == "exited" || !sum.Alive {
+			exited++
+		}
+		if n := weight(sum); n > best {
+			best = n
+			state, unread, progress, since = sum.Status, sum.Unread, sum.Progress, sum.Since
+		}
+	}
+	if best <= 0 && exited == len(leaves) {
+		return "exited", false, -1, 0
+	}
+	if state == "" {
+		return "idle", false, -1, 0
+	}
+	return state, unread, progress, since
+}
+
+// entriesFor is the rows of one machine's group: this window's tabs on this
+// machine, or the shells the picked machine says it is running.
+func (w *window) entriesFor(machine string) []sessionEntry {
 	if machine == machineLocal {
 		out := make([]sessionEntry, 0, len(w.order))
+		leaves := w.leavesOn(machineLocal)
+		var first *tab
+		pane := map[*tab]bool{}
+		if len(leaves) > 1 {
+			first = leaves[0]
+			for _, tb := range leaves {
+				pane[tb] = true
+			}
+		}
 		for _, key := range w.order {
 			tb := w.tabs[key]
 			if tb == nil || tb.machine != machineLocal {
@@ -172,8 +253,17 @@ func (w *window) sessionEntries() []sessionEntry {
 				// machine in the middle of this machine's shells.
 				continue
 			}
+			if pane[tb] {
+				if tb != first {
+					// A pane of the workspace: the split's row is the one place it
+					// is listed.
+					continue
+				}
+				out = append(out, w.workspaceRow(machineLocal, leaves))
+				continue
+			}
 			tab := tb
-			out = append(out, sessionEntry{
+			entry := sessionEntry{
 				machine: machineLocal,
 				session: tab.id,
 				label:   tab.name(),
@@ -184,15 +274,34 @@ func (w *window) sessionEntries() []sessionEntry {
 				pick:    func() { w.selectTab(tab) },
 				end:     func() { w.kill(tab) },
 				close:   func() { w.removeTab(tab) },
-			})
+			}
+			if sum, ok := w.summaryOf(machineLocal, tab.id); ok {
+				entry = entry.withStatus(sum)
+			}
+			out = append(out, entry)
 		}
 		return out
 	}
 
 	list := w.remoteSessions[machine]
 	out := make([]sessionEntry, 0, len(list))
+	leaves := w.leavesOn(machine)
+	firstID := ""
+	if len(leaves) > 1 {
+		firstID = leaves[0].id
+	}
+	listed := false
 	for _, s := range list {
 		if !s.Alive && w.dismissed[dismissedKey(machine, s.SessionID)] {
+			continue
+		}
+		if firstID != "" && w.tabOf(machine, s.SessionID) != nil {
+			if s.SessionID != firstID {
+				// A pane of the workspace on this machine: listed once, below.
+				continue
+			}
+			out = append(out, w.workspaceRow(machine, leaves))
+			listed = true
 			continue
 		}
 		summary := s
@@ -227,7 +336,7 @@ func (w *window) sessionEntries() []sessionEntry {
 		if tab != nil {
 			holder = tab.holder()
 		}
-		out = append(out, sessionEntry{
+		entry := sessionEntry{
 			machine: machine,
 			session: summary.SessionID,
 			label:   name,
@@ -238,56 +347,46 @@ func (w *window) sessionEntries() []sessionEntry {
 			pick:    func() { w.openOrSelect(machine, summary.SessionID) },
 			end:     func() { w.killSessionOn(machine, summary.SessionID) },
 			close:   close,
-		})
+		}.withStatus(summary)
+		out = append(out, entry)
+	}
+	if firstID != "" && !listed {
+		// The machine's list has not caught up with the tab the split is on; the
+		// workspace is still the one row it should read as.
+		out = append(out, w.workspaceRow(machine, leaves))
 	}
 	return out
 }
 
-// sessionRow is one shell in the 会话 panel, drawn the same way whether it runs
-// on this machine or another one.
-//
-// The row is the browser client's: the shell's name on the first line with a
-// badge when something is wrong with it — 只读, 已退出 — and the facts on the
-// second in one quiet line. The name is what a person scans for, so nothing else
-// shares its line; the numbers are what tells two look-alike shells apart, so
-// they share theirs.
-func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-	row := ui.Row(c).Height(34).FillWidth().PaddingX(8).Gap(7).AlignItems(ui.Center).Radius(radiusSmall).Label(e.label).Tooltip(w.sessionTooltip(e))
-	if e.active {
-		row.Background(col.chosen)
-	} else if row.Hovered() {
-		row.Background(col.field)
+// sessionRow is one shell in its machine's group, drawn the way kero draws a
+// session: the state on the left, the name, then the quiet facts — and the ×
+// that stops watching it, only while the pointer is on the row, because a row
+// that wears every control it has says nothing with any of them.
+func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry) {
+	row := ui.Row(c).Height(uitokens.RowH).FillWidth().Padding(0, 8, 0, 10).Gap(8).
+		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
+		Label(e.label).Tooltip(w.sessionTooltip(e))
+	if pal.Dark {
+		// Room for the chosen row's edge in every row, so that choosing one
+		// moves no text.
+		row.Border(1, ui.Transparent)
 	}
-	row.Children(func() {
-		dot := w.leaseColor(t, e.machine, e.session, e.holder, e.alive)
-		ui.Box(c).Size(7, 7).Radius(4).Background(dot)
-		if w.renamingIs(e.machine, e.session) {
-			// The name, being edited: a field in the name's place, which Enter
-			// commits and Escape lets go of.
-			w.renameField(c)
-		} else {
-			name := e.label
-			if len([]rune(name)) > 24 {
-				name = string([]rune(name)[:23]) + "…"
-			}
-			label := ui.Text(c, name).FontSize(12).SingleLine().Grow(1).Shrink(1)
-			if e.active {
-				label.TextColor(t.Text)
-			}
-		}
-		if badge, color, ok := w.leaseBadge(t, e); ok {
-			badgeChip(c, badge, color)
-		}
-		if e.close != nil && iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Shrink(0).Clicked() {
-			e.close()
-			return
-		}
-	})
+	hovered := row.Hovered()
+	selected := e.active
+	bg := ui.Transparent
+	switch {
+	case selected:
+		bg = pal.RowSelected
+	case hovered:
+		bg = pal.RowHover
+	}
+	row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 110e6}))
+	if selected {
+		chosen(row, pal)
+	}
 	row.ContextMenu(func(m *ui.Menu) {
 		if m.Item(locales.TabRename()).Chosen() {
-			w.beginRename(e.machine, e.session)
+			w.beginRename(e.machine, e.session, e.label)
 		}
 		if e.close != nil && m.Item(locales.TabClose()).Chosen() {
 			e.close()
@@ -299,13 +398,47 @@ func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 			}
 		}
 	})
+	row.Children(func() {
+		if w.renamingIs(e.machine, e.session) {
+			// The name, being edited: a field in the name's place, which Enter
+			// or a press elsewhere commits and Escape lets go of.
+			w.renameField(c)
+			return
+		}
+		name := ui.Text(c, e.label).FontSize(13.5).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		if e.unread {
+			name.FontWeight(650)
+		}
+		if !e.alive {
+			name.TextColor(pal.TextMuted)
+		}
+		// The lease is the one thing a status glyph cannot say, so it keeps its
+		// badge: 只读, 已退出, 创建中.
+		if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
+			badgeChip(c, badge, color)
+		}
+		if when := ago(e.since, c.Now()); when != "" && e.status != "" {
+			ui.Text(c, when).FontSize(12.5).TextColor(pal.TextFaint).FontFeatures("tnum").Shrink(0)
+		}
+		// A shell that ended has one thing left to do with it, so its row keeps
+		// the way out on screen; a running one offers it on the hover, where the
+		// row stays quiet.
+		if e.close != nil && (!e.alive || hovered) {
+			if iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Clicked() {
+				e.close()
+				return
+			}
+			return
+		}
+		statusGlyph(c, pal, e.status, e.unread, e.progress, 15)
+	})
 	if row.Clicked() {
 		e.pick()
 	}
 	// A double-click on the row names the shell, the way every list on a Mac
 	// renames what it lists.
 	if row.DoubleClicked() {
-		w.beginRename(e.machine, e.session)
+		w.beginRename(e.machine, e.session, e.label)
 	}
 }
 
@@ -565,38 +698,6 @@ func (w *window) ownMachine(m tunnel.Machine) bool {
 	return device != "" && m.ID == device
 }
 
-func (w *window) machinePanel(c *ui.Context) {
-	rows := 1
-	for _, machine := range w.roster {
-		if !w.ownMachine(machine) {
-			rows++
-		}
-	}
-	headH := float32(30)
-	rowH := float32(32)
-	padTop := float32(2)
-	padBottom := float32(4)
-	gap := float32(2)
-	itemsH := float32(rows)*rowH + float32(max(0, rows-1))*gap
-	contentH := headH + padTop + padBottom + itemsH
-	ui.Column(c).Height(min(180, contentH)).Children(func() {
-		panelHead(c, locales.MachinePanel(), w.machineCount(), func() {
-			if iconButton(c, iconRefresh, locales.MachineRefresh(), 24).Clicked() {
-				w.refreshMachines()
-			}
-		})
-		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Gap(2).Padding(padTop, 8, padBottom, 8).Children(func() {
-				w.machineChoice(c, w.localEntry())
-				for _, machine := range w.roster {
-					if !w.ownMachine(machine) {
-						w.machineChoice(c, machine)
-					}
-				}
-			})
-		})
-	})
-}
 
 // localEntry is this machine as the panel lists it: the same shape as a roster
 // entry, so one row draws both and nothing about the first row is special.
@@ -612,38 +713,6 @@ func (w *window) localEntry() tunnel.Machine {
 // machineChoice is one machine in the panel. Picking a machine is what this
 // panel is for, so the row a person is driving is the row that looks picked: a
 // left bar in the accent, a raised ground, and the hover a plain row has.
-func (w *window) machineChoice(c *ui.Context, m tunnel.Machine) {
-	t := c.Theme()
-	selected := w.selectedMachine() == m.ID
-	row := ui.Row(c).Height(32).PaddingX(8).Gap(8).AlignItems(ui.Center).Radius(radiusSmall).FillWidth().Tooltip(m.ID + " · " + machineState(m))
-	if selected {
-		row.Background(shellColorsFor(t).chosen)
-	} else if row.Hovered() {
-		row.Background(t.SurfaceHover)
-	}
-	row.Children(func() {
-		state := shellColorsFor(t).quiet
-		if !m.Online {
-			state = t.Danger
-		} else if m.ID == machineLocal {
-			state = w.fleetColor(t)
-		} else {
-			state = t.Success
-		}
-		ui.Box(c).Size(7, 7).Radius(4).Background(state)
-		name := m.Name
-		if len([]rune(name)) > 21 {
-			name = string([]rune(name)[:20]) + "…"
-		}
-		ui.Text(c, name).FontSize(12).SingleLine().Grow(1).Shrink(1)
-		if m.ID != machineLocal && !m.Online {
-			badgeChip(c, locales.MachineOffline(), t.TextMuted)
-		}
-	})
-	if row.Clicked() {
-		w.selectMachine(m)
-	}
-}
 
 // machineByID is a roster entry, or this machine's when asked for it.
 func (w *window) machineByID(id string) (tunnel.Machine, bool) {
@@ -775,37 +844,8 @@ func (w *window) machineCount() int {
 // relayColor is the relay row's dot: green once the relay has welcomed this
 // member, amber while the link is being established, and quiet when it is down
 // — the same three answers the strip's service dot gives.
-func relayColor(t *ui.Theme, connected, connecting bool) ui.Color {
-	switch {
-	case connected:
-		return t.Success
-	case connecting:
-		return t.Warning
-	}
-	return shellColorsFor(t).quiet
-}
 
 // panelHead is a panel's title row: the name, a count of what it holds, and
 // whatever controls the panel needs on the right. The name is a small quiet
 // capital — the browser client's .side-title — so the panels read as headings
 // over the rows rather than as rows themselves.
-func panelHead(c *ui.Context, title string, count int, controls func()) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-	ui.Row(c).
-		Height(30).PaddingX(10).Gap(6).
-		AlignItems(ui.Center).
-		Children(func() {
-			ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(0.4).TextColor(col.quiet)
-			count2 := ui.Box(c).Height(16).PaddingX(6).Radius(radiusPill).
-				AlignItems(ui.Center).Justify(ui.Center).
-				Background(col.field).BorderWidth(1).BorderColor(col.line)
-			count2.Children(func() {
-				ui.Text(c, strconv.Itoa(count)).FontSize(10).TextColor(t.TextMuted)
-			})
-			ui.Spacer(c)
-			if controls != nil {
-				controls()
-			}
-		})
-}

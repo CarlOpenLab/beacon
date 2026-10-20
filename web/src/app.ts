@@ -2,15 +2,17 @@
 // desktop shell and the phone load, so every kilobyte is paid three times.
 //
 // M3 turns this from "a client for one daemon" into "a client for a fleet":
-// several machines are reachable at once, each with its own sessions, and the
-// tab strip mixes them. A tab remembers which machine it belongs to, because
-// one session id is only unique within its own host.
+// several machines are reachable at once, each with its own sessions. There is
+// no tab strip: the sidebar is the switcher, one pane is on screen at a time,
+// and the pane wears a card's header the way kero's window does. A pane still
+// remembers which machine it belongs to, because one session id is only unique
+// within its own host.
 
 import { Fleet, type ConnState, type FleetHandlers } from './fleet'
 import { DirectConnector, type Connector } from './link'
 import { ERR, ROLE, type Host, type Role, type Summary } from './protocol'
 import { RelayConnection, relayURLFromLocation, type RelayState } from './relay'
-import { createTerminal, type TerminalBundle } from './term'
+import { applyTerminalTheme, createTerminal, type TerminalBundle } from './term'
 import { mountTouchKeys } from './touchkeys'
 import type { TunnelMachine } from './tunnel'
 
@@ -74,6 +76,12 @@ const MOD_LABEL = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ct
  */
 const LOCAL_MACHINE = 'local'
 
+/** Shells are what a pane runs when it is not running a program. */
+const SHELLS = new Set([
+  'zsh', 'bash', 'sh', 'dash', 'ksh', 'fish', 'tcsh', 'csh', 'nu', 'elvish',
+  'xonsh', 'pwsh', 'powershell', 'cmd', 'cmd.exe',
+])
+
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className?: string,
@@ -90,6 +98,118 @@ function basename(p: string): string {
   const parts = p.replace(/[/\\]+$/, '').split(/[/\\]/)
   return parts[parts.length - 1] || p
 }
+
+/** The short relative time kero puts at the end of a row: now, 4m, 2h, 3d, 1w. */
+function ago(ms: number, now = Date.now()): string {
+  if (!ms || !Number.isFinite(ms)) return ''
+  const d = Math.max(0, now - ms)
+  if (d < 60_000) return 'now'
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`
+  if (d < 7 * 86_400_000) return `${Math.floor(d / 86_400_000)}d`
+  return `${Math.floor(d / (7 * 86_400_000))}w`
+}
+
+/** What a waiting session's kind means when the program gave no message. */
+function kindLabel(kind?: string): string {
+  switch (kind) {
+    case 'permission':
+      return '需要授权'
+    case 'question':
+      return '有问题要问'
+    case 'auth':
+      return '需要登录'
+    default:
+      return '等你处理'
+  }
+}
+
+/**
+ * kero's five-state glyph, as markup. The row and the footer wear the same one,
+ * at different sizes: a turning arc while a session works, an amber ring with a
+ * pulsing dot when it needs a person, a red disc with a bang when it failed, an
+ * X ring when it exited, and a check — filled when the finish was unseen, faint
+ * once it has been seen.
+ */
+function statusGlyph(state: string, unread: boolean, size = 15): HTMLElement {
+  const box = el('span', 'tf-glyph')
+  box.dataset.state = state
+  box.dataset.unread = String(unread)
+  box.style.width = `${size}px`
+  box.style.height = `${size}px`
+  const open = (body: string) =>
+    `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">${body}</svg>`
+  switch (state) {
+    case 'working':
+      box.innerHTML = open(
+        '<circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-opacity=".16" stroke-width="1.7"/>' +
+          '<circle class="tf-arc" cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.7" stroke-dasharray="9 30" stroke-linecap="round"/>',
+      )
+      break
+    case 'waiting':
+      box.innerHTML = open(
+        '<circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.7"/>' +
+          '<circle class="tf-pulse" cx="8" cy="8" r="2.7" fill="currentColor"/>',
+      )
+      break
+    case 'error':
+      box.innerHTML = open(
+        '<circle cx="8" cy="8" r="7" fill="currentColor"/>' +
+          '<path d="M8 4.1v4.7" stroke="var(--bg-raised)" stroke-width="1.8" stroke-linecap="round"/>' +
+          '<circle cx="8" cy="11.5" r=".95" fill="var(--bg-raised)"/>',
+      )
+      break
+    case 'exited':
+      box.innerHTML = open(
+        '<circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.5"/>' +
+          '<path d="M6.1 6.1l3.8 3.8M9.9 6.1l-3.8 3.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+      )
+      break
+    default:
+      if (unread) {
+        box.innerHTML = open(
+          '<circle cx="8" cy="8" r="7" fill="currentColor"/>' +
+            '<path d="M4.7 8.3l2.2 2.2 4.5-4.9" stroke="var(--bg-raised)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+        )
+      } else {
+        box.innerHTML = open(
+          '<path d="M3.7 8.3l2.7 2.7 6-6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+        )
+      }
+  }
+  return box
+}
+
+/** The small icon buttons kero's chrome is made of: one glyph, no label. */
+function iconButton(className: string, title: string, svg: string, run: (ev: MouseEvent) => void): HTMLButtonElement {
+  const btn = el('button', className) as HTMLButtonElement
+  btn.type = 'button'
+  btn.title = title
+  btn.setAttribute('aria-label', title)
+  btn.innerHTML = svg
+  btn.onclick = run
+  return btn
+}
+
+const ICON = {
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  refresh:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
+  search:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  settings:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  close:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  chevron:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+  release:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>',
+  inspect:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>',
+  theme:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+} as const
 
 /** Clipboard write that still works on plain http, where the async API is absent. */
 async function copyText(text: string): Promise<boolean> {
@@ -139,7 +259,7 @@ export class App {
 
   private root: HTMLElement
   private fleetList!: HTMLElement
-  private tabStrip!: HTMLElement
+  private sideCount!: HTMLElement
   private panes!: HTMLElement
   private composer!: HTMLTextAreaElement
   private sendBtn!: HTMLButtonElement
@@ -149,6 +269,15 @@ export class App {
   private statusSession!: HTMLElement
   private toastBox!: HTMLElement
   private banner!: HTMLElement
+  private cardName!: HTMLElement
+  private cardDir!: HTMLElement
+  private cardChip!: HTMLElement
+  private cardRole!: HTMLElement
+  private cardDot!: HTMLElement
+  private cardClose!: HTMLButtonElement
+  private footStats!: HTMLElement
+  private filterBar!: HTMLElement
+  private filterInput!: HTMLInputElement
   private connectBox?: HTMLElement
   private sideToggle!: HTMLButtonElement
   private hero?: HTMLElement
@@ -160,6 +289,11 @@ export class App {
   private inspectToggle?: HTMLButtonElement
   /** The header's 释放控制权, shown only while this client holds the lease. */
   private releaseBtn!: HTMLButtonElement
+  /** Groups the person folded up, by machine id. */
+  private collapsed = new Set<string>()
+  /** What the sidebar's little search field is filtering on. */
+  private filter = ''
+  private settingsPop?: HTMLElement
   /**
    * Whether the inspector is open. It is the person's choice, so a rerender
    * never overrides it — and it starts closed, as the desktop window's does: a
@@ -287,6 +421,17 @@ export class App {
     return this.machines.get(id)
   }
 
+  /**
+   * A machine's name as the chrome says it. Before the hello frame arrives a
+   * direct connection only knows its socket URL, which is not a machine's name;
+   * the window's own daemon is 本机 until it says otherwise.
+   */
+  private machineTitle(mv: MachineView): string {
+    const label = mv.label || mv.id
+    if (mv.id === LOCAL_MACHINE && /^wss?:\/\//i.test(label)) return '本机'
+    return label
+  }
+
   private get multi(): boolean {
     return this.opts.mode === 'relay'
   }
@@ -347,10 +492,11 @@ export class App {
           if (!summary) continue
           tab.alive = summary.alive
           // The hub owns the title — a rename anywhere, or a clear, is what
-          // this says — so the strip reads it rather than keeping its own copy.
+          // this says — so the card reads it rather than keeping its own copy.
           tab.title = summary.title
         }
-        this.renderTabs()
+        this.renderCard()
+        this.renderFleet()
         this.renderBanner()
         this.renderInspect()
         this.syncComposer()
@@ -369,7 +515,8 @@ export class App {
         if (!session) return
         tab.alive = session.alive
         tab.title = session.title || basename(session.cwd) || sessionId
-        this.renderTabs()
+        this.renderCard()
+        this.renderFleet()
         this.syncComposer()
         if (truncated) {
           // The ring buffer no longer holds everything we missed; the screen we
@@ -395,7 +542,8 @@ export class App {
           const mv = this.machine(machineId)
           if (mv) mv.controlOff = false
         }
-        this.renderTabs()
+        this.renderCard()
+        this.renderFleet()
         this.renderBanner()
         this.renderStatus()
         this.renderInspect()
@@ -409,21 +557,21 @@ export class App {
         const tab = this.findTab(machineId, sessionId)
         if (!tab) return
         tab.alive = false
-        // The exit code goes to the tooltip, not to the tab's title. The tab has
-        // 230px and one line, so a title with " — 已退出" appended is cut by the
-        // ellipsis from the end, which takes the state word first and leaves the
-        // tab reading "~/work/api — …". The state is on the dot, the dimming and
-        // the tooltip instead, and the pane says it in words.
+        // The exit code goes to the banner, not to the card's name: a name
+        // with " — 已退出" appended is cut by the ellipsis from the end, which
+        // takes the state word first. The state is on the glyph, the dimming
+        // and the banner instead.
         tab.exit = code
         tab.bundle.term.write(`\r\n\x1b[2m[进程已退出，退出码 ${code}]\x1b[0m\r\n`)
-        this.renderTabs()
+        this.renderCard()
+        this.renderFleet()
         this.renderBanner()
         this.renderInspect()
         this.syncComposer()
       },
       // The hub no longer sends this: a close produces the same exit frame for
       // every watcher, including whoever asked. Kept as a no-op guard so a frame
-      // from an older daemon cannot take the tab's final output away.
+      // from an older daemon cannot take the pane's final output away.
       closed: (sessionId) => {
         const tab = this.findTab(machineId, sessionId)
         if (tab) tab.alive = false
@@ -446,7 +594,8 @@ export class App {
           if (tab) {
             tab.role = ROLE.viewer
             this.renderBanner()
-            this.renderTabs()
+            this.renderCard()
+            this.renderFleet()
             this.renderInspect()
             this.syncComposer()
           }
@@ -475,7 +624,8 @@ export class App {
           }
           this.toast(message, 'warn')
           this.renderBanner()
-          this.renderTabs()
+          this.renderCard()
+          this.renderFleet()
           this.renderInspect()
           this.syncComposer()
           return
@@ -488,7 +638,8 @@ export class App {
   private markMachineOffline(machineId: string): void {
     const mv = this.machine(machineId)
     if (mv) mv.online = false
-    this.renderTabs()
+    this.renderCard()
+    this.renderFleet()
     this.renderBanner()
     this.renderInspect()
     this.renderHistory()
@@ -511,7 +662,8 @@ export class App {
     if (tab.sessionId === sessionId) return
     tab.sessionId = sessionId
     tab.title = tab.title || sessionId
-    this.renderTabs()
+    this.renderCard()
+    this.renderFleet()
   }
 
   private fleetOf(tab?: Tab): Fleet | undefined {
@@ -524,63 +676,101 @@ export class App {
   private build(): void {
     this.root.classList.add('tf')
 
-    const header = el('header', 'tf-header')
-    this.sideToggle = el('button', 'tf-side-toggle', '☰') as HTMLButtonElement
-    this.sideToggle.title = '会话列表'
-    this.sideToggle.onclick = () => this.root.classList.toggle('side-open')
-    const brand = el('div', 'tf-brand')
-    brand.append(this.sideToggle, el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
-    this.banner = el('div', 'tf-banner')
-    const actions = el('div', 'tf-header-actions')
-    // 释放控制权 belongs here rather than in the banner. Handing a shell back
-    // is an action a client that holds one can always take, not something wrong
-    // that needs answering — and the banner is the line for the second kind. A
-    // banner that announced the ordinary case was a banner a person learns to
-    // stop reading, which is worse than none.
-    this.releaseBtn = el('button', 'tf-btn', '释放控制权') as HTMLButtonElement
-    this.releaseBtn.title = '释放控制权（终端继续运行，改为只读观看）'
-    this.releaseBtn.hidden = true
-    this.releaseBtn.onclick = () => {
-      const tab = this.current()
-      if (!tab?.sessionId) return
-      this.letGo.add(tab.sessionId)
-      this.fleetOf(tab)?.release(tab.sessionId)
-      this.toast('已释放控制权，终端继续运行', 'info')
-    }
-    const newBtn = el('button', 'tf-btn tf-btn-primary', `新建终端`)
-    newBtn.append(el('kbd', undefined, `${MOD_LABEL}T`))
-    newBtn.onclick = () => this.newTab()
-    actions.append(this.releaseBtn, newBtn, this.buildInspectToggle())
-    header.append(brand, this.banner, actions)
-
     const body = el('div', 'tf-body')
 
+    // ---------------------------------------------------------------- sidebar
     const aside = el('aside', 'tf-side')
+
+    const sideTop = el('div', 'tf-side-top')
+    const brand = el('div', 'tf-brand')
+    brand.append(el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
+    const newBtn = iconButton('tf-icon-btn tf-side-new', `新建终端 (${MOD_LABEL}T)`, ICON.plus, () =>
+      this.newTab(),
+    )
+    const refreshBtn = iconButton('tf-icon-btn tf-side-refresh', '刷新会话与机器列表', ICON.refresh, () =>
+      this.refreshAll(),
+    )
+    sideTop.append(brand, el('span', 'tf-spacer'), newBtn, refreshBtn)
+
     const sideHead = el('div', 'tf-side-head')
-    const refreshBtn = el('button', 'tf-btn tf-btn-icon tf-btn-ghost tf-side-refresh') as HTMLButtonElement
-    refreshBtn.title = '刷新列表'
-    refreshBtn.setAttribute('aria-label', '刷新会话与机器列表')
-    refreshBtn.innerHTML =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
-      '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>' +
-      '</svg>'
-    refreshBtn.onclick = (e) => {
-      e.stopPropagation()
-      this.refreshAll()
+    this.sideCount = el('span', 'tf-count', '0')
+    sideHead.append(el('span', 'tf-side-label', '会话'), this.sideCount)
+
+    this.filterBar = el('div', 'tf-side-filter')
+    this.filterBar.hidden = true
+    this.filterInput = el('input', 'tf-side-filter-input') as HTMLInputElement
+    this.filterInput.type = 'search'
+    this.filterInput.placeholder = '筛选会话…'
+    this.filterInput.autocomplete = 'off'
+    this.filterInput.spellcheck = false
+    this.filterInput.oninput = () => {
+      this.filter = this.filterInput.value.trim().toLowerCase()
+      this.renderFleet()
     }
-    const sideSpacer = el('span', 'tf-spacer')
-    sideHead.append(el('span', undefined, '会话'), el('span', 'tf-count', '0'), sideSpacer, refreshBtn)
+    this.filterBar.append(this.filterInput)
+
     this.fleetList = el('div', 'tf-side-list')
-    aside.append(sideHead, this.fleetList)
-    // Tapping outside the drawer closes it on a phone.
+    aside.append(sideTop, sideHead, this.filterBar, this.fleetList, this.buildSideFooter())
+    // Tapping a row on a phone is the end of the drawer's business.
     aside.addEventListener('click', (ev) => {
       if ((ev.target as HTMLElement).closest('.tf-session, .tf-machine')) {
         this.root.classList.remove('side-open')
       }
     })
 
+    // ------------------------------------------------------------------- main
     const main = el('main', 'tf-main')
-    this.tabStrip = el('div', 'tf-tabs')
+    const card = el('section', 'tf-card')
+    const head = el('header', 'tf-card-head')
+
+    this.sideToggle = el('button', 'tf-side-toggle', '☰') as HTMLButtonElement
+    this.sideToggle.title = '会话列表'
+    this.sideToggle.setAttribute('aria-label', '打开会话列表')
+    this.sideToggle.onclick = () => this.root.classList.toggle('side-open')
+
+    const identity = el('div', 'tf-card-id')
+    this.cardDot = el('span', 'tf-dot tf-card-dot')
+    this.cardName = el('span', 'tf-card-name', '未选择会话')
+    this.cardDir = el('span', 'tf-card-dir')
+    this.cardChip = el('span', 'tf-card-chip')
+    this.cardChip.hidden = true
+    this.cardRole = el('span', 'tf-card-role')
+    identity.append(this.sideToggle, this.cardDot, this.cardName, this.cardDir, this.cardChip, this.cardRole)
+
+    this.banner = el('div', 'tf-banner')
+    // 释放控制权 belongs beside the card, not in the banner. Handing a shell
+    // back is an action a client that holds one can always take, not something
+    // wrong that needs answering — and the banner is the line for the second
+    // kind.
+    this.releaseBtn = iconButton(
+      'tf-icon-btn tf-release-btn',
+      '释放控制权（终端继续运行，改为只读观看）',
+      ICON.release,
+      () => {
+        const tab = this.current()
+        if (!tab?.sessionId) return
+        this.letGo.add(tab.sessionId)
+        this.fleetOf(tab)?.release(tab.sessionId)
+        this.toast('已释放控制权，终端继续运行', 'info')
+      },
+    )
+    this.releaseBtn.hidden = true
+
+    const actions = el('div', 'tf-card-actions')
+    this.cardClose = iconButton('tf-icon-btn tf-card-close', '关闭面板（仅停止观看，不结束进程）', ICON.close, () => {
+      const tab = this.current()
+      if (tab) this.closeTab(tab)
+    })
+    this.cardClose.hidden = true
+    actions.append(this.cardClose, this.buildInspectToggle())
+    head.append(identity, this.banner, this.releaseBtn, actions)
+    this.root.addEventListener('click', (ev) => {
+      const target = ev.target as HTMLElement
+      if (!this.root.classList.contains('side-open')) return
+      if (target.closest('.tf-side') || target.closest('.tf-side-toggle')) return
+      this.root.classList.remove('side-open')
+    })
+
     this.panes = el('div', 'tf-panes')
     this.buildHero()
     this.histBar = el('div', 'tf-hist')
@@ -589,7 +779,8 @@ export class App {
     this.histList = el('div', 'tf-hist-list')
     this.histBar.append(this.histLabel, this.histList)
     this.keyHost = el('div', 'tf-keyhost')
-    main.append(this.tabStrip, this.panes, this.histBar, this.buildComposer(), this.keyHost)
+    card.append(head, this.panes, this.histBar, this.buildComposer(), this.keyHost)
+    main.append(card)
 
     body.append(aside, main, this.buildInspectPanel())
 
@@ -599,8 +790,8 @@ export class App {
     this.statusSession = el('span', 'tf-status-item')
     footer.append(this.statusConn, this.statusHost, this.statusSession)
 
-    // Theme is a per-device preference, so it lives at the far end of the
-    // status bar where nothing else competes for attention.
+    // Theme is a per-device preference. The status line keeps a direct switch;
+    // the sidebar's gear opens the same choice with room for more.
     if (this.opts.onToggleTheme) {
       const themeBtn = el('button', 'tf-chip tf-chip-theme') as HTMLButtonElement
       themeBtn.type = 'button'
@@ -612,6 +803,7 @@ export class App {
       themeBtn.onclick = () => {
         this.opts.onToggleTheme?.()
         sync()
+        this.syncTerminalThemes()
         this.scheduleFit()
       }
       sync()
@@ -619,7 +811,7 @@ export class App {
     }
 
     this.toastBox = el('div', 'tf-toasts')
-    this.root.append(header, body, footer, this.toastBox)
+    this.root.append(body, footer, this.toastBox)
 
     // The composer, not the terminal, is where typing happens; the key bar is
     // the only source of Esc/Tab/Ctrl/arrows for every device now.
@@ -627,6 +819,83 @@ export class App {
 
     this.observer = new ResizeObserver(() => this.scheduleFit())
     this.observer.observe(this.panes)
+    this.renderCard()
+  }
+
+  /** The sidebar's foot: search, settings, then what the fleet wants. */
+  private buildSideFooter(): HTMLElement {
+    const foot = el('footer', 'tf-side-foot')
+    const search = iconButton('tf-icon-btn tf-side-search', '筛选会话', ICON.search, () => this.toggleFilter())
+    const settings = iconButton('tf-icon-btn tf-side-settings', '设置', ICON.settings, (ev) => {
+      ev.stopPropagation()
+      this.toggleSettings()
+    })
+    this.footStats = el('div', 'tf-foot-stats')
+    foot.append(search, settings, this.footStats)
+    return foot
+  }
+
+  /** Open or close the little search field the footer's magnifier owns. */
+  private toggleFilter(): void {
+    const open = this.filterBar.hidden
+    this.filterBar.hidden = !open
+    if (open) {
+      this.filterInput.focus()
+      return
+    }
+    this.filterInput.value = ''
+    this.filter = ''
+    this.renderFleet()
+  }
+
+  /** The gear's popover: the theme, a refresh, and nothing invented. */
+  private toggleSettings(): void {
+    if (this.settingsPop) {
+      this.closeSettings()
+      return
+    }
+    const pop = el('div', 'tf-pop')
+    const item = (label: string, key: string | undefined, run: () => void): HTMLButtonElement => {
+      const row = el('button', 'tf-pop-item') as HTMLButtonElement
+      row.type = 'button'
+      row.append(el('span', undefined, label))
+      if (key) row.append(el('kbd', undefined, key))
+      row.onclick = () => {
+        this.closeSettings()
+        run()
+      }
+      return row
+    }
+    const light = document.documentElement.dataset.theme === 'light'
+    pop.append(
+      item(light ? '切换到深色' : '切换到浅色', undefined, () => {
+        this.opts.onToggleTheme?.()
+        this.syncTerminalThemes()
+        this.scheduleFit()
+      }),
+      item('会话检视栏', undefined, () => this.toggleInspect()),
+      item('刷新会话与机器', undefined, () => this.refreshAll()),
+    )
+    this.root.append(pop)
+    this.settingsPop = pop
+  }
+
+  private closeSettings(): void {
+    this.settingsPop?.remove()
+    this.settingsPop = undefined
+  }
+
+  private toggleInspect(): void {
+    const panel = this.root.querySelector<HTMLElement>('.tf-inspect')
+    if (!panel) return
+    this.inspectOpen = !this.inspectOpen
+    panel.hidden = !this.inspectOpen
+    this.inspectToggle?.setAttribute('aria-pressed', String(this.inspectOpen))
+    this.scheduleFit()
+  }
+
+  private syncTerminalThemes(): void {
+    for (const tab of this.tabs) applyTerminalTheme(tab.bundle.term)
   }
 
   /**
@@ -638,22 +907,10 @@ export class App {
    * swapping between two.
    */
   private buildInspectToggle(): HTMLElement {
-    const btn = el('button', 'tf-btn tf-btn-icon tf-btn-ghost') as HTMLButtonElement
-    btn.title = '会话检视栏'
-    btn.setAttribute('aria-label', '切换会话检视栏')
-    btn.innerHTML =
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" ' +
-      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
+    const btn = iconButton('tf-icon-btn tf-card-inspect', '会话检视栏', ICON.inspect, () =>
+      this.toggleInspect(),
+    )
     btn.setAttribute('aria-pressed', String(this.inspectOpen))
-    btn.onclick = () => {
-      const panel = this.root.querySelector<HTMLElement>('.tf-inspect')
-      if (!panel) return
-      this.inspectOpen = !this.inspectOpen
-      panel.hidden = !this.inspectOpen
-      btn.setAttribute('aria-pressed', String(this.inspectOpen))
-      this.scheduleFit()
-    }
     this.inspectToggle = btn
     return btn
   }
@@ -718,7 +975,7 @@ export class App {
     row('尺寸', `${tab.bundle.term.cols}×${tab.bundle.term.rows}`)
     row('pid', s ? String(s.pid) : '—')
     row('控制端', s?.controller ?? '—', s?.controller ? undefined : '本端')
-    row('机器', mv.label || mv.id)
+    row('机器', this.machineTitle(mv))
     if (this.multi) row('中继', this.opts.ws)
   }
 
@@ -746,105 +1003,153 @@ export class App {
     })
   }
 
+  /** Every session on every machine, in the order the sidebar draws them. */
+  private allSessions(): Array<{ mv: MachineView; s: Summary }> {
+    const out: Array<{ mv: MachineView; s: Summary }> = []
+    for (const mv of this.orderedMachines()) {
+      for (const s of mv.sessions) out.push({ mv, s })
+    }
+    return out
+  }
+
+  private orderedMachines(): MachineView[] {
+    return [...this.machines.values()].sort((a, b) => {
+      if (a.online !== b.online) return a.online ? -1 : 1
+      return (a.label || a.id).localeCompare(b.label || b.id)
+    })
+  }
+
   private renderFleet(): void {
     const total = [...this.machines.values()].reduce((n, mv) => n + mv.sessions.length, 0)
-    const count = this.fleetList.previousElementSibling?.querySelector('.tf-count')
-    if (count) count.textContent = String(total)
+    this.sideCount.textContent = String(total)
     this.fleetList.replaceChildren()
 
-    if (!this.multi) {
-      const mv = this.machine(LOCAL_MACHINE)
-      if (!mv) return
-      this.renderSessionsInto(this.fleetList, mv, false)
-      return
-    }
-
     if (!this.machines.size) {
-      this.fleetList.append(el('div', 'tf-empty', '中继上还没有登记任何机器'))
+      this.fleetList.append(
+        el(
+          'div',
+          'tf-empty',
+          this.multi ? '中继上还没有登记任何机器' : '还没有会话，点 + 新建一个终端。',
+        ),
+      )
+      this.renderFoot()
       return
     }
 
-    const ordered = [...this.machines.values()].sort((a, b) => {
-      if (a.online !== b.online) return a.online ? -1 : 1
-      return a.label.localeCompare(b.label)
-    })
-
-    for (const mv of ordered) {
+    for (const mv of this.orderedMachines()) {
+      const folded = this.collapsed.has(mv.id)
       const head = el('div', 'tf-machine')
       if (mv.id === this.activeMachine) head.classList.add('active')
       if (!mv.online) head.classList.add('off')
+      if (folded) head.classList.add('collapsed')
       head.append(el('span', `tf-dot ${mv.online ? 'on' : 'off'}`))
-      head.append(el('span', 'tf-machine-name', mv.label || mv.id))
-      head.append(el('span', 'tf-machine-state', mv.online ? '' : '离线'))
+      head.append(el('span', 'tf-machine-name', this.machineTitle(mv)))
+      head.append(el('span', 'tf-machine-count', String(mv.sessions.length)))
+      const chev = el('span', 'tf-machine-chev')
+      chev.innerHTML = ICON.chevron
+      head.append(chev)
+      head.title = [
+        this.machineTitle(mv),
+        mv.online ? '在线' : '离线',
+        `${mv.sessions.length} 个会话`,
+        mv.host ? `${mv.host.platform}/${mv.host.arch}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ')
       head.onclick = () => {
-        this.activeMachine = mv.id
+        if (this.activeMachine === mv.id) {
+          if (folded) this.collapsed.delete(mv.id)
+          else this.collapsed.add(mv.id)
+        } else {
+          this.activeMachine = mv.id
+          this.collapsed.delete(mv.id)
+        }
         this.renderFleet()
         this.renderStatus()
         this.renderHero()
       }
       this.fleetList.append(head)
-      this.renderSessionsInto(this.fleetList, mv, true)
+      if (!folded) this.renderSessionsInto(this.fleetList, mv)
     }
   }
 
-  private renderSessionsInto(host: HTMLElement, mv: MachineView, grouped: boolean): void {
-    if (!mv.sessions.length) {
-      if (!grouped) host.append(el('div', 'tf-empty', '主机上还没有会话'))
-      else if (mv.online) host.append(el('div', 'tf-empty tf-nested', '没有会话'))
-      return
-    }
+  /** Whether a row survives the sidebar's little search field. */
+  private matchesFilter(s: Summary): boolean {
+    if (!this.filter) return true
+    return [s.title, s.cwd, s.sessionId, s.shell, s.controller, s.message]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(this.filter))
+  }
+
+  private renderSessionsInto(host: HTMLElement, mv: MachineView): void {
+    let shown = 0
     for (const s of mv.sessions) {
+      if (!this.matchesFilter(s)) continue
+      shown++
+      const status = s.status || (!s.alive ? 'exited' : 'idle')
+      const unread = Boolean(s.unread)
+      const progress = typeof s.progress === 'number' ? s.progress : -1
+      const open = this.tabs.find((t) => t.machineId === mv.id && t.sessionId === s.sessionId)
+      const mine = open?.role === ROLE.controller
+      const when = ago(s.since || Date.parse(s.createdAt))
+
       const row = el('div', 'tf-session')
-      if (grouped) row.classList.add('tf-nested')
       row.dataset.sessionId = s.sessionId
       row.dataset.machine = mv.id
-      const open = this.tabs.some((t) => t.machineId === mv.id && t.sessionId === s.sessionId)
       if (open) row.classList.add('open')
+      if (open && open.key === this.activeKey) row.classList.add('active')
       if (!s.alive) row.classList.add('dead')
-      // Role is a badge, not a word in the meta line: the dot and the badge
-      // say the same thing at a glance, and the meta line keeps only the
-      // numbers that actually change between look-alikes.
-      const mine = this.tabs.find(
-        (t) => t.machineId === mv.id && t.sessionId === s.sessionId && t.role === ROLE.controller,
-      )
+      if (unread) row.classList.add('unread')
       if (mine) row.classList.add('owned')
       else if (s.controller) row.classList.add('readonly')
 
-      const line1 = el('div', 'tf-session-title')
-      line1.append(
-        el('span', 'tf-dot'),
-        el('span', 'tf-session-name', s.title || basename(s.cwd) || s.sessionId),
-      )
-      // A badge names a state that is not the ordinary one. Being in control is
-      // the ordinary case for a row someone is about to click, so it wears no
-      // badge — the dot is the accent and the meta line says 控制中 — while the
-      // two states that mean this client cannot type keep one.
+      const line = el('div', 'tf-session-title')
+      const name = el('span', 'tf-session-name', s.title || basename(s.cwd) || s.sessionId)
+      line.append(name)
+
+      // A badge names a state that is not the ordinary one: the two that mean
+      // this client cannot type, or that there is nothing left to type into.
       if (!s.alive) {
-        line1.append(el('span', 'tf-session-badge b-dead', '已退出'))
+        line.append(el('span', 'tf-session-badge b-dead', '已退出'))
       } else if (s.controller && !mine) {
-        line1.append(el('span', 'tf-session-badge b-view', '只读'))
+        line.append(el('span', 'tf-session-badge b-view', '只读'))
       }
 
+      // What a session wants, in its own row: the message a program gave, the
+      // kind of block when it gave none, or how far along it is. The full text
+      // is in the tooltip; the row has one line and a name to keep.
+      if (status === 'waiting') {
+        const note = el('span', 'tf-session-note is-warn', s.message || kindLabel(s.kind))
+        note.title = s.message || kindLabel(s.kind)
+        line.append(note)
+      } else if (status === 'working') {
+        const note = progress >= 0 ? `${progress}%` : ago(s.since || 0)
+        if (note) {
+          const chip = el('span', 'tf-session-note is-quiet', note)
+          chip.title = progress >= 0 ? `进度 ${progress}%` : '运行中'
+          line.append(chip)
+        }
+      }
+
+      if (when) line.append(el('span', 'tf-session-when', when))
+      line.append(statusGlyph(status, unread))
+
+      // 结束 is the row's one destructive control, and it arrives with the
+      // pointer: the slot is reserved whether or not it is drawn, so hovering
+      // never moves the glyph beside it.
+      const act = el('span', 'tf-session-act')
       if (s.alive) {
-        // 结束 keeps its place on the row and only its ink arrives on hover, so
-        // a name long enough to reach it is not pushed aside by a hand.
-        const kill = el('button', 'tf-kill', '结束')
+        const kill = el('button', 'tf-kill', '✕')
+        kill.type = 'button'
         kill.title = '结束该会话（终止主机上的进程）'
         kill.onclick = (ev) => {
           ev.stopPropagation()
           this.killSession(mv, s)
         }
-        line1.append(kill)
+        act.append(kill)
       }
+      line.append(act)
 
-      // The row's second line: the shell's id, its size, and what it is to this
-      // client — 控制中, 只读 with whoever holds it, 无人控制 when nobody does,
-      // or 已退出. It leaves the where and the pid to the tooltip and the
-      // inspector.
-      //
-      // 控制中 is about a keyboard somebody has. A shell nobody holds is not
-      // that, and the pane over it reads 只读: the row would be the one place on
-      // screen claiming a holder there is none of.
       const standing = !s.alive
         ? '已退出'
         : mine
@@ -852,42 +1157,51 @@ export class App {
           : s.controller
             ? `只读 ${s.controller}`
             : '无人控制'
-      const meta = el('div', 'tf-session-meta', `${s.sessionId} · ${s.cols}×${s.rows} · ${standing}`)
       row.title = [
-        s.sessionId,
+        s.title || basename(s.cwd) || s.sessionId,
         s.cwd,
-        `pid ${s.pid}`,
-        s.controller ? `控制端 ${s.controller}` : '当前无人控制',
-        !s.alive ? '已退出' : '',
+        s.sessionId,
+        `pid ${s.pid} · ${s.cols}×${s.rows}`,
+        standing,
+        s.message,
       ]
         .filter(Boolean)
         .join('\n')
 
-      row.append(line1, meta)
+      row.append(line)
       row.onclick = () => this.attachOrFocus(mv.id, s.sessionId)
+      // Every list on a Mac renames what it lists on a double-click. The hub
+      // keeps the title, so every client watching the shell reads it.
+      row.ondblclick = (ev) => {
+        ev.preventDefault()
+        this.renameSession(mv, s, name)
+      }
       host.append(row)
+    }
+
+    if (shown === 0) {
+      if (this.filter) {
+        host.append(el('div', 'tf-empty tf-nested', '没有匹配的会话'))
+      } else if (!mv.sessions.length) {
+        host.append(el('div', 'tf-empty tf-nested', '没有会话'))
+      }
     }
   }
 
   /**
-   * Rename a shell in place: the tab's label becomes a field, Enter commits
-   * the name to the hub and Escape or a blur leaves the shell as it was. The
-   * name travels as the session's title, so the sidebar row and every other
-   * client watching the shell read it too.
+   * Rename a shell from its row: the name becomes a field, Enter commits the
+   * title to the hub and Escape or a blur lets it go. The name travels as the
+   * session's title, so the row and every other client read it too.
    */
-  private renameTab(tab: Tab, label: HTMLElement): void {
-    if (!tab.sessionId) {
-      this.toast('会话还没有创建，稍等一下再命名', 'warn')
-      return
-    }
-    const fleet = this.fleetOf(tab)
-    if (!fleet?.online) {
+  private renameSession(mv: MachineView, s: Summary, label: HTMLElement): void {
+    if (!mv.fleet.online) {
       this.toast('尚未连接到任何主机', 'warn')
       return
     }
-    const input = el('input', 'tf-tab-rename') as HTMLInputElement
+    if (!label.isConnected || label.querySelector('input')) return
+    const input = el('input', 'tf-session-rename') as HTMLInputElement
     input.type = 'text'
-    input.value = tab.title || ''
+    input.value = s.title || basename(s.cwd) || s.sessionId
     input.placeholder = '终端名称'
     input.title = '回车命名，Esc 取消'
     label.replaceWith(input)
@@ -900,12 +1214,11 @@ export class App {
       done = true
       const title = input.value.trim()
       input.replaceWith(label)
-      if (commit && title !== (tab.title || '')) {
-        // Optimistic: the label moves at once, and the broadcast that follows
-        // confirms it for every client, this one included.
-        tab.title = title
-        fleet.rename(tab.sessionId!, title)
-        this.renderTabs()
+      if (commit && title && title !== s.title) {
+        s.title = title
+        mv.fleet.rename(s.sessionId, title)
+        this.renderFleet()
+        this.renderCard()
       }
     }
     input.onkeydown = (ev) => {
@@ -921,64 +1234,134 @@ export class App {
     input.onblur = () => finish(true)
   }
 
-  private renderTabs(): void {
-    this.tabStrip.replaceChildren()
-    for (const tab of this.tabs) {
-      const btn = el('button', 'tf-tab')
-      if (tab.key === this.activeKey) btn.classList.add('active')
-      if (!tab.alive && tab.sessionId) btn.classList.add('dead')
-      if (tab.role === ROLE.controller) btn.classList.add('owned')
-      if (!this.machine(tab.machineId)?.online) btn.classList.add('offline')
-      btn.dataset.machine = tab.machineId
+  /** The card's title row, from the session the pane is showing. */
+  private renderCard(): void {
+    const tab = this.current()
+    const mv = tab ? this.machine(tab.machineId) : undefined
+    const s =
+      tab?.sessionId && mv ? mv.sessions.find((x) => x.sessionId === tab.sessionId) : undefined
 
-      const dot = el('span', 'tf-tab-dot')
-      const label = el('span', 'tf-tab-label', tab.title || '新终端')
-      btn.append(dot)
-      if (this.multi) {
-        const mv = this.machine(tab.machineId)
-        btn.append(el('span', 'tf-tab-machine', mv?.label ?? tab.machineId))
-      }
-      btn.append(label)
-      const close = el('span', 'tf-tab-close', '×')
-      close.title = '关闭标签（仅停止观看，不结束进程）'
-      close.onclick = (ev) => {
-        ev.stopPropagation()
-        this.closeTab(tab)
-      }
-      btn.append(close)
-
-      // A double-click on the tab's name renames the shell: the hub keeps the
-      // title and every client watching the shell reads it, which is what makes
-      // two shells started in the same directory tellable apart.
-      btn.ondblclick = (ev) => {
-        if (ev.target === close) return
-        ev.preventDefault()
-        this.renameTab(tab, label)
-      }
-
-      // Two shells started in the same directory look identical in the strip,
-      // so the tooltip carries what distinguishes them.
-      const mv = this.machine(tab.machineId)
-      const summary = tab.sessionId
-        ? mv?.sessions.find((s) => s.sessionId === tab.sessionId)
-        : undefined
-      btn.title = [
-        this.multi ? mv?.label : '',
-        tab.sessionId || '尚未创建',
-        summary?.cwd,
-        summary ? `${summary.cols}×${summary.rows}` : '',
-        summary?.controller ? `控制端 ${summary.controller}` : '',
-        tab.exit !== undefined ? `已退出（退出码 ${tab.exit}）` : '',
-      ]
-        .filter(Boolean)
-        .join('\n')
-      btn.onclick = () => this.select(tab.key)
-      this.tabStrip.append(btn)
+    this.cardDot.className = 'tf-dot tf-card-dot'
+    this.cardClose.hidden = !tab
+    if (!tab) {
+      this.cardName.textContent = '未选择会话'
+      this.cardDir.textContent = ''
+      this.cardDir.hidden = true
+      this.cardChip.hidden = true
+      this.cardRole.textContent = ''
+      this.cardRole.className = 'tf-card-role'
+      this.cardDot.classList.add('role-idle')
+      return
     }
-    const add = el('button', 'tf-tab-add', '+')
-    add.title = `新建终端 (${MOD_LABEL}T)`
-    add.onclick = () => this.newTab()
-    this.tabStrip.append(add)
+
+    this.cardName.textContent = s?.title || tab.title || basename(s?.cwd || '') || '新终端'
+    this.cardDir.textContent = s?.cwd || ''
+    this.cardDir.hidden = !s?.cwd
+    this.cardDir.title = s?.cwd || ''
+    // The program in the pane when one is running: "claude" is worth a chip,
+    // "zsh" beside a shell named zsh is a chip saying nothing. On a machine the
+    // window reaches through the relay the chip names the machine instead.
+    const running = s?.process && !SHELLS.has(s.process.toLowerCase()) ? s.process : ''
+    const chip = this.multi
+      ? mv ? this.machineTitle(mv) : tab.machineId
+      : running || (s?.shell ? basename(s.shell) : '')
+    this.cardChip.textContent = chip
+    this.cardChip.hidden = !chip
+    if (chip) {
+      this.cardChip.title = this.multi
+        ? `运行在 ${chip}`
+        : running
+          ? `前台程序 ${chip}`
+          : `外壳 ${chip}`
+    }
+
+    let role = ''
+    let cls = 'role-idle'
+    if (!tab.alive) {
+      role = '已退出'
+      cls = 'role-dead'
+    } else if (tab.role === ROLE.controller) {
+      role = '控制中'
+      cls = 'role-ctrl'
+    } else if (tab.role === ROLE.viewer) {
+      role = '只读'
+      cls = 'role-view'
+    }
+    this.cardRole.textContent = role
+    this.cardRole.className = `tf-card-role ${cls}`
+    this.cardDot.classList.add(cls)
+  }
+
+  /** The sidebar's foot: what needs a person, what is busy, what finished. */
+  private renderFoot(): void {
+    const sessions = this.allSessions()
+    const count = (kind: 'waiting' | 'working' | 'idle') =>
+      sessions.filter(({ s }) => {
+        const state = s.status || (s.alive ? 'idle' : 'exited')
+        return kind === 'idle' ? state === 'idle' && s.unread : state === kind
+      }).length
+    const waiting = count('waiting')
+    const working = count('working')
+    const done = count('idle')
+
+    this.footStats.replaceChildren()
+    if (waiting + working + done === 0) {
+      // Nothing wants attention: the foot says how the fleet stands, and a
+      // click asks the roster again.
+      const fleet = el('button', 'tf-foot-fleet') as HTMLButtonElement
+      fleet.type = 'button'
+      const online = [...this.machines.values()].filter((mv) => mv.online).length
+      fleet.append(el('span', `tf-dot ${online ? 'on' : 'off'}`))
+      fleet.append(el('span', undefined, String(online)))
+      fleet.title = `${online} 台机器在线 · 刷新`
+      fleet.onclick = () => this.refreshAll()
+      this.footStats.append(fleet)
+      return
+    }
+
+    const chip = (kind: 'waiting' | 'working' | 'idle', n: number, cls: string, title: string) => {
+      if (!n) return
+      const btn = el('button', `tf-foot-chip ${cls}`) as HTMLButtonElement
+      btn.type = 'button'
+      btn.title = title
+      btn.append(statusGlyph(kind, kind === 'idle', 12))
+      btn.append(el('span', undefined, String(n)))
+      btn.onclick = () => this.jumpTo(kind)
+      this.footStats.append(btn)
+    }
+    chip('waiting', waiting, 'is-warn', '需要你：跳到下一个等待的会话')
+    chip('working', working, 'is-working', '运行中：跳到下一个正在工作的会话')
+    chip('idle', done, 'is-done', '已完成：跳到下一个刚完成的会话')
+  }
+
+  /** Walk the sessions that answer to a kind of attention, after the current. */
+  private jumpTo(kind: 'waiting' | 'working' | 'idle'): void {
+    const entries = this.allSessions()
+    if (!entries.length) return
+    const active = entries.findIndex(
+      ({ mv, s }) =>
+        this.current()?.machineId === mv.id && this.current()?.sessionId === s.sessionId,
+    )
+    const matches = ({ s }: { s: Summary }): boolean => {
+      const state = s.status || (s.alive ? 'idle' : 'exited')
+      return kind === 'idle' ? state === 'idle' && Boolean(s.unread) : state === kind
+    }
+    for (let off = 1; off <= entries.length; off++) {
+      const i = (active + off + entries.length) % entries.length
+      const { mv, s } = entries[i]
+      if (!matches({ s })) continue
+      this.collapsed.delete(mv.id)
+      this.activeMachine = mv.id
+      this.attachOrFocus(mv.id, s.sessionId)
+      return
+    }
+    const note =
+      kind === 'waiting'
+        ? '没有会话需要你'
+        : kind === 'working'
+          ? '没有会话在运行'
+          : '没有刚完成的会话'
+    this.toast(note, 'info')
   }
 
   private renderStatus(): void {
@@ -1002,9 +1385,9 @@ export class App {
     const tab = this.current()
     const mv = tab ? this.machine(tab.machineId) : this.machine(this.activeMachine)
     if (mv?.host) {
-      this.statusHost.textContent = `${mv.label} · ${mv.host.platform}/${mv.host.arch} · ${mv.sessions.length} 个会话`
+      this.statusHost.textContent = `${this.machineTitle(mv)} · ${mv.host.platform}/${mv.host.arch} · ${mv.sessions.length} 个会话`
     } else {
-      this.statusHost.textContent = mv ? mv.label : ''
+      this.statusHost.textContent = mv ? this.machineTitle(mv) : ''
     }
 
     if (!tab) {
@@ -1023,24 +1406,27 @@ export class App {
 
     // A banner action: what the button says, what it does, and whether it is
     // the one that ends something. There is more than one of them now, because
-    // 接管, 释放, 关闭标签 and 结束 are four different questions and a person
+    // 接管, 释放, 关闭面板 and 结束 are four different questions and a person
     // looking at a shell asks them at different moments.
     const actions: Array<{ label: string; title: string; run: () => void; tone?: string }> = []
 
     const mv = tab ? this.machine(tab.machineId) : undefined
     let text = ''
     if (tab && mv && !mv.online) {
-      text = `${mv.label} 离线，重连后将自动恢复`
+      text = `${this.machineTitle(mv)} 离线，重连后将自动恢复`
     } else if (tab?.sessionId && !tab.alive) {
       // The shell is gone. Its output is still on screen and still worth
-      // reading, so the tab stays until it is closed on purpose — 结束 above
-      // never took the tab away, which is why this is here to be pressed. The
+      // reading, so the pane stays until it is closed on purpose — 结束 never
+      // took the pane away, which is why this is here to be pressed. The
       // sentence does not name the button beside it: a banner that reads
-      // "…关闭标签 [关闭标签]" is a banner nobody reads twice.
-      text = '会话已退出，最后几行仍可读取。'
+      // "…关闭面板 [关闭面板]" is a banner nobody reads twice.
+      text =
+        tab.exit !== undefined
+          ? `会话已退出（退出码 ${tab.exit}），最后几行仍可读取。`
+          : '会话已退出，最后几行仍可读取。'
       actions.push({
-        label: '关闭标签',
-        title: '关闭标签（仅停止观看）',
+        label: '关闭面板',
+        title: '关闭面板（仅停止观看）',
         run: () => this.closeTab(tab),
       })
     } else if (tab?.sessionId && tab.alive && tab.role !== ROLE.controller) {
@@ -1051,7 +1437,7 @@ export class App {
         // The machine answered a claim by refusing it: it allows watching and
         // not typing. The button stays — the switch can move back at any time —
         // but nobody should have to guess why their typing is going nowhere.
-        text = `只读：${mv.label} 不允许其他客户端控制它的终端`
+        text = `只读：${this.machineTitle(mv)} 不允许其他客户端控制它的终端`
       } else {
         text = holder ? `只读：该会话正被 ${holder} 控制` : '只读：当前无人控制'
       }
@@ -1330,7 +1716,7 @@ export class App {
       return
     }
     if (!mv.fleet.online) {
-      this.toast(`${mv.label} 尚未连接`, 'warn')
+      this.toast(`${this.machineTitle(mv)} 尚未连接`, 'warn')
       return
     }
     // The new shell opens where the shell on screen stands, so a second tab
@@ -1345,7 +1731,8 @@ export class App {
     // Size is sent with the request so the shell is born at the right width
     // instead of being resized a frame later.
     mv.fleet.create({ cols, rows, from })
-    this.renderTabs()
+    this.renderCard()
+    this.renderFleet()
   }
 
   private refreshAll(): void {
@@ -1370,7 +1757,7 @@ export class App {
     }
     const mv = this.machine(machineId)
     if (!mv?.fleet.online) {
-      this.toast(`${mv?.label ?? machineId} 尚未连接`, 'warn')
+      this.toast(`${mv ? this.machineTitle(mv) : machineId} 尚未连接`, 'warn')
       return
     }
     const tab = this.openTab(machineId, sessionId)
@@ -1389,7 +1776,7 @@ export class App {
     }
     const tab = this.current()
     if (tab) this.activeMachine = tab.machineId
-    this.renderTabs()
+    this.renderCard()
     this.renderFleet()
     this.renderBanner()
     this.renderStatus()
@@ -1422,7 +1809,7 @@ export class App {
       this.activeKey = this.tabs.length ? this.tabs[this.tabs.length - 1].key : -1
     }
     for (const t of this.tabs) t.pane.classList.toggle('active', t.key === this.activeKey)
-    this.renderTabs()
+    this.renderCard()
     this.renderFleet()
     this.renderBanner()
     this.renderStatus()
@@ -1458,9 +1845,9 @@ export class App {
     keys.append(
       el('div', undefined, '新建终端'),
       el('div', undefined, `${MOD_LABEL}T`),
-      el('div', undefined, '关闭标签'),
+      el('div', undefined, '关闭面板'),
       el('div', undefined, `${MOD_LABEL}W`),
-      el('div', undefined, '切换标签'),
+      el('div', undefined, '切换面板'),
       el('div', undefined, `${MOD_LABEL}Tab`),
       el('div', undefined, '跳到第 N 个'),
       el('div', undefined, `${MOD_LABEL}1…9`),
@@ -1485,11 +1872,11 @@ export class App {
     if (!this.machines.size) {
       note.textContent = '中继上还没有登记任何机器。在要分享的机器上运行 tfd，连到同一个中继即可。'
     } else if (mv && !mv.online) {
-      note.textContent = `${mv.label} 当前离线，重连后这里的会话会自动回来。`
+      note.textContent = `${this.machineTitle(mv)} 当前离线，重连后这里的会话会自动回来。`
     } else if (mv && !mv.sessions.length) {
-      note.textContent = `${mv.label} 上还没有会话。新建一个，或在别的客户端上开一个再来看。`
+      note.textContent = `${this.machineTitle(mv)} 上还没有会话。新建一个，或在别的客户端上开一个再来看。`
     } else if (mv) {
-      note.textContent = `${mv.label} 上有 ${mv.sessions.length} 个会话。在左侧选一个，或直接新建一个终端。`
+      note.textContent = `${this.machineTitle(mv)} 上有 ${mv.sessions.length} 个会话。在左侧选一个，或直接新建一个终端。`
     }
   }
 
@@ -1502,7 +1889,7 @@ export class App {
    *   接管       take the lease from whoever holds it
    *   释放       give the lease up, leaving the shell running
    *   结束       kill the process, for every client, irreversibly
-   *   关闭标签   stop watching, leaving the process alone
+   *   关闭面板   stop watching, leaving the process alone
    *
    * Ending needs control, and a client that does not hold the shell does not
    * have it — so it claims first: stealing when someone else holds the lease,
@@ -1526,14 +1913,14 @@ export class App {
     const held = Boolean(session.controller) && !mine
     if (
       !window.confirm(
-        `在 ${mv.label} 上结束会话「${name}」？\n\n` +
+        `在 ${this.machineTitle(mv)} 上结束会话「${name}」？\n\n` +
           `这会终止主机上的进程，对所有客户端都不可再恢复。\n` +
           (held
             ? `需要先取得控制权（会从 ${session.controller} 手中接管）。\n`
             : mine
               ? '控制权已经在你手里。\n'
               : '当前无人控制，会先取得控制权。\n') +
-          `\n标签不会被关闭：结束后仍可读取最后的输出，再由你决定是否关闭标签。`,
+          `\n面板不会被关闭：结束后仍可读取最后的输出，再由你决定是否关闭面板。`,
       )
     ) {
       return
@@ -1600,7 +1987,8 @@ export class App {
       const tab = this.tabs.find((t) => t.bundle === bundle)
       if (!tab || !title) return
       tab.title = title
-      this.renderTabs()
+      this.renderCard()
+      this.renderFleet()
     })
     return this.wireSelection(bundle, pane)
   }
@@ -1698,6 +2086,20 @@ export class App {
     document.addEventListener(
       'keydown',
       (ev) => {
+        // Escape puts away whatever small thing is open, in the order a person
+        // would close them.
+        if (ev.key === 'Escape') {
+          if (this.settingsPop) {
+            this.closeSettings()
+            return
+          }
+          if (!this.filterBar.hidden) {
+            this.toggleFilter()
+            return
+          }
+          this.root.classList.remove('side-open')
+          return
+        }
         const mod = ev.metaKey || ev.ctrlKey
         if (!mod) return
         const key = ev.key
@@ -1705,6 +2107,12 @@ export class App {
         if (key === 't' && !ev.shiftKey) {
           ev.preventDefault()
           this.newTab()
+          return
+        }
+        if (key === 'k' && !ev.shiftKey) {
+          ev.preventDefault()
+          if (this.filterBar.hidden) this.toggleFilter()
+          this.filterInput.focus()
           return
         }
         if (key === 'w' && !ev.shiftKey) {

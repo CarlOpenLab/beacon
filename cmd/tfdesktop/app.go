@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
@@ -41,6 +43,29 @@ type window struct {
 	sidebarHidden   bool
 	dismissed       map[string]bool
 
+	// sidebarWidth, sideDrag and collapsed are the column's own state: how wide
+	// it is (0 for the default), the width a drag started from, and which
+	// machine groups the person folded away.
+	sidebarWidth float32
+	sideDrag     float32
+	collapsed    map[string]bool
+
+	// zoomed fills the body with the focused pane of a split, kero's ⌘⇧↩.
+	zoomed bool
+
+	// pal is the command palette's state.
+	pal paletteState
+
+	// statusSeen is the state each session was in when its machine last pushed
+	// a list, keyed as "machine\x00session". A notification is about a change,
+	// so a session that was already waiting when the window opened says nothing.
+	statusSeen map[string]string
+
+	// onNotify, when set (by a test), receives what would have been shown as a
+	// notification. The decision is the part worth testing; the banner is the
+	// desktop's own business.
+	onNotify func(title, body string)
+
 	// order is the tabs in the order they were opened, by key; selected indexes
 	// it. A tab is keyed rather than named by session id because a tab exists
 	// for a moment before the hub has told the window which session it got.
@@ -57,9 +82,13 @@ type window struct {
 	focus *splitNode
 
 	// renaming is the shell whose name is being edited and renameDraft is what
-	// the field holds; see rename.go.
+	// the field holds; see rename.go. renameSeed is the name the draft started
+	// as — what the row showed — and renameArmed says the field has been on
+	// screen for a frame, which is what lets a press elsewhere commit it.
 	renaming    *renameTarget
 	renameDraft string
+	renameSeed  string
+	renameArmed bool
 
 	// cmdBar is the command composer and its history: what this window has typed
 	// into the shell on screen, and the box it is typed into again.
@@ -142,6 +171,7 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 		shell:        shell,
 		cwd:          cwd,
 		tabs:         make(map[int]*tab),
+		collapsed:    make(map[string]bool),
 		sidebarSplit: -1,
 		nextKey:      1,
 		cmdBar:       newCommandBar(),
@@ -209,7 +239,190 @@ func (w *window) invalidate() {
 // started from anywhere — the New Tab button here, or a browser driving this
 // machine — turns up the same way.
 func (w *window) sessionsArrived(list []protocol.Summary) {
-	w.update(func() { w.reconcile(list) })
+	w.update(func() {
+		w.reconcile(list)
+		w.reportStatuses(machineLocal, list)
+		w.updateTitle()
+	})
+}
+
+// reportStatuses tells the user — with a notification, and with the Dock badge
+// — what changed while they were looking elsewhere. It runs on the window's
+// thread, from the list each machine pushed, and it is the only place a
+// notification is made: kero's rule, that a session coming to need you, failing
+// or finishing unseen is news, and everything else is the window's own business.
+func (w *window) reportStatuses(machine string, list []protocol.Summary) {
+	if w.statusSeen == nil {
+		w.statusSeen = map[string]string{}
+	}
+	for i := range list {
+		s := list[i]
+		key := machine + "\x00" + s.SessionID
+		prev, seen := w.statusSeen[key]
+		w.statusSeen[key] = s.Status
+		if !seen || prev == s.Status {
+			continue
+		}
+		// The session on screen, in a window the person is at, is not news.
+		if w.win != nil && w.win.IsFocused() && !w.sidebarHidden {
+			if tb := w.tabOf(machine, s.SessionID); tb != nil && tb == w.activeTab() {
+				continue
+			}
+		}
+		title, body, ok := w.noticeFor(prev, s)
+		if !ok {
+			continue
+		}
+		w.notify(machine, s.SessionID, title, body)
+	}
+	w.refreshBadge()
+}
+
+// noticeFor is what a change is worth telling: a session that comes to need the
+// user, a program that reports a failure, and an agent that finishes while
+// nobody is looking. Everything else is the window's own business.
+func (w *window) noticeFor(prev string, s protocol.Summary) (title, body string, ok bool) {
+	set := w.store.Get()
+	switch {
+	case s.Status == "waiting" && !set.NotifyWaitingOff:
+		title, body = locales.NotifyNeedsYouTitle(sessionLabel(s)), s.Message
+		if body == "" {
+			switch s.Kind {
+			case "permission":
+				body = locales.StatusNeedsPermission()
+			case "question":
+				body = locales.StatusHasQuestion()
+			case "auth":
+				body = locales.StatusNeedsSignIn()
+			default:
+				body = locales.NotifyBodyWaiting()
+			}
+		}
+	case s.Status == "error" && !set.NotifyErrorOff:
+		title, body = locales.NotifyFailedTitle(sessionLabel(s)), s.Message
+		if body == "" {
+			body = locales.NotifyBodyError()
+		}
+	case s.Status == "idle" && prev == "working" && s.Unread && !set.NotifyDoneOff:
+		title, body = locales.NotifyDoneTitle(sessionLabel(s)), s.Message
+		if body == "" {
+			body = locales.NotifyBodyDone()
+		}
+	default:
+		return "", "", false
+	}
+	return title, body, true
+}
+
+// notify shows one notification, whose click puts that session on screen.
+func (w *window) notify(machine, id, title, body string) {
+	if w.onNotify != nil {
+		w.onNotify(title, body)
+		return
+	}
+	if w.win == nil || !mygo.NotificationsSupported() {
+		return
+	}
+	n := mygo.NewNotification(mygo.NotificationOptions{
+		ID:    "session/" + machine + "/" + id,
+		Group: id,
+		Title: title,
+		Body:  body,
+	})
+	n.OnClick(func() {
+		w.update(func() {
+			if tb := w.tabOf(machine, id); tb != nil {
+				delete(w.collapsed, machine)
+				w.selectTab(tb)
+			} else {
+				w.openOrSelect(machine, id)
+			}
+			if w.win != nil {
+				w.win.Show()
+				w.win.Focus()
+			}
+			mygo.App.Focus()
+		})
+		n.Close()
+	})
+	go n.Show()
+}
+
+// refreshBadge puts how many sessions need the user on the Dock icon, or clears
+// it when the person turned that off or nothing needs them.
+func (w *window) refreshBadge() {
+	if w.win == nil {
+		return
+	}
+	n := 0
+	if !w.store.Get().DockBadgeOff {
+		count := func(list []protocol.Summary) {
+			for _, s := range list {
+				if s.Status == "waiting" {
+					n++
+				}
+			}
+		}
+		count(w.live)
+		for _, list := range w.remoteSessions {
+			count(list)
+		}
+	}
+	mygo.App.SetBadgeCount(n)
+}
+
+// sessionLabel is a session's name for a notification, from what the list says:
+// its title, else the last part of its directory, else its id.
+func sessionLabel(s protocol.Summary) string {
+	name := strings.TrimSpace(s.Title)
+	if name == "" {
+		name = filepath.Base(strings.TrimSpace(s.Cwd))
+	}
+	if name == "" || name == "." || name == "/" {
+		name = s.SessionID
+	}
+	return name
+}
+
+// zoomText steps the terminal's size, as ⌘= and ⌘- do, or puts it back to the
+// default with ⌘0. The store keeps the choice, so the next window opens at it.
+func (w *window) zoomText(delta int) {
+	size := w.store.Get().FontSize
+	if size <= 0 {
+		size = settings.DefaultFontSize
+	}
+	switch {
+	case delta == 0:
+		size = settings.DefaultFontSize
+	case delta > 0:
+		size = min(size+1, 32)
+	default:
+		size = max(size-1, 8)
+	}
+	if _, err := w.store.Update(func(st *settings.Settings) { st.FontSize = size }); err != nil {
+		log.Printf("tfdesktop: save font size: %v", err)
+		return
+	}
+	w.reletter(termFont(w.store.Get()))
+	w.invalidate()
+}
+
+// updateTitle says, in the window's own title, what the fleet wants: how many
+// sessions need the user, then how many are working. It is the one place a
+// person sees the count with the window's chrome out of the way.
+func (w *window) updateTitle() {
+	if w.win == nil {
+		return
+	}
+	waiting, working, _ := w.statusCounts()
+	title := "term-fleet"
+	switch {
+	case waiting > 0:
+		title = fmt.Sprintf("● %d · term-fleet", waiting)
+	case working > 0:
+		title = fmt.Sprintf("◐ %d · term-fleet", working)
+	}
+	w.win.SetTitle(title)
 }
 
 // rosterArrived is the relay pushing its machine list. The panel redraws from
@@ -233,6 +446,7 @@ func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) 
 				tb.cwd = s.Cwd
 			}
 		}
+		w.reportStatuses(machine, list)
 		w.invalidate()
 	})
 }
@@ -361,62 +575,46 @@ func (w *window) view(c *ui.Context) {
 	}
 	w.followLease()
 
-	// Desktop chrome uses a fixed neutral palette; terminal ANSI stays colored.
+	// kero's chrome, in the appearance the person chose; terminal ANSI keeps its
+	// own colors.
 	mode := w.store.Get().Theme
 	applyTheme(c, mode)
 
-	if c.Shortcut(ui.Cmd, ui.KeyComma) {
-		w.openSettings()
-	}
-	if !w.settingsOpen && w.reachPrompt == "" {
-		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight) {
-			w.stepTab(1)
-		}
-		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) {
-			w.stepTab(-1)
-		}
-		if c.Shortcut(ui.Cmd, ui.KeyT) {
-			w.newTab()
-		}
-		// ⌘D splits the pane on screen beside itself and ⌘⇧D above or below
-		// it, each with a fresh shell on the far side of the new divider —
-		// the two keys every terminal on a Mac answers to.
-		if c.Shortcut(ui.Cmd, ui.KeyD) {
-			w.splitFocused(true)
-		}
-		if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyD) {
-			w.splitFocused(false)
-		}
-		if c.Shortcut(ui.Cmd, ui.KeyR) || c.Shortcut(0, ui.KeyF5) {
-			w.refreshAll()
-		}
+	// Every shortcut comes from the action list, so one rebound in Settings is
+	// the one the window reads: see actions.go. ⌘1…⌘9 are the window's own —
+	// they name a row, not an action — and are read here.
+	w.runShortcuts(c)
+	if !w.settingsOpen && w.reachPrompt == "" && !w.pal.open {
 		for i, key := range tabDigits {
 			if c.Shortcut(ui.Cmd, key) {
 				w.jumpTab(i)
+				break
 			}
-		}
-		if c.Shortcut(ui.Cmd, ui.KeyB) {
-			w.sidebarHidden = !w.sidebarHidden
-		}
-		if c.Shortcut(ui.Cmd, ui.KeyW) {
-			// With panes on screen this closes the pane — the shell keeps
-			// running and its tab stays in the strip — and with one pane it
-			// closes the tab, which is what it has always done.
-			w.closeSplitPane()
 		}
 	}
 
-	ui.Row(c).Fill().Background(c.Theme().Background).Children(func() {
+	// The window's wash: the root's gradient, and the glow the cards sit in.
+	pal := paletteFor(c)
+	row := ui.Row(c).Fill().AlignItems(ui.Stretch)
+	backdrop(c, pal, row, w.store.Get().Background)
+	row.Children(func() {
 		if !w.sidebarHidden {
-			w.sidebar(c, mode)
+			w.sidebar(c, pal)
 		}
-		ui.Column(c).Fill().Children(func() {
-			w.header(c)
-			w.body(c)
-			w.statusBar(c)
+		// The cards' column: the wash shows in the gaps around a card, and the
+		// left gap closes when the sidebar is shown, so the column reads as the
+		// sidebar's neighbour rather than a second panel.
+		left := float32(uitokens.CardGap)
+		if !w.sidebarHidden {
+			left = 0
+		}
+		ui.Column(c).Grow(1).MinWidth(0).
+			Padding(uitokens.CardGap, uitokens.CardGap, uitokens.CardGap, left).DragWindow().Children(func() {
+			w.body(c, pal)
 		})
 		w.settingsDialog(c)
 		w.reachDialog(c)
+		w.paletteView(c, pal)
 	})
 }
 
@@ -598,8 +796,14 @@ func (w *window) askForReach() {
 
 func (w *window) settingsDialog(c *ui.Context) {
 	width, height := c.Size()
+	pal := paletteFor(c)
 	ui.Modal(c, &w.settingsOpen, func() {
-		ui.Column(c).Width(min(720, width-80)).Height(min(560, height-80)).Background(c.Theme().Background).Children(func() {
+		// The settings window in kero's terms: a small window of its own, on the
+		// wash, with the pages and their card inside it.
+		panel := ui.Column(c).Width(min(760, width-80)).Height(min(600, height-80)).
+			Radius(uitokens.CardRadius).Clip()
+		floating(panel, pal)
+		panel.LinearGradient(uitokens.WashFor(w.store.Get().Background).Base(pal.Dark)).Children(func() {
 			if w.settingsContent != nil {
 				w.settingsContent.view(c)
 			}

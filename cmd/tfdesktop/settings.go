@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/fonts"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
@@ -96,6 +98,9 @@ const (
 	paneRelay
 	paneServer
 	paneUpdates
+	paneAppearance
+	paneNotifications
+	paneKeyboard
 )
 
 // termFont turns stored settings into the terminal plugin's font.
@@ -149,14 +154,33 @@ type settingsWindow struct {
 	// inverse of settings.ControlOff, because the switch reads better as the
 	// thing it allows.
 	control bool
+	// notifyWaiting, notifyDone, notifyError and dockBadge are the notification
+	// switches in the window's own terms: true means the notification happens,
+	// and commit writes the inverse into the fields that name what turns it off.
+	notifyWaiting bool
+	notifyDone    bool
+	notifyError   bool
+	dockBadge     bool
+
 	// language is the interface language: "" follows the languages the system
 	// says the person reads, and a tag such as "en" or "zh-Hans" is a choice.
+	// applied is the one the window last told the app to show, so a commit that
+	// did not touch the language — a font size, a relay address — does not make
+	// every window redraw for nothing.
 	language string
+	applied  string
 
 	// caNote is the one line under the CA field: which certificate is pinned,
 	// or why the last attempt failed. It is state, not a transient message,
 	// because ui has no other place to show "this is the file you picked".
 	caNote string
+
+	// recording is the action whose shortcut is being typed, and recordRef is the
+	// handle that takes the keys while it is; keyNotice is the line under the
+	// keyboard page about a conflict or a clear.
+	recording  string
+	recordRef  ui.Handle
+	keyNotice  string
 
 	// status is the last thing that happened to the draft: saved, or why not.
 	status string
@@ -190,7 +214,12 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 		relayOn:  cur.RelayOn,
 		server:   !cur.ServerOff,
 		control:  !cur.ControlOff,
-		language: normalizeLanguage(cur.Language),
+		notifyWaiting: !cur.NotifyWaitingOff,
+		notifyDone:    !cur.NotifyDoneOff,
+		notifyError:   !cur.NotifyErrorOff,
+		dockBadge:     !cur.DockBadgeOff,
+		language:      normalizeLanguage(cur.Language),
+		applied:       normalizeLanguage(cur.Language),
 	}
 	if s.size <= 0 {
 		s.size = settings.DefaultFontSize
@@ -264,6 +293,10 @@ func (s *settingsWindow) draft() settings.Settings {
 	cur.ServerOff = !s.server
 	cur.ControlOff = !s.control
 	cur.Language = normalizeLanguage(s.language)
+	cur.NotifyWaitingOff = !s.notifyWaiting
+	cur.NotifyDoneOff = !s.notifyDone
+	cur.NotifyErrorOff = !s.notifyError
+	cur.DockBadgeOff = !s.dockBadge
 	return cur
 }
 
@@ -271,7 +304,9 @@ func (s *settingsWindow) draft() settings.Settings {
 // so the window can say so instead of leaving the user to guess whether the
 // click did anything.
 func (s *settingsWindow) dirty() bool {
-	return s.draft() != s.loaded()
+	// The keybinds are a map, which a struct comparison does not take; DeepEqual
+	// compares the rest field for field as well, so the two answers agree.
+	return !reflect.DeepEqual(s.draft(), s.loaded())
 }
 
 // caNoteFor is the one line under the CA field. It reads the file so a wrong,
@@ -299,53 +334,69 @@ func caNoteFor(path string) string {
 
 func (s *settingsWindow) view(c *ui.Context) {
 	applyTheme(c, s.store.Get().Theme)
+	pal := paletteFor(c)
 	t := c.Theme()
 	// 应用 exists for the fields that commit on it, so it is offered exactly
-	// when there is something to apply: a permanently enabled button trains
-	// the user to ignore it, and the pending marker is what says otherwise.
+	// when there is something to apply: a permanently enabled button trains the
+	// user to ignore it, and the pending marker is what says otherwise.
 	dirty := s.dirty()
 	ui.Column(c).Fill().Children(func() {
-		ui.Toolbar(c, func() {
-			ui.Text(c, locales.SettingsTitle())
+		ui.Row(c).Height(uitokens.HeaderH).Shrink(0).Padding(0, 12).Gap(8).
+			AlignItems(ui.Center).DragWindow().Children(func() {
+			ui.Text(c, locales.SettingsTitle()).FontSize(14).FontWeight(600).TextColor(pal.Text)
 			ui.Spacer(c)
 			if dirty {
 				ui.Text(c, locales.SettingsDirty()).FontSize(12).TextColor(t.Warning)
 			}
-			if ui.Button(c, locales.SettingsRestore()).Clicked() {
+			if keroButton(c, pal, "restore", locales.SettingsRestore(), "", false) {
 				s.restoreDefaults()
 			}
-			if dirty && ui.PrimaryButton(c, locales.SettingsApply()).Clicked() {
+			if dirty && keroButton(c, pal, "apply", locales.SettingsApply(), "", true) {
 				s.commit()
 			}
 			if iconButton(c, iconClose, locales.SettingsClose(), 28).Clicked() && s.desk != nil {
 				s.desk.settingsOpen = false
 			}
 		})
-		paneTabs(c, &s.pane,
-			locales.SettingsPaneTerminal(),
-			locales.SettingsPaneRelay(),
-			locales.SettingsPaneServer(),
-			locales.SettingsPaneUpdates(),
-		)
-		// The pane is the whole window, so it scrolls rather than clips: a short
-		// window must not hide the 接入 switch under the fold.
-		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Fill().Padding(18).Gap(14).Children(func() {
-				switch s.pane {
-				case paneTerminal:
-					s.terminalPane(c)
-				case paneRelay:
-					s.relayPane(c)
-				case paneServer:
-					s.serverPane(c)
-				default:
-					s.updatesPane(c)
+		ui.Row(c).Fill().MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+			// kero's Settings: the pages down the left, the chosen one on a card
+			// of its own at the right.
+			ui.Column(c).Width(184).Shrink(0).FillHeight().Padding(8, 8, 8, 4).Gap(2).Children(func() {
+				for _, page := range settingsPages {
+					s.settingsNav(c, pal, page)
 				}
+			})
+			ui.Column(c).Grow(1).MinWidth(0).FillHeight().Padding(8, 8, 8, 8).Children(func() {
+				card := ui.Column(c).Fill().MinWidth(0).Radius(uitokens.CardRadius).Clip()
+				raised(card.Background(pal.Card), pal)
+				card.Children(func() {
+					// The pane is the whole card, so it scrolls rather than clips:
+					// a short window must not hide a switch under the fold.
+					ui.Scroll(c).Fill().Children(func() {
+						ui.Column(c).Fill().Padding(18).Gap(14).Children(func() {
+							switch s.pane {
+							case paneTerminal:
+								s.terminalPane(c)
+							case paneRelay:
+								s.relayPane(c)
+							case paneServer:
+								s.serverPane(c)
+							case paneAppearance:
+								s.appearancePane(c)
+							case paneNotifications:
+								s.notificationsPage(c)
+							case paneKeyboard:
+								s.keyboardPage(c)
+							default:
+								s.updatesPane(c)
+							}
+						})
+					})
+				})
 			})
 		})
 		if s.status != "" {
-			ui.Divider(c)
-			line := ui.Text(c, s.status).FontSize(11)
+			line := ui.Text(c, s.status).FontSize(11).PaddingX(12)
 			if s.statusErr {
 				line.TextColor(t.Danger)
 			} else {
@@ -355,51 +406,193 @@ func (s *settingsWindow) view(c *ui.Context) {
 	})
 }
 
-// paneTabs is the strip that chooses a pane, drawn the way the window's session
-// tabs are: pills, with the one that is chosen raised. Two idioms for the same
-// act — an underline here, a pill there — was the window telling a person that
-// its two tab strips were two different things.
-//
-// TabsBase is what draws it rather than a row of boxes, so the arrows, Home and
-// End keep choosing a pane, and the choice keeps following the keyboard.
-func paneTabs(c *ui.Context, selected *int, names ...string) {
-	t := c.Theme()
-	col := shellColorsFor(t)
+// settingsPage is one page of the Settings window.
+type settingsPage struct {
+	id    int
+	title func() string
+	icon  *ui.SVG
+}
 
-	tabs := ui.TabsBase(c, selected, len(names))
-	tabs.List.
-		Height(tabBarHeight).PaddingX(10).Gap(4).
-		AlignItems(ui.Center).
-		Background(col.pane).
-		BorderWidth(0, 0, 1, 0).BorderColor(col.line)
-	tabs.List.Children(func() {
-		for i, name := range names {
-			chosen := i == *selected
-			pill := tabs.Tab(i).
-				Height(30).PaddingX(13).Gap(7).
-				Radius(radiusPill).
-				AlignItems(ui.Center).
-				Label(name)
-			switch {
-			case chosen:
-				// The same treatment as the shell on screen in the window's own
-				// tab strip: the raised face, and the light that falls on it.
-				pill.Background(col.tabOn).
-					BorderWidth(1).BorderColor(col.line).
-					Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, 0.35))
-			case pill.Hovered():
-				pill.Background(col.field)
+var settingsPages = []settingsPage{
+	{paneTerminal, locales.SettingsPaneTerminal, iconTerminal},
+	{paneRelay, locales.SettingsPaneRelay, iconSend},
+	{paneServer, locales.SettingsPaneServer, iconMonitor},
+	{paneUpdates, locales.SettingsPaneUpdates, iconRefresh},
+	{paneAppearance, locales.SettingsPaneAppearance, iconSun},
+	{paneNotifications, locales.SettingsPaneNotifications, iconBell},
+	{paneKeyboard, locales.SettingsPaneKeyboard, iconKeyboard},
+}
+
+// settingsNav is one page in the window's own list: kero's, with the chosen
+// page raised off the column.
+func (s *settingsWindow) settingsNav(c *ui.Context, pal *uitokens.Palette, page settingsPage) {
+	selected := s.pane == page.id
+	item := ui.Row(c).Height(32).Padding(0, 10).Gap(10).AlignItems(ui.Center).
+		Radius(uitokens.RowRadius).Label(page.title())
+	if pal.Dark {
+		item.Border(1, ui.Transparent) // room for the chosen row's edge
+	}
+	bg := ui.Transparent
+	switch {
+	case selected:
+		bg = pal.RowSelected
+	case item.Hovered():
+		bg = pal.RowHover
+	}
+	item.Background(item.AnimateColor("bg", bg, ui.Animation{Duration: 110e6}))
+	if selected {
+		chosen(item, pal)
+	}
+	if item.Pressed() && !selected {
+		s.pane = page.id
+	}
+	item.Children(func() {
+		ic := ui.Icon(c, page.icon).Size(15, 15).TextColor(pal.TextMuted)
+		if selected {
+			ic.TextColor(pal.Accent)
+		}
+		ui.Text(c, page.title()).FontSize(13.5).TextColor(pal.Text).SingleLine()
+	})
+}
+
+// groupTitle is a group's title, over the panel of settings it names.
+func groupTitle(c *ui.Context, pal *uitokens.Palette, title string) {
+	ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(pal.TextMuted).Padding(0, 4)
+}
+
+// settingsGroup is a titled set of settings on a soft panel, as kero groups
+// them: a chip of a card, its rows divided by hairlines.
+func settingsGroup(c *ui.Context, pal *uitokens.Palette, title string, fn func()) {
+	ui.Column(c).Gap(8).Children(func() {
+		if title != "" {
+			groupTitle(c, pal, title)
+		}
+		ui.Column(c).Radius(12).Background(pal.Chip).Padding(4, 16).Children(fn)
+	})
+}
+
+// groupRows counts the rows of the group being built, so that a divider goes
+// between them, as in macOS's Settings.
+var groupRows int
+
+// settingRow is a row of a group: a label, what it does, and its control.
+func settingRow(c *ui.Context, pal *uitokens.Palette, label, detail string, control func()) {
+	if groupRows++; groupRows > 1 {
+		ui.Box(c).Height(1).Shrink(0).Background(pal.Text.Alpha(0.07))
+	}
+	row := ui.Row(c).Padding(11, 0).Gap(16).AlignItems(ui.Center)
+	row.Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+			ui.Text(c, label).FontSize(13.5).TextColor(pal.Text)
+			if detail != "" {
+				ui.Text(c, detail).FontSize(12).TextColor(pal.TextMuted).LineHeight(1.35)
 			}
-			pill.Children(func() {
-				label := ui.Text(c, name).FontSize(12.5)
-				if chosen {
-					label.TextColor(t.Text)
-				} else {
-					label.TextColor(t.TextMuted)
+		})
+		ui.Row(c).Shrink(0).Gap(8).AlignItems(ui.Center).Children(control)
+	})
+}
+
+// appearancePane is the window's own appearance: light, dark or the system's,
+// and the wash the cards sit on.
+func (s *settingsWindow) appearancePane(c *ui.Context) {
+	pal := paletteFor(c)
+	mode := themeSystem
+	background := ""
+	if s.store != nil {
+		mode = normalizeTheme(s.store.Get().Theme)
+		background = s.store.Get().Background
+	}
+	if background == "" {
+		background = "rex"
+	}
+
+	groupRows = 0
+	settingsGroup(c, pal, locales.SettingsPaneAppearance(), func() {
+		settingRow(c, pal, locales.SettingsTheme(), "", func() {
+			labels := []string{locales.ThemeSystem(), locales.ThemeLight(), locales.ThemeDark()}
+			choice := themeIndex(mode)
+			seg := ui.SegmentedBase(c.Key("theme"), &choice, len(labels))
+			seg.Track.Height(24).Padding(2).Radius(7).Background(pal.Chip).AlignItems(ui.Center).Children(func() {
+				for i, label := range labels {
+					segm := seg.Segment(i).FillHeight().Padding(0, 12).Radius(5).Center()
+					if i == choice {
+						segm.Background(pal.Control)
+						if pal.Dark {
+							segm.Shadow(0, 1, 1, 0, ui.RGBA(0, 0, 0, 0.25))
+						} else {
+							segm.Shadow(0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.16))
+						}
+					}
+					segm.Children(func() {
+						ui.Text(c, label).FontSize(12.5).SingleLine().TextColor(pal.Text)
+					})
 				}
 			})
+			seg.Track.OnChange(func() {
+				if s.desk != nil {
+					s.desk.setTheme(themeChoices[choice].id)
+				}
+			})
+		})
+	})
+
+	groupTitle(c, pal, locales.SettingsBackground())
+	ui.Row(c).Gap(12).Wrap().Children(func() {
+		for _, wsh := range uitokens.Washes {
+			s.washTile(c, pal, wsh, background)
 		}
 	})
+}
+
+// washTile previews a wash, and chooses it on a click: kero's background
+// settings, with a card on the tile so that the wash is seen the way the window
+// shows it.
+func (s *settingsWindow) washTile(c *ui.Context, pal *uitokens.Palette, wsh uitokens.Wash, current string) {
+	selected := current == wsh.ID
+	tile := ui.ButtonBase(c.Key("bg-"+wsh.ID)).Column().Width(104).Gap(8).
+		AlignItems(ui.Stretch).Label(washName(wsh.ID))
+	tile.Children(func() {
+		sw := raised(ui.Box(c).Size(104, 68).Radius(12), pal).Clip()
+		sw.LinearGradient(wsh.Base(pal.Dark))
+		sw.Children(func() {
+			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).LinearGradient(wsh.Glow(pal.Dark))
+			// A card on it, as the window shows them.
+			ui.Box(c).Absolute().Top(12).Left(26).Right(8).Bottom(-6).Radius(7).Background(pal.Card)
+			ui.Box(c).Absolute().Top(20).Left(8).Width(12).Height(4).Radius(2).Background(pal.TextFaint.Alpha(0.5))
+			if selected {
+				ui.Box(c).Absolute().Top(6).Right(6).Size(18, 18).Radius(9).Center().Background(pal.Accent).Children(func() {
+					ui.Icon(c, iconCheck).Size(10, 10).TextColor(ui.Hex("#ffffff"))
+				})
+			}
+		})
+		label := ui.Text(c, washName(wsh.ID)).FontSize(12.5).TextColor(pal.TextMuted).TextAlign(ui.Center)
+		if selected {
+			label.TextColor(pal.Text).FontWeight(600)
+		}
+	})
+	if tile.Clicked() && s.store != nil {
+		if _, err := s.store.Update(func(st *settings.Settings) { st.Background = wsh.ID }); err != nil {
+			s.status, s.statusErr = err.Error(), true
+		}
+		if s.desk != nil {
+			s.desk.invalidate()
+		}
+	}
+}
+
+// washName is a wash's name in the language the app shows.
+func washName(id string) string {
+	switch id {
+	case "rex":
+		return locales.BgRex()
+	case "mist":
+		return locales.BgMist()
+	case "meadow":
+		return locales.BgMeadow()
+	case "dusk":
+		return locales.BgDusk()
+	}
+	return locales.BgPlain()
 }
 
 // paneNote is a line of prose in a pane's own column: a field with no label,
@@ -410,6 +603,169 @@ func paneNote(c *ui.Context, text string, color ui.Color) {
 	ui.Field(c, "", func() {
 		ui.Text(c, text).FontSize(11).TextColor(color)
 	})
+}
+
+// keyboardPage is every action the window knows, with the keys it answers to:
+// click a shortcut and the next keys typed become it. The list is the action
+// registry, so an action the window gains arrives here with nothing to wire.
+func (s *settingsWindow) keyboardPage(c *ui.Context) {
+	pal := paletteFor(c)
+	groupRows = 0
+	settingsGroup(c, pal, locales.SettingsPaneKeyboard(), func() {
+		for _, a := range appActions {
+			s.shortcutRow(c, pal, a)
+		}
+	})
+	ui.Text(c, locales.SettingsKeysNote()).FontSize(12).TextColor(pal.TextMuted).LineHeight(1.4).Padding(0, 4)
+	if s.keyNotice != "" {
+		ui.Text(c, s.keyNotice).FontSize(12).TextColor(pal.Attention).LineHeight(1.4).Padding(0, 4)
+	}
+}
+
+// shortcutRow is one action and its shortcut: a chip that records, and a × that
+// clears it.
+func (s *settingsWindow) shortcutRow(c *ui.Context, pal *uitokens.Palette, a action) {
+	accel := s.keysFor(a)
+	recording := s.recording == a.id
+	if groupRows++; groupRows > 1 {
+		ui.Box(c).Height(1).Shrink(0).Background(pal.Text.Alpha(0.07))
+	}
+	row := ui.Row(c).Padding(11, 0).Gap(16).AlignItems(ui.Center)
+	row.Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+			ui.Text(c, a.title()).FontSize(13.5).TextColor(pal.Text).SingleLine()
+		})
+		ui.Row(c).Shrink(0).Gap(6).AlignItems(ui.Center).Children(func() {
+			chip := ui.ButtonBase(c).Height(24).Padding(0, 10).Radius(6).MinWidth(92).
+				AlignItems(ui.Center).Justify(ui.Center).Label(a.title())
+			face(chip, pal, pal.Control)
+			chip.TextColor(pal.Text)
+			if recording {
+				chip.Bind(&s.recordRef).HandleInput(func(ev ui.InputEvent) bool {
+					if ev.Kind != ui.InputKeyDown {
+						return ev.Kind == ui.InputText
+					}
+					return s.recordKey(a, ev.Mods, ev.Key)
+				})
+				chip.Background(pal.Accent.Alpha(0.12))
+			}
+			chip.Children(func() {
+				switch {
+				case recording:
+					ui.Text(c, locales.SettingsKeysRecord()).FontSize(12.5).TextColor(pal.Accent).SingleLine()
+				case accel == "":
+					ui.Text(c, locales.SettingsKeysNone()).FontSize(12.5).TextColor(pal.TextFaint).SingleLine()
+				default:
+					ui.Text(c, glyphAccel(accel)).FontSize(12.5).TextColor(pal.Text).SingleLine()
+				}
+			})
+			if chip.Clicked() && !recording {
+				s.recording = a.id
+				s.keyNotice = ""
+				s.recordRef.Focus(c)
+				if s.desk != nil && s.desk.win != nil {
+					installMenu(s.desk)
+				}
+			}
+			if accel != "" && !recording {
+				if iconButton(c, iconClose, locales.SettingsKeysClear(), 22).Clicked() {
+					s.setKeys(a, "")
+				}
+			}
+		})
+	})
+	if recording && !s.recordRef.Focused(c) {
+		// The keyboard went elsewhere without an answer: stop waiting for it
+		// rather than leaving the chip saying it is still listening.
+		c.After(200 * time.Millisecond)
+	}
+}
+
+// keysFor is an action's accelerator as the settings window shows it.
+func (s *settingsWindow) keysFor(a action) string {
+	if s.store != nil {
+		if v, ok := s.store.Get().Keybinds[a.id]; ok {
+			return v
+		}
+	}
+	return a.def
+}
+
+// recordKey takes a key typed for a shortcut, reporting whether it took it.
+func (s *settingsWindow) recordKey(a action, mods ui.Modifiers, key ui.Key) bool {
+	switch {
+	case key == ui.KeyEscape && mods == 0:
+		s.recording = ""
+		return true
+	case key == ui.KeyUnknown:
+		return false
+	case key == ui.KeyBackspace && mods == 0:
+		s.setKeys(a, "")
+		return true
+	}
+	accel := formatAccel(mods, key)
+	if accel == "" {
+		return false
+	}
+	s.setKeys(a, accel)
+	if s.desk != nil && s.desk.win != nil {
+		installMenu(s.desk)
+	}
+	return true
+}
+
+// setKeys saves an action's accelerator, says so when it collides with another
+// action, and puts the menus back with the keys the window now answers to.
+func (s *settingsWindow) setKeys(a action, accel string) {
+	if s.store != nil {
+		if _, err := s.store.Update(func(st *settings.Settings) {
+			if st.Keybinds == nil {
+				st.Keybinds = map[string]string{}
+			}
+			st.Keybinds[a.id] = accel
+		}); err != nil {
+			s.keyNotice = err.Error()
+			return
+		}
+	}
+	s.recording = ""
+	s.keyNotice = ""
+	if accel != "" {
+		for _, other := range appActions {
+			if other.id != a.id && s.keysFor(other) == accel {
+				s.keyNotice = locales.SettingsKeysConflict(other.title())
+				break
+			}
+		}
+	}
+	if s.desk != nil && s.desk.win != nil {
+		installMenu(s.desk)
+		s.desk.invalidate()
+	}
+	s.set(func() {})
+}
+
+// notificationsPage is what the window tells the user while they are looking
+// elsewhere: the three events worth a notification, and the Dock badge.
+func (s *settingsWindow) notificationsPage(c *ui.Context) {
+	pal := paletteFor(c)
+	groupRows = 0
+	settingsGroup(c, pal, locales.SettingsPaneNotifications(), func() {
+		settingRow(c, pal, locales.SettingsNotifyWaiting(), "", func() {
+			toggle(c, pal, "notify-waiting", &s.notifyWaiting)
+		})
+		settingRow(c, pal, locales.SettingsNotifyDone(), "", func() {
+			toggle(c, pal, "notify-done", &s.notifyDone)
+		})
+		settingRow(c, pal, locales.SettingsNotifyError(), "", func() {
+			toggle(c, pal, "notify-error", &s.notifyError)
+		})
+		settingRow(c, pal, locales.SettingsDockBadge(), "", func() {
+			toggle(c, pal, "dock-badge", &s.dockBadge)
+		})
+	})
+	ui.Text(c, locales.SettingsNotifyNote()).FontSize(12).TextColor(pal.TextMuted).
+		LineHeight(1.4).Padding(0, 4)
 }
 
 func (s *settingsWindow) terminalPane(c *ui.Context) {
@@ -688,8 +1044,12 @@ func (s *settingsWindow) commit() {
 	s.desk.reletter(termFont(stored))
 	// The language is applied here rather than on a keystroke, like the relay:
 	// the window redraws in the new language at once, which is the answer to
-	// the click that chose it.
-	applyLanguage(stored.Language)
+	// the click that chose it. A commit that left the language alone says
+	// nothing, because saying it again would redraw every window for nothing.
+	if lang := normalizeLanguage(stored.Language); lang != s.applied {
+		s.applied = lang
+		applyLanguage(lang)
+	}
 	if err := s.fleet.SetRelay(stored.RelayURL, stored.DeviceID, stored.DeviceSecret, stored.RelayCA, stored.RelayOn); err != nil {
 		s.fail(locales.SettingsRelayFailed(err.Error()))
 		return
@@ -716,6 +1076,9 @@ func (s *settingsWindow) commit() {
 	// that is holding a shell right now loses it in the same frame the switch
 	// moves, rather than at the next reconnect.
 	s.fleet.SetRemoteControl(!stored.ControlOff)
+	if s.desk != nil {
+		s.desk.refreshBadge()
+	}
 	s.savedAt = time.Now()
 	s.statusErr = false
 	s.status = s.summary(stored)
@@ -755,9 +1118,18 @@ func (s *settingsWindow) restoreDefaults() {
 	s.relayOn = false
 	s.server = true
 	s.control = true
+	s.notifyWaiting = true
+	s.notifyDone = true
+	s.notifyError = true
+	s.dockBadge = true
 	// The language goes back to following the system, like every other default:
 	// a person who restore-defaults their way out of a language they cannot
 	// read gets the one their system is in.
 	s.language = ""
 	s.commit()
+	// 恢复默认 is every default, the shortcuts included.
+	if _, err := s.store.Update(func(st *settings.Settings) { st.Keybinds = nil }); err == nil && s.desk != nil && s.desk.win != nil {
+		installMenu(s.desk)
+		s.desk.invalidate()
+	}
 }

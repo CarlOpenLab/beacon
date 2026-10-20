@@ -1,73 +1,51 @@
 /* ==========================================================================
-   fleet (M3) + inspector + connect screen + phone layout — Editor Native
+   fleet (M3) + connect screen + phone layout — kero v2
 
-   These are the pieces the relay and the phone bring, on top of the base
-   system in style.css. The phone is a drawer + a bigger key bar, not a
-   second design.
+   The pieces the relay and the phone bring, on top of the base system in
+   style.css. A phone is a drawer, edge-to-edge cards and a bigger key bar, not
+   a second design.
    ========================================================================== */
 
 .tf-side-toggle {
   display: none;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--fg-dim);
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
   border-radius: var(--radius-s);
+  color: var(--fg-dim);
   font-size: 14px;
   line-height: 1;
-  padding: 6px;
-  cursor: pointer;
+  padding: 0;
   -webkit-app-region: no-drag;
 }
 
 .tf-side-toggle:hover {
-  background: var(--tab-hover);
+  background: var(--bg-hover);
   color: var(--fg);
 }
 
-/* A machine that answers is live, which is green; a machine that does not is
-   gone and says so in the one colour that means it. */
-.tf-dot.on {
-  background: var(--ok);
-}
-
-.tf-dot.off {
-  background: var(--err);
-  opacity: 0.7;
-}
-
-.tf-session.tf-nested {
-  padding-left: 20px;
-}
-
-.tf-empty.tf-nested {
-  padding: 4px 12px 8px 20px;
-  font-size: var(--fs-11);
-}
-
-.tf-chip-relay {
-  color: var(--warn);
-  border-color: var(--warn-bd);
-  background: var(--warn-bg);
-}
-
-/* ---------------------------------------------------- relay connect screen */
+/* ------------------------------------------------ relay connect screen */
 
 .tf-connect {
   position: fixed;
   inset: 0;
-  background: var(--scrim);
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  z-index: 40;
+  background: var(--overlay);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
 .tf-connect-card {
   width: 100%;
   max-width: 400px;
   padding: var(--space-6) var(--space-6) var(--space-5);
-  background: var(--bg-raised);
+  background: var(--popover);
   border: 1px solid var(--line);
   border-radius: var(--radius-l);
   box-shadow: var(--shadow-2);
@@ -77,9 +55,9 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-weight: 600;
-  color: var(--fg-dim);
   margin-bottom: var(--space-3);
+  color: var(--fg-dim);
+  font-weight: 600;
 }
 
 .tf-connect-brand .tf-dot {
@@ -111,24 +89,25 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: var(--fs-11);
   color: var(--fg-dim);
+  font-size: var(--fs-11);
 }
 
 .tf-input {
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: var(--radius-m);
+  border-radius: 8px;
   color: var(--fg);
   font-family: var(--font-mono);
   font-size: var(--fs-12);
-  padding: 9px 11px;
+  padding: 8px 10px;
   outline: none;
-  transition: border-color var(--dur) ease;
+  transition: border-color var(--dur) ease, box-shadow var(--dur) ease;
 }
 
 .tf-input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 .tf-input::placeholder {
@@ -154,7 +133,7 @@
    half the footprint. */
 @media (pointer: fine) {
   .tf-keys {
-    padding: 4px 10px;
+    padding: 4px 8px;
   }
 
   .tf-key {
@@ -169,8 +148,7 @@
 
 @media (pointer: coarse) {
   .tf-keys {
-    /* clear the home indicator */
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
   }
 
   .tf-key {
@@ -179,41 +157,47 @@
     font-size: 12px;
   }
 
-  .tf-session,
-  .tf-machine {
-    padding-top: 12px;
-    padding-bottom: 12px;
+  .tf-session {
+    height: 44px;
+    min-height: 44px;
+    padding-left: 10px;
   }
 
-  .tf-tab {
+  .tf-machine {
     height: 36px;
   }
 
-  /* There is no hover to bring these out, so they are out. */
-  .tf-tab-close {
-    opacity: 0.85;
+  /* There is no hover to bring this out, so it is out. */
+  .tf-kill {
+    opacity: 1;
+    pointer-events: auto;
   }
 
-  .tf-kill {
-    visibility: visible;
+  .tf-card-actions {
+    opacity: 1;
   }
 }
 
 @media (max-width: 720px) {
   .tf-side-toggle {
-    display: flex;
+    display: inline-flex;
   }
 
+  /* The drawer is the wash's own column, lifted off the page. */
   .tf-side {
     position: fixed;
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(84vw, 320px);
     z-index: 30;
-    transform: translateX(-102%);
-    transition: transform 0.18s ease;
+    width: min(86vw, 320px);
+    background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     box-shadow: var(--shadow-2);
+    transform: translateX(-102%);
+    transition: transform var(--dur-slow) cubic-bezier(0.25, 1, 0.5, 1);
+    padding-top: env(safe-area-inset-top);
   }
 
   .tf.side-open .tf-side {
@@ -224,67 +208,111 @@
     content: "";
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
     z-index: 20;
+    background: var(--overlay);
   }
 
-  .tf-header {
-    gap: var(--space-2);
-    padding: 0 var(--space-2) 0 var(--space-2);
+  /* The card is the window on a phone: edge to edge, no frame of its own. */
+  .tf-main {
+    padding: 0;
   }
 
-  .tf-brand {
+  .tf-card {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .tf-card-head {
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 4px 8px;
+    padding-top: max(4px, env(safe-area-inset-top));
+  }
+
+  .tf-card-id {
+    gap: 6px;
+  }
+
+  .tf-card-name {
+    font-size: 13px;
+  }
+
+  .tf-card-dir {
     font-size: var(--fs-12);
   }
 
-  /* The inspector is a desktop affordance; on a phone its facts move into
-     the session rows and the status bar rather than taking the width. */
-  .tf-inspect {
+  .tf-card-chip {
+    max-width: 96px;
+  }
+
+  /* A banner has words that need the width, so on a phone it takes a line of
+     its own — and takes none at all when there is nothing to say. */
+  .tf-banner {
+    order: 10;
+    flex-basis: 100%;
+    max-width: 100%;
+    margin: 0;
+    font-size: var(--fs-11);
+  }
+
+  .tf-banner:not(.on) {
     display: none;
   }
 
-  .tf-tab-machine {
-    max-width: 60px;
-  }
-
-  .tf-banner {
-    font-size: var(--fs-11);
-    margin: 0 var(--space-2);
-  }
-
-  .tf-status {
-    flex-wrap: wrap;
-    height: auto;
-    padding: 4px var(--space-3);
-    gap: var(--space-1) var(--space-2);
-    font-size: var(--fs-11);
-  }
-
-  .tf-panes {
-    margin: 6px;
+  .tf-banner > span:first-child {
+    flex: 1 1 auto;
   }
 
   .tf-pane .xterm {
     padding: 6px 8px;
   }
 
+  .tf-composer {
+    padding: 7px 8px;
+    padding-bottom: max(7px, env(safe-area-inset-bottom));
+  }
+
+  .tf-status {
+    display: none;
+  }
+
   .tf-toasts {
     left: 10px;
     right: 10px;
+    bottom: 12px;
   }
 
   .tf-toast {
     max-width: none;
   }
+
+  .tf-inspect {
+    display: none;
+  }
+
+  .tf-pop {
+    left: 10px;
+    bottom: 52px;
+  }
 }
 
-/* Small screens: keep the banner from pushing the terminal off-screen. */
 @media (max-width: 420px) {
   .tf-banner.on {
-    max-width: 46vw;
+    max-width: none;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .tf-card-dir {
+    display: none;
+  }
+
+  .tf-card-role {
+    display: none;
   }
 
   .tf-btn kbd {

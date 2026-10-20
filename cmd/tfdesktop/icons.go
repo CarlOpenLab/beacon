@@ -38,4 +38,27 @@ var (
 	// iconSend is the composer's send button: the command leaving this window.
 	iconSend = lucide(`<path d="M14.5 21.7a.5.5 0 0 0 .9 0l6.5-19a.5.5 0 0 0-.6-.6l-19 6.5a.5.5 0 0 0 0 .9l7.9 3.2a2 2 0 0 1 1.1 1.1z"/>` +
 		`<path d="m21.9 2.1-10.9 10.9"/>`)
+	// iconSidebar hides and shows the column, as every Mac app's sidebar button
+	// does: a window with its left third marked off.
+	iconSidebar = lucide(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>`)
+	// iconChevron turns a group's arrow, and marks a row that opens something.
+	iconChevron = lucide(`<path d="m9 18 6-6-6-6"/>`)
+	// iconSearch opens the command palette.
+	iconSearch = lucide(`<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>`)
+	// iconSplitRight and iconSplitDown split the pane on screen, as their
+	// drawings do: one window, divided one way or the other.
+	iconSplitRight = lucide(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/>`)
+	iconSplitDown  = lucide(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 12h18"/>`)
+	// iconZoom fills the window with one pane; iconUnzoom puts the others back.
+	iconZoom   = lucide(`<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>`)
+	iconUnzoom = lucide(`<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>`)
+	// iconKeyboard is the settings page of shortcuts.
+	iconKeyboard = lucide(`<rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M8 12h8"/><path d="M6 12h.01"/><path d="M18 12h.01"/>`)
+	// iconBell is a notification: the events the window tells the user about
+	// while they are looking elsewhere.
+	iconBell = lucide(`<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>`)
+	// iconCheck marks a chosen thing in a list of choices.
+	iconCheck = lucide(`<path d="M20 6 9 17l-5-5"/>`)
+	// iconFolder opens a project, or stands for the machine a row belongs to.
+	iconFolder = lucide(`<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>`)
 )

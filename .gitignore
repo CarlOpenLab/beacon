@@ -15,4 +15,11 @@ mygo_windows_*.syso
 # Built frontend, embedded by internal/web. The marker is committed so a clean
 # checkout can still build the daemon before the web step has ever run.
 /internal/web/dist/*
-!/internal/web/dist/.gitkeep__pycache__/
+!/internal/web/dist/.gitkeep
+
+# Python bytecode, from helper scripts that have any.
+__pycache__/
+
+# `go tool mygo generate` writes a TypeScript client here for apps that bind
+# services; term-fleet's web client keeps its own copy of the strings.
+/src/

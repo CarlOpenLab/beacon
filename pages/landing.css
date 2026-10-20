@@ -1602,6 +1602,253 @@ pre.code[hidden] { display: none; }
    Responsive
    ========================================================================== */
 
+
+/* ============================================================================
+   The app's own window, in the 0.5 look: kero's wash, cards and state glyphs.
+   The mock keeps the page's editorial chrome around it; inside the window the
+   daemon's palette takes over, so the shot is the app a person downloads.
+   ========================================================================== */
+
+.app-win {
+  --w-bg: #17141f;
+  --w-panel: #232328;
+  --w-line: rgba(255, 255, 255, 0.08);
+  --w-text: #e6e6ea;
+  --w-dim: #83838f;
+  --w-mint: #4fd17a;
+  --w-amber: #f2c14e;
+  --w-red: #ff6b64;
+  --w-blue: #6b9bff;
+  flex-direction: row;
+  background: linear-gradient(180deg, #17141f 0%, #191620 55%, #1b1916 100%);
+  border-color: rgba(0, 0, 0, 0.6);
+}
+
+/* --- the sidebar: machines, their sessions, and a foot that counts them ---- */
+
+.k-side {
+  width: 25%;
+  min-width: 168px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px 4px;
+  min-height: 0;
+}
+
+.k-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 6px;
+  flex: none;
+}
+
+.k-top .lights i { width: 8px; height: 8px; }
+.k-tools { display: flex; gap: 12px; color: #83838f; font-size: 11px; }
+.k-ico { display: inline-flex; align-items: center; }
+.k-ico svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
+
+.k-list { flex: 1; min-height: 0; overflow: hidden; padding-top: 2px; }
+
+.k-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin-top: 10px;
+  padding: 0 6px;
+  color: #a9a9b4;
+  font-size: 8.6px;
+  letter-spacing: 0.02em;
+}
+.k-group:first-child { margin-top: 2px; }
+.k-dot { width: 6px; height: 6px; border-radius: 50%; background: #4fd17a; flex: none; }
+.k-dot:not(.on) { background: #6c6c78; }
+.k-gname { font-weight: 600; white-space: nowrap; }
+.k-gnum { color: #83838f; }
+.k-chev { margin-left: auto; color: #83838f; font-size: 10px; }
+.k-needs { color: #f0a33a; font-size: 8px; margin-left: 4px; white-space: nowrap; }
+
+.k-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 27px;
+  padding: 0 7px;
+  border-radius: 7px;
+  font-size: 9.6px;
+  color: #ececf0;
+}
+.k-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-time { color: #83838f; font-size: 8.4px; font-variant-numeric: tabular-nums; }
+.k-badge {
+  font-size: 7.4px;
+  color: #f0a33a;
+  padding: 1px 5px;
+  border: 1px solid rgba(240, 163, 58, 0.42);
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.k-row.active {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.k-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 28px;
+  padding: 0 6px;
+  flex: none;
+  color: #a9a9b4;
+  font-size: 10px;
+}
+.k-tally {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #a9a9b4;
+  font-size: 8.4px;
+  font-variant-numeric: tabular-nums;
+}
+.k-tally .k-glyph { margin-left: 4px; }
+.k-tally .k-glyph:first-child { margin-left: 0; }
+
+/* --- the card: a header, and the terminal under it ------------------------ */
+
+.k-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 8px 0; gap: 7px; }
+
+.k-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 13px;
+  background: #232328;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  box-shadow:
+    0 1px 1px rgba(0, 0, 0, 0.2),
+    0 2px 2px -1px rgba(0, 0, 0, 0.2),
+    0 4px 6px -3px rgba(0, 0, 0, 0.24);
+}
+
+.k-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 37px;
+  flex: none;
+  padding: 0 10px;
+  color: #a9a9b4;
+  font-size: 9px;
+}
+.k-title { font-size: 10px; font-weight: 600; color: #ececf0; white-space: nowrap; }
+.k-dir { font-size: 9px; color: #83838f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k-actions { margin-left: auto; color: #83838f; letter-spacing: 3px; font-size: 9px; white-space: nowrap; }
+
+.k-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #a9a9b4;
+  font-size: 8px;
+  white-space: nowrap;
+}
+.k-chip.run { color: #6b93ff; background: rgba(107, 147, 255, 0.12); }
+.k-chip.msg { background: rgba(255, 255, 255, 0.055); }
+
+/* --- the five states, drawn the way the app draws them -------------------- */
+
+.k-glyph {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+}
+.k-glyph.working {
+  border: 1.5px solid rgba(236, 236, 240, 0.13);
+  border-top-color: #ececf0;
+  animation: k-spin 1s linear infinite;
+}
+.k-glyph.waiting { border: 1.5px solid #f0a33a; }
+.k-glyph.waiting::after {
+  content: "";
+  position: absolute;
+  inset: 2.4px;
+  border-radius: 50%;
+  background: #f0a33a;
+  animation: k-pulse 1.6s ease-in-out infinite;
+}
+.k-glyph.done { background: #ececf0; }
+.k-glyph.done::after {
+  content: "";
+  position: absolute;
+  left: 2.6px;
+  top: 1.5px;
+  width: 4px;
+  height: 2.4px;
+  border-left: 1.4px solid #161618;
+  border-bottom: 1.4px solid #161618;
+  transform: rotate(-45deg);
+}
+.k-glyph.error { background: #ff6961; }
+.k-glyph.error::after {
+  content: "!";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #161618;
+  font-size: 7px;
+  font-weight: 700;
+}
+.k-glyph.idle { border: 1.4px solid #83838f; }
+.k-glyph.idle::after {
+  content: "";
+  position: absolute;
+  left: 2.2px;
+  top: 1.2px;
+  width: 4px;
+  height: 2.2px;
+  border-left: 1.3px solid #83838f;
+  border-bottom: 1.3px solid #83838f;
+  transform: rotate(-45deg);
+}
+
+@keyframes k-spin { to { transform: rotate(360deg); } }
+@keyframes k-pulse { 50% { opacity: 0.55; } }
+
+/* --- the browser client: the app's own header over the same body ---------- */
+
+.browser-win { flex-direction: column; }
+.k-web { background: transparent; }
+.k-web-body { flex: 1; min-height: 0; display: flex; }
+.k-web .k-side { padding-top: 2px; }
+.k-web .k-main { padding: 0 8px 8px 0; }
+.k-web .k-card { flex: 1; }
+.k-web .composer { margin-top: 0; }
+.k-web .term { flex: 1; }
+
+/* --- the phone: one card, the keys, the composer -------------------------- */
+
+.ph-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px 6px 5px; gap: 5px; }
+.ph-card { flex: 1; border-radius: 11px; }
+.ph-card-head { height: 30px; padding: 0 8px; gap: 6px; }
+.ph-card-head .k-title { font-size: 9.4px; }
+.ph-card-head .k-dir { font-size: 8px; }
+.ph-card .ph-term { flex: 1; }
+.ph-body .ph-keys { flex: none; }
+.ph-body .ph-composer { flex: none; }
+.ph-statusbar { border-top: 1px solid rgba(255, 255, 255, 0.06); background: transparent; }
+
 @media (max-width: 1180px) {
   .hero-title { font-size: clamp(52px, 7.2vw, 92px); }
   .hero-title .l2 { margin-left: clamp(0px, 5vw, 64px); }

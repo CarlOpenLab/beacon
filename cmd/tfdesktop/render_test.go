@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -201,6 +202,10 @@ func TestRenderSettingsPreviews(t *testing.T) {
 		{"settings-light-relay", themeLight, paneRelay, locales.SettingsPaneRelay()},
 		{"settings-light-server", themeLight, paneServer, locales.SettingsPaneServer()},
 		{"settings-light-updates", themeLight, paneUpdates, locales.SettingsPaneUpdates()},
+		{"settings-dark-appearance", themeDark, paneAppearance, locales.SettingsPaneAppearance()},
+		{"settings-light-appearance", themeLight, paneAppearance, locales.SettingsPaneAppearance()},
+		{"settings-light-notifications", themeLight, paneNotifications, locales.SettingsPaneNotifications()},
+		{"settings-light-keyboard", themeLight, paneKeyboard, locales.SettingsPaneKeyboard()},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := settings.Open(t.TempDir())
@@ -250,6 +255,22 @@ func previewWindow(t *testing.T, mode string, shell bool) *window {
 	w.tabs[1].alive = true
 	w.tabs[1].setLease(protocol.RoleController, "", 1)
 	w.tabs[1].term = fedTerminal(t, previewScreen())
+
+	// The rows the picture is about: one working with a progress it reported, one
+	// waiting for the user with a permission prompt, and one that finished while
+	// nobody was looking. They are what the state glyphs, the message chips and
+	// the foot's counts are drawn from.
+	now := time.Now().UnixMilli()
+	w.tabs[2] = &tab{id: "s9", machine: machineLocal, title: "review -- fix login", ordinal: 2, alive: true, term: fedTerminal(t, previewScreen())}
+	w.tabs[3] = &tab{id: "s10", machine: machineLocal, title: "docs dev server", ordinal: 3, alive: true, term: fedTerminal(t, previewScreen())}
+	w.tabs[2].setLease(protocol.RoleViewer, "c4", 2)
+	w.tabs[3].setLease(protocol.RoleViewer, "", 0)
+	w.order = append(w.order, 2, 3)
+	w.live = []protocol.Summary{
+		{SessionID: "s2", Title: "~/carl-github/term-fleet", Alive: true, Status: "working", Progress: 40, Message: "running the tests", Process: "claude", Since: now - 42_000},
+		{SessionID: "s9", Title: "review -- fix login", Alive: true, Status: "waiting", Unread: true, Kind: "permission", Message: "Approve the production deploy?", Since: now - 2*60_000},
+		{SessionID: "s10", Title: "docs dev server", Alive: true, Status: "idle", Unread: true, Since: now - 3*3_600_000},
+	}
 	return w
 }
 
@@ -271,6 +292,10 @@ func previewFleet(w *window) {
 				Cols:      120,
 				Rows:      40,
 				Alive:     true,
+				Status:    "working",
+				Progress:  12,
+				Message:   "npm run dev",
+				Since:     time.Now().Add(-8 * time.Second).UnixMilli(),
 			},
 			{
 				SessionID: "s8",
@@ -279,6 +304,11 @@ func previewFleet(w *window) {
 				Cols:      120,
 				Rows:      40,
 				Alive:     true,
+				Status:    "waiting",
+				Unread:    true,
+				Kind:      "question",
+				Message:   "Which database should I migrate?",
+				Since:     time.Now().Add(-90 * time.Second).UnixMilli(),
 			},
 		},
 	}

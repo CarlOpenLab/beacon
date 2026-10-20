@@ -32,6 +32,7 @@ func (p *fakePTY) Close() error {
 func (p *fakePTY) Resize(cols, rows int) error { return nil }
 func (p *fakePTY) Wait() (int, error)          { <-p.exited; return 0, nil }
 func (p *fakePTY) PID() int                    { return 0 }
+func (p *fakePTY) Foreground() (string, int)   { return "", 0 }
 
 func (p *fakePTY) closeCount() int {
 	p.mu.Lock()

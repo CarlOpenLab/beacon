@@ -153,9 +153,9 @@ class Page {
 const state = (page) =>
   page.evaluate(`(() => {
     const q = (s) => document.querySelector(s)
-    const tabs = [...document.querySelectorAll('.tf-tab')].map((t) => ({
-      label: t.querySelector('.tf-tab-label')?.textContent ?? '',
-      cls: t.className,
+    const tabs = [...document.querySelectorAll('.tf-pane')].map((pane) => ({
+      label: q('.tf-session.active .tf-session-name')?.textContent ?? '',
+      cls: pane.className,
     }))
     const side = [...document.querySelectorAll('.tf-session')].map((r) => ({
       label: r.querySelector('.tf-session-name')?.textContent ?? '',

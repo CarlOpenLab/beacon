@@ -23,7 +23,15 @@ const THEME_KEY = 'termfleet.theme'
  * runs, since the desktop shell is a native window.
  */
 function applyTheme(): void {
-  document.documentElement.dataset.theme = stored(THEME_KEY) === 'light' ? 'light' : 'dark'
+  document.documentElement.dataset.theme = stored(THEME_KEY) === 'dark' ? 'dark' : 'light'
+  syncThemeColor()
+}
+
+/** The address bar follows the window's ground, on both appearances. */
+function syncThemeColor(): void {
+  const light = document.documentElement.dataset.theme === 'light'
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  if (meta) meta.content = light ? '#eceef4' : '#141418'
 }
 
 /** Flip theme and remember it. Called from the status bar's control. */
@@ -31,6 +39,7 @@ function toggleTheme(): void {
   const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'
   document.documentElement.dataset.theme = next
   store(THEME_KEY, next)
+  syncThemeColor()
 }
 
 async function fetchConfig(): Promise<ServerConfig> {

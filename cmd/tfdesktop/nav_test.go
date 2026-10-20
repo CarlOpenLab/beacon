@@ -11,6 +11,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
@@ -42,9 +43,9 @@ func drawNav(t *testing.T, w *window) *ui.Tester {
 		mode := w.store.Get().Theme
 		applyTheme(c, mode)
 		ui.Row(c).Fill().Children(func() {
-			w.sidebar(c, mode)
+			w.sidebar(c, paletteFor(c))
 		})
-	}, sidebarWidth, 420)
+	}, int(w.sideWidth()), 420)
 }
 
 func TestPrintSidebarLayout(t *testing.T) {
@@ -57,34 +58,40 @@ func TestPrintSidebarLayout(t *testing.T) {
 	}
 }
 
-func TestSidebarLayoutWithMultipleMachines(t *testing.T) {
+func TestSidebarGroupsMachinesInOrder(t *testing.T) {
 	w, _ := newTestShellWindow(t, "zsh 1")
 	w.roster = []tunnel.Machine{
 		{ID: "m1", Name: "carl-windows", Online: false},
 		{ID: "m2", Name: "win-20240410OWZ", Online: true},
 	}
 	tt := drawNav(t, w)
-	// With 3 machines:
-	// Local machine + 2 remote machines
-	if _, ok := tt.Find("carl-windows"); !ok {
-		t.Fatalf("carl-windows missing")
-	}
-	winRect, ok := tt.Find("win-20240410OWZ")
+
+	// This machine's group first, then the roster's order: the column is a list
+	// of machines, and the machine a person is sitting at leads it.
+	local, ok := tt.Find(w.machineName(machineLocal))
 	if !ok {
-		t.Fatalf("win-20240410OWZ missing")
+		t.Fatalf("this machine's group is missing; texts = %v", tt.Texts())
 	}
+	first, ok := tt.Find("carl-windows")
+	if !ok {
+		t.Fatalf("carl-windows missing; texts = %v", tt.Texts())
+	}
+	second, ok := tt.Find("win-20240410OWZ")
+	if !ok {
+		t.Fatalf("win-20240410OWZ missing; texts = %v", tt.Texts())
+	}
+	if !(local.Y < first.Y && first.Y < second.Y) {
+		t.Fatalf("groups are out of order: local %.1f, carl-windows %.1f, win %.1f", local.Y, first.Y, second.Y)
+	}
+
+	// The foot is pinned to the bottom of the column, under every group: the
+	// palette and the settings do not scroll away with the sessions.
 	setRect, ok := tt.Find(locales.ActionSettings())
 	if !ok {
-		t.Fatalf("设置 button missing")
+		t.Fatalf("设置 is missing from the footer; texts = %v", tt.Texts())
 	}
-	t.Logf("win-20240410OWZ: Y=%.1f H=%.1f (bottom=%.1f)", winRect.Y, winRect.H, winRect.Y+winRect.H)
-	t.Logf("设置: Y=%.1f H=%.1f", setRect.Y, setRect.H)
-	// Between the bottom of win-20240410OWZ row and the top of 设置, the distance
-	// should be compact (no large void gap).
-	gap := setRect.Y - (winRect.Y + winRect.H)
-	t.Logf("Gap between last machine text and settings: %.1f", gap)
-	if gap > 30 {
-		t.Fatalf("Gap %.1f is too large, dead space not eliminated", gap)
+	if setRect.Y <= second.Y {
+		t.Fatalf("the footer is not under the groups: win %.1f, 设置 %.1f", second.Y, setRect.Y)
 	}
 }
 
@@ -202,8 +209,13 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 		return len(w.order) == 2 && w.selected == 1 && w.tabs[w.order[1]].alive
 	})
 	tt.Frame()
-	if err := tt.Click(locales.TabCloseNamed(w.activeTab().name())); err != nil {
-		t.Fatalf("Click(关闭标签页): %v", err)
+	// The row's × shows on the hover, so the way out a pointer-less test takes
+	// is the row's own menu: the same act, one step further in.
+	if err := tt.RightClick(w.activeTab().name()); err != nil {
+		t.Fatalf("right-click the row: %v", err)
+	}
+	if err := tt.ChooseMenuItem(locales.TabClose()); err != nil {
+		t.Fatalf("choose 关闭标签页: %v", err)
 	}
 	if got := liveCount(f); got != 1 {
 		t.Fatalf("closing the tab left %d live shells, want the shell still running", got)
@@ -254,14 +266,18 @@ func TestAnEndedShellsRowOffersTheWayOut(t *testing.T) {
 	tb2.alive = true
 	tb2.setLease(protocol.RoleController, "", 1)
 	nav2 := drawNav(t, w2)
-	if _, ok := nav2.Find(locales.TabCloseNamed("live")); !ok {
-		t.Fatal("a running terminal has no detach control")
-	}
+	// The × a running row offers is a hover's, so a row at rest keeps only the
+	// acts that are always worth offering: its menu holds both, and 结束 is the
+	// one that is not simply "stop watching".
 	if err := nav2.RightClick("live"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(nav2.Menu(), " "), locales.TabEndProcess()) {
-		t.Fatal("the process action is missing from the context menu")
+	menu := strings.Join(nav2.Menu(), " ")
+	if !strings.Contains(menu, locales.TabEndProcess()) {
+		t.Fatalf("the process action is missing from the context menu: %q", menu)
+	}
+	if !strings.Contains(menu, locales.TabClose()) {
+		t.Fatalf("the detach action is missing from the context menu: %q", menu)
 	}
 }
 
@@ -386,30 +402,21 @@ func settleTabs(t *testing.T, w *window, n int) {
 // it is enrolled with when there is one, and a line saying where the other
 // machines will appear. A window with no relay says so rather than showing an
 // empty panel.
-func TestMachinePanelListsOnlyMachines(t *testing.T) {
+func TestSidebarNamesEveryMachine(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = f
 
 	tt := drawNav(t, w)
-	if !tt.HasText(locales.MachinePanel()) {
-		t.Fatalf("the column has no machines' panel; texts = %v", tt.Texts())
-	}
-	wantHost := f.Host().Hostname
-	if len([]rune(wantHost)) > 21 {
-		wantHost = string([]rune(wantHost)[:20]) + "…"
-	}
-	if !tt.HasText(wantHost) {
-		t.Fatalf("the machine row does not name this machine; texts = %v", tt.Texts())
+	// This machine leads the column as its own group, named as the roster names
+	// it. There is no separate machines panel any more: a machine is a group,
+	// and its sessions hang under it.
+	if !tt.HasText(f.Host().Hostname) {
+		t.Fatalf("the column does not name this machine; texts = %v", tt.Texts())
 	}
 
-	// The relay is a pipe, not a machine: it never gets a row of its own. A row
-	// for it would be named by its address — the only name a relay has — so the
-	// address staying out of the panel is the whole guard, and it holds in any
-	// language the panel is drawn in.
-
-	// Enrolled with a relay: still no relay row, and the note says where the
-	// other machines come from.
+	// The relay is a pipe, not a machine: the only name it has is its address,
+	// so the address staying out of the column is the whole guard.
 	if err := f.SetRelay("wss://relay.example/relay/agent", "mac-mini", "secret", "", true); err != nil {
 		t.Fatalf("SetRelay: %v", err)
 	}
@@ -419,9 +426,6 @@ func TestMachinePanelListsOnlyMachines(t *testing.T) {
 	}
 }
 
-// Picking a machine this window cannot reach yet asks the relay first, because
-// driving the rest of the fleet means asking it for a credential. The dialog is
-// where a person sees that happen, and where they can say no.
 func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t, "one")
@@ -476,15 +480,35 @@ func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
 	}
 }
 
-func TestDesktopUsesNeutralDarkChrome(t *testing.T) {
-	w, _ := newTestShellWindow(t)
+// The window is kero's: a wash behind cards, not a flat dark ground. The two
+// appearances are both real - the light one is not the dark one inverted - and a
+// card takes the palette's own color in each.
+func TestDesktopUsesTheWash(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	tb := w.tabs[1]
+	tb.alive = true
+	tb.term = fedTerminal(t, previewScreen())
+
 	tt := ui.NewTester(w.view, 900, 600)
-	tt.SetDark(false)
-	if _, ok := tt.Find(locales.ThemeToDark()); ok {
-		t.Fatal("removed appearance switch is still visible")
+	tt.SetDark(true)
+	tt.Frame()
+	got := tt.Image().RGBAAt(700, 300)
+	dark := uitokens.Dark.Card
+	if got.R != dark.R || got.G != dark.G || got.B != dark.B {
+		t.Fatalf("the dark card is %v, want %v", got, dark)
 	}
-	if got := tt.Image().RGBAAt(899, 300); got.R != got.G || got.G != got.B || got.R > 30 {
-		t.Fatalf("desktop ground is not neutral dark: %v", got)
+	// The wash itself shows at the window's edge, beside the card.
+	edge := tt.Image().RGBAAt(892, 300)
+	if edge.R == dark.R && edge.G == dark.G && edge.B == dark.B {
+		t.Fatal("the wash does not show beside the card")
+	}
+
+	tt.SetDark(false)
+	tt.Frame()
+	got = tt.Image().RGBAAt(700, 300)
+	light := uitokens.Light.Card
+	if got.R != light.R || got.G != light.G || got.B != light.B {
+		t.Fatalf("the light card is %v, want %v", got, light)
 	}
 }
 
@@ -565,43 +589,34 @@ func TestSettingsOpensSwitchesPanesAndCloses(t *testing.T) {
 // enrolling this machine with a relay used to put it in the panel twice — once
 // as 本机, once as another machine with its own shells. A fleet panel that lists
 // you twice is one nobody can read.
-func TestMachinePanelDoesNotListThisMachineTwice(t *testing.T) {
+func TestSidebarNamesThisMachineOnce(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = f
-	if err := f.SetRelay("wss://relay.example/relay/agent", "mac-mini-7f3a", "secret", "", true); err != nil {
-		t.Fatalf("SetRelay: %v", err)
-	}
-
-	// The relay's list, as the relay sees it: this machine under its enrolled id,
-	// and another machine.
 	w.roster = []tunnel.Machine{
-		{ID: "mac-mini-7f3a", Name: f.Host().Hostname, Online: true, Host: f.Host()},
-		{ID: "other-box", Name: "other box", Online: true,
+		{ID: "dev-2", Name: "other box", Online: true,
 			Host: protocol.Host{Platform: "darwin", Arch: "arm64"}},
 	}
 
 	tt := drawNav(t, w)
 	if !tt.HasText("other box") {
-		t.Fatalf("the panel does not list the other machine; texts = %v", tt.Texts())
+		t.Fatalf("the column does not list the other machine; texts = %v", tt.Texts())
 	}
-	// Its own name is on the 本机 row and nowhere else: a second row would be the
-	// roster entry for this machine, which is what the device-id check skips.
+	// Its own name is on its group's header and nowhere else: a second group
+	// would be the roster entry for this machine, which is what the device-id
+	// check skips.
 	named := 0
 	wantHost := f.Host().Hostname
-	if len([]rune(wantHost)) > 21 {
-		wantHost = string([]rune(wantHost)[:20]) + "…"
-	}
 	for _, text := range tt.Texts() {
 		if strings.TrimSpace(text) == wantHost {
 			named++
 		}
 	}
 	if named != 1 {
-		t.Fatalf("this machine is named %d times in the panel, want once; texts = %v", named, tt.Texts())
+		t.Fatalf("this machine is named %d times in the column, want once; texts = %v", named, tt.Texts())
 	}
-	// The title's count is this machine plus the other one — the self entry would
-	// have made it three.
+	// The count is this machine plus the other one — the self entry would have
+	// made it three.
 	if got := w.machineCount(); got != 2 {
 		t.Fatalf("machineCount = %d, want this machine plus the other one", got)
 	}
@@ -614,10 +629,6 @@ func TestMachinePanelDoesNotListThisMachineTwice(t *testing.T) {
 	}
 }
 
-// A shell another machine is running that this window already has a tab for is
-// *switched to* when its row is picked — that is what a list of tabs is for, and
-// it used to do nothing at all: the click was swallowed and the pane stayed on
-// whichever shell happened to be there.
 func TestPickingARemoteShellSwitchesToItsTab(t *testing.T) {
 	w, _ := newTestShellWindow(t, "local one")
 	w.fleet = newTestFleet(t)
@@ -752,7 +763,7 @@ func TestTheSessionPanelListsOnlyThePickedMachinesShells(t *testing.T) {
 	}
 }
 
-func TestSessionAndMachinePanelsOfferRefreshControls(t *testing.T) {
+func TestTheGroupMenuOffersBothRefreshes(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t)
 	w.fleet = f
@@ -761,26 +772,24 @@ func TestSessionAndMachinePanelsOfferRefreshControls(t *testing.T) {
 	w.local.onGone = w.linkGone
 
 	tt := drawNav(t, w)
-	if _, ok := tt.Find(locales.SessionRefresh()); !ok {
-		t.Fatal("the session panel has no refresh control")
+	// The refreshes live on the group a person is looking at, not in a panel
+	// title: right-clicking this machine asks about this machine, and the whole
+	// roster has its own answer in the same menu.
+	if err := tt.RightClick(w.machineName(machineLocal)); err != nil {
+		t.Fatalf("right-click the group: %v", err)
 	}
-	if _, ok := tt.Find(locales.MachineRefresh()); !ok {
-		t.Fatal("the machine panel has no refresh control")
+	menu := strings.Join(tt.Menu(), " ")
+	if !strings.Contains(menu, locales.SessionRefresh()) {
+		t.Fatalf("the group's menu has no session refresh: %q", menu)
 	}
-
-	if err := tt.Click(locales.SessionRefresh()); err != nil {
-		t.Fatalf("Click(刷新会话 ⌘R): %v", err)
+	if !strings.Contains(menu, locales.MachineRefresh()) {
+		t.Fatalf("the group's menu has no machine refresh: %q", menu)
+	}
+	if err := tt.ChooseMenuItem(locales.SessionRefresh()); err != nil {
+		t.Fatalf("choose 刷新会话: %v", err)
 	}
 	w.drain()
 	if w.notice != locales.AppRefreshedLocal() {
 		t.Fatalf("notice after session refresh = %q, want '已刷新本机会话'", w.notice)
-	}
-
-	if err := tt.Click(locales.MachineRefresh()); err != nil {
-		t.Fatalf("Click(刷新机器 ⌘R): %v", err)
-	}
-	w.drain()
-	if w.notice != locales.AppRefreshedMachines() {
-		t.Fatalf("notice after machine refresh = %q, want '已刷新机器列表'", w.notice)
 	}
 }

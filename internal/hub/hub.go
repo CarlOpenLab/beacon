@@ -492,6 +492,9 @@ func (h *Hub) attach(c *client, s *session.Session, cursor int64) {
 	if cursor < 0 {
 		cursor = 0
 	}
+	// Somebody is looking at the session: whatever it was waiting to tell them
+	// has been told.
+	s.Viewed()
 
 	h.mu.Lock()
 	w := h.watches[s.ID]
@@ -792,6 +795,8 @@ func (h *Hub) watchSession(s *session.Session) {
 		select {
 		case <-s.Changes():
 			h.flush(s)
+		case <-s.StatusChanges():
+			h.broadcastSessions()
 		case <-s.Exited():
 			h.flush(s)
 			h.onSessionExit(s)

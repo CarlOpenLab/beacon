@@ -30,6 +30,20 @@ func installMenu(w *window) {
 	mygo.App.SetMenu(appMenu(w))
 }
 
+// menuAccelFor is an action's accelerator in the form mygo's menus take, so a
+// shortcut rebound in Settings is the one the menu shows.
+func (w *window) menuAccelFor(id string) string {
+	// While a shortcut is being recorded the menu must not eat the keys: a
+	// person recording ⌘, is not asking for Settings to open again.
+	if w.settingsContent != nil && w.settingsContent.recording != "" {
+		return ""
+	}
+	if a, ok := actionByID(id); ok {
+		return menuAccel(w.accel(a))
+	}
+	return ""
+}
+
 func appMenu(w *window) *mygo.Menu {
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Label: "term-fleet", Submenu: []*mygo.MenuItem{
@@ -38,7 +52,7 @@ func appMenu(w *window) *mygo.Menu {
 			mygo.Separator(),
 			{
 				Label:       locales.MenuSettings(),
-				Accelerator: "CmdOrCtrl+,",
+				Accelerator: w.menuAccelFor("settings.open"),
 				Click: func(*mygo.MenuItem, *mygo.Window) {
 					if w.win != nil {
 						w.win.Update(w.openSettings)

@@ -59,6 +59,30 @@ type Settings struct {
 	// first run gets — follows the system.
 	Theme string `json:"theme,omitempty"`
 
+	// Background is the window's wash: "rex", "mist", "meadow", "dusk" or
+	// "plain". Empty — what a first run and a missing key both give — is rex,
+	// the pink lavender one.
+	Background string `json:"background,omitempty"`
+
+	// The four notifications below are on unless they are turned off, so each
+	// field names what turns it off rather than what turns it on: a first run,
+	// and a settings file that predates the field, notifies.
+	//
+	// NotifyWaitingOff stops the notification a session sends when it comes to
+	// need the user, NotifyDoneOff the one an agent sends when it finishes, and
+	// NotifyErrorOff the one a program sends when it reports a failure.
+	NotifyWaitingOff bool `json:"notifyWaitingOff,omitempty"`
+	NotifyDoneOff    bool `json:"notifyDoneOff,omitempty"`
+	NotifyErrorOff   bool `json:"notifyErrorOff,omitempty"`
+	// DockBadgeOff hides how many sessions need the user from the Dock icon.
+	DockBadgeOff bool `json:"dockBadgeOff,omitempty"`
+
+	// Keybinds are the shortcuts the user changed, by the action id the window
+	// names them with: "session.new": "cmd+t". An accelerator the file holds
+	// wins over the action's default, and an empty one unbinds it — which is why
+	// the map's keys are consulted, not only its values.
+	Keybinds map[string]string `json:"keybinds,omitempty"`
+
 	// Language is the interface language, as a BCP 47 tag of the languages the
 	// app is written in: "zh-Hans" or "en". Empty — what a first run gets —
 	// follows the languages the system says the person reads.

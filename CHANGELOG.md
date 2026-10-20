@@ -4,6 +4,33 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.5.0
+
+**Desktop & web: kero v2's look — 桌面与浏览器换成 Kero v2 的外观**
+
+- **One palette, two clients.** `internal/uitokens` now holds the chrome's colors, the five window washes and the terminal themes, and `web/src/tokens.css` is generated from it — a test fails when the two disagree, so the desktop and the browser cannot drift apart again. Both appearances are real: 设置 → 外观 offers 跟随系统 / 白天 / 暗黑 and five backgrounds (粉紫、雾蓝、草绿、暮色、纯色), and the terminal's own colors follow the card they sit on.
+  — 新增 `internal/uitokens`，统一保存桌面与浏览器共用的颜色、五种窗口背景与终端配色；`web/src/tokens.css` 由它生成，并有测试保证两者不再漂移。浅色与深色这次都是真的：「设置 → 外观」可选跟随系统/白天/暗黑与五种背景（粉紫、雾蓝、草绿、暮色、纯色），终端配色也跟着卡片走。
+- **The desktop's frame is kero's.** A wash behind floating cards, a 268px sidebar grouped by machine with session rows that carry a state glyph and a relative time, a 44px card header with the shell's name, its directory, its message chip and hover controls, and an 8px gap between split panes. The band across the top and the status bar are gone: the fleet's state lives in the sidebar's foot, and the window's title carries the count of what needs you.
+  — 桌面窗体改为 Kero 的结构：渐变 wash 上浮着卡片；268px 侧栏按机器分组，会话行带状态图标与相对时间；44px 卡片头显示 shell 名、目录、消息 chip 与悬停控件；分屏之间留 8px 缝。原先的顶栏与状态栏取消，舰队状态收进侧栏脚，窗口标题显示「需要你」的数量。
+- **What a shell is doing.** The daemon reads a program's own reports (OSC 7501), ConEmu's notifications (OSC 9), the bell, a spinner in the terminal title and the arrival of output, and reports `idle / working / waiting / error / exited` with a message, a kind, a progress and an unread mark on the wire. `⌘J` jumps to the next session that needs you, the sidebar's foot counts 需要你 / 运行中 / 已完成 and walks them on a click, and an unread row's name is set heavier.
+  — daemon 现在读懂终端里的信号：程序自己上报的 OSC 7501、ConEmu 的 OSC 9 通知、响铃、标题里的转圈字符，以及输出是否还在流动，据此在协议里给出 `idle / working / waiting / error / exited`，附带消息、类型、进度与未读标记。`⌘J` 跳到下一个需要你的会话，侧栏脚统计「需要你 / 运行中 / 已完成」并可点击逐个跳转，未读行的名字加粗。
+- **Splits are panes, not tabs.** `⌘D` splits the shell on screen and the sidebar keeps one row for the workspace, with the pane count in its tooltip and the most urgent of its panes' states on the row; closing one pane takes it out of the split and gives its shell a row of its own again, still running. The keys are kero's: `⌘]` / `⌘[` walk the panes, `⌘⌥←→↑↓` cross the dividers, `⌘⇧↩` fills the body with the focused pane, `⌘R` names the shell on screen (refreshing moved to `F5`), and `⌘=`, `⌘-`, `⌘0` size the terminal.
+  — 分屏现在是「窗格」而不是「标签页」：`⌘D` 分屏后侧栏只保留一行（提示里写着窗格数，行上显示最紧急的那个窗格的状态），关掉一个窗格只是把它从分屏里取出，那个 shell 仍在运行、并重新获得自己的一行。快捷键对齐 kero：`⌘]` / `⌘[` 在窗格间移动，`⌘⌥←→↑↓` 跨分隔线换窗格，`⌘⇧↩` 让当前窗格占满整个窗口，`⌘R` 重命名当前 shell（刷新改为 `F5`），`⌘=`、`⌘-`、`⌘0` 调整终端字号。
+- **A command palette on `⌘P`.** Sessions, machines and commands in one list, with kero's own fuzzy order and each command's keys beside it.
+  — `⌘P` 打开命令面板：会话、机器与命令同列，模糊排序沿用 Kero 的算法，每条命令右侧标出快捷键。
+- **Settings is a window again.** Pages down the left, grouped panels on a card, and a real appearance page; the terminal pane keeps its font picker and size.
+  — 设置窗口重做：左侧页列表、右侧卡片上的分组面板，并新增「外观」页；终端页保留字体与字号选择。
+- **The browser client has no tab strip.** The session list is the switcher — click a row, the pane attaches; the composer, the on-screen keys, the inspector, the read-only banner and the phone drawer stay. Rows carry the same five state glyphs, and the card sits on the same wash.
+  — 浏览器端删除标签栏，改为「侧栏即会话列表」：点一行就附着一个会话；输入框、触屏按键、检查器、只读横幅与手机抽屉都保留。会话行使用同一套五态图标，卡片坐在同一片 wash 上。
+- **Native notifications, and a Dock badge.** Mygo is upgraded to the version that has them. A session that comes to need you, a program that reports a failure, or an agent that finishes while the window is not in front now posts a notification whose click puts that session on screen; the Dock icon counts what needs you. 设置 → 通知 turns each one off on its own, and 恢复默认 puts them all back.
+  — 升级 mygo 到带通知 API 的版本：会话变成「需要你」、程序报告失败、或 agent 在窗口不在前台时完成，都会发系统通知，点通知直接切到那个会话；Dock 图标显示需要你的数量。「设置 → 通知」可以分别关掉三种通知，「恢复默认」恢复全开。
+- **The program in the pane.** The daemon now reads the foreground process group of a terminal — `tcgetpgrp`, then the process's name from `/proc` on Linux or `kern.proc.pid` on macOS — and reports it on the wire. Both clients show it as a chip on the card's header when it is a program rather than the shell: `claude`, `npm`, `vim`, without the program having to report anything.
+  — daemon 会读取终端的前台进程组（`tcgetpgrp`，再取 `/proc`（Linux）或 `kern.proc.pid`（macOS）里的进程名），并放进协议；两端在卡片头上把它显示成一个 chip——`claude`、`npm`、`vim`，程序自己什么都不用上报。
+- **Every shortcut is rebindable.** The window's keys moved into one action registry: the keyboard, the command palette, the buttons on the empty card and the menu accelerators all read it, so a key rebound in 设置 → 键盘 is the key the window answers to. The page records the next keys typed, names a collision with the action that already holds them, clears a shortcut with ⌫, and 恢复默认 puts the defaults back.
+  — 快捷键收进一张 action 表：键盘、命令面板、空卡片上的按钮、菜单加速键都读它，所以在「设置 → 键盘」里改的键就是窗口实际响应的键。该页会录制下一次按下的组合、冲突时点名已经占用它的动作、用 ⌫ 清除，「恢复默认」恢复全部默认键。
+- **What did not move.** The fleet, the relay, one controller per shell with viewers, byte-offset resume, the desktop's splits and the browser's composer are untouched. The protocol gained the status fields and went to version 2, so a client built before this release must be reloaded once.
+  — 舰队、中继、每个 shell 的单控制者租约、按字节偏移续接、桌面分屏与浏览器输入框都没有动。协议新增状态字段并升到版本 2，升级前构建的客户端需要刷新一次。
+
 ## 0.4.22
 
 **Desktop & agent: a session-id data race closed — 修复会话 ID 的数据竞争**
@@ -26,6 +53,8 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
 
 - **Name a shell.** A `rename` frame sets a session's title, which every client's tab and row reads; an empty title clears it and the shell goes back to being named after its program. The lease is not consulted — a title is a label on a shell everybody watching sees, not the keyboard. In the desktop a double-click on the shell's row in the 会话 panel puts its name into a field (Enter commits, Escape lets go), with the same act in the row's menu; in the browser a double-click on the tab does the same.
   — 新增 `rename` 帧设置会话标题，所有客户端的标签页与会话行都会读取；清空标题则恢复为按程序名命名。租约不参与此事：标题是给大家看的标签，不是键盘。桌面端在「会话」面板双击某一行的名字即可改名（回车提交、Esc 取消），行菜单里也有同样一项；浏览器端双击标签页同理。
+- **The rename field reads as the row's own.** The field sits inside the row at the label's size, on the panel's raised field ground, its hairline border turning accent while the caret is in it — the name becoming editable is the row changing state, not a box the row's height landing on it. A press anywhere else commits the name, the way a blur does in the browser client, and a field nobody typed into names nothing: the shell keeps the name it had instead of having the name it showed pinned to it as a title. In the browser the tab's field takes the pill's own inset with the design system's focus ring, and grows to the room the label had.
+  — 桌面端改名输入框改为行内编辑样式：与行高相衬的紧凑高度、与标签同款字号、面板的浮起字段底色，边框在获得焦点（即出现的瞬间）时转为强调色；点击别处即提交，与浏览器端失焦提交一致；未改动的字段不会把当前显示的名字钉成标题，shell 保持原有命名。浏览器端标签页输入框改为适配胶囊内距、带焦点环，并占满标签原有宽度。
 - **The interface speaks English.** The desktop's chrome is now a mygo i18n catalog with Chinese and English, and 设置 → 终端 carries a 语言 field: 跟随系统, 中文 or English, applied on the click and kept for the next launch. The browser client is unchanged and stays Chinese.
   — 桌面端界面全面接入 mygo i18n，提供中文与英文两套文案，「设置 → 终端」新增「语言」选项：跟随系统、中文、English，点击即生效并记住下次启动。浏览器端暂不涉及，仍为中文。
 - **The settings window's panes line up.** Every explanatory line now starts in the control column instead of at the pane's edge, so the notes, the status lines and the fields read as one grid.

@@ -3,30 +3,34 @@ package main
 import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 )
 
-// Neutral desktop chrome; status and terminal output keep their own colors.
+// The chrome's measurements and colors. The colors live in internal/uitokens,
+// which the browser client's tokens.css is generated from, so the two clients
+// cannot drift; the numbers below are the ones the two layouts share.
 
 // chromeMetrics are the layout numbers the two clients share. They are the CSS
-// custom properties of the same names in web/src/style.css.
+// custom properties of the same names in web/src/style.css, and kero's own
+// numbers (see uitokens).
 const (
-	// headerHeight is the band at the top of the window: the brand, what the
-	// window has to say, and the controls that act on the window. It is the
-	// browser client's --h-header, and its window-drag band.
-	headerHeight = 44
-	// tabBarHeight is the strip of open shells under it: --tabsbar, a pill row
-	// with room around the pills.
+	// headerHeight is a card's header: the session's name, where it stands, and
+	// the controls that act on its pane. kero's is 2*(barMid-cardGap) = 44, the
+	// line the traffic lights and the sidebar's buttons center on.
+	headerHeight = uitokens.HeaderH
+	// tabBarHeight is the strip of open shells in the browser client, a pill row
+	// with room around the pills. The desktop has no strip; its sidebar is the
+	// list of shells.
 	tabBarHeight = 44
-	// statusHeight is the quiet line along the bottom: --h-status.
+	// statusHeight is the quiet line along the bottom of the browser client.
 	statusHeight = 28
 
 	// The corner scale is the CSS one: --radius-s is the small controls, --radius-m
-	// the buttons and rows, --radius-l the sheets and the composer, and a pill is
-	// a pill. The ui has one Radius on its theme for the controls that ask for
-	// nothing in particular, which is the medium.
+	// the buttons and rows, --radius-l the cards, and a pill is a pill.
 	radiusSmall = 6
-	radius      = 10
-	radiusLarge = 14
+	radius      = 8
+	radiusLarge = uitokens.CardRadius
 	radiusPill  = 999
 
 	// spacing is the ui's base unit, matching the CSS 4px scale's first step.
@@ -36,127 +40,51 @@ const (
 	fontSize = 13
 )
 
-// darkTheme is the shell in the set dark appearance: the browser client's
-// [data-theme="dark"] block, token for token.
-func darkTheme() *ui.Theme {
-	return &ui.Theme{
-		Dark:           true,
-		Background:     ui.Hex("#111111"),
-		Surface:        ui.Hex("#191919"),
-		SurfaceHover:   ui.Hex("#222222"),
-		SurfacePressed: ui.Hex("#2b2b2b"),
-		Border:         ui.Hex("#303030"),
-		Text:           ui.Hex("#dedede"),
-		TextMuted:      ui.Hex("#a0a0a0"),
-		Accent:         ui.Hex("#d0d0d0"),
-		AccentHover:    ui.Hex("#e0e0e0"),
-		AccentPressed:  ui.Hex("#e0e0e0"),
-		AccentText:     ui.Hex("#111111"),
-		Danger:         ui.Hex("#cf7773"),
-		Warning:        ui.Hex("#d3aa62"),
-		Success:        ui.Hex("#72b67b"),
-		Selection:      ui.RGBA(153, 153, 153, 0.32),
-		Focus:          ui.Hex("#d0d0d0"),
-		Inverse:        ui.Hex("#dedede"),
-		InverseText:    ui.Hex("#111111"),
-		Scrollbar:      ui.Hex("#303030"),
-		ScrollbarWidth: 8,
-		Radius:         radius,
-		Spacing:        spacing,
-		FontSize:       fontSize,
-	}
+// darkTheme is the chrome in a dark appearance.
+func darkTheme() *ui.Theme { return chromeTheme(ui.DarkTheme(), true) }
+
+// lightTheme is the chrome in a light appearance. The light one is not the dark
+// one inverted: it has its own ground, its own accent, and state colors that are
+// deeper because they have to read on white.
+func lightTheme() *ui.Theme { return chromeTheme(ui.LightTheme(), false) }
+
+// chromeTheme makes a ui theme kero's, from whatever theme the frame or the
+// system already had: the accent, the surfaces and the sizes of its controls.
+// The appearance's own Dark flag stays the caller's.
+func chromeTheme(base *ui.Theme, dark bool) *ui.Theme {
+	t := *base
+	t.Dark = dark
+	pal := uitokens.For(dark)
+
+	t.Background = pal.Sidebar
+	t.Surface = pal.Control
+	t.SurfaceHover = pal.ControlHover
+	t.SurfacePressed = pal.ControlHover.Mix(pal.Text, 0.06)
+	t.Border = ui.Transparent
+	t.Text = pal.Text
+	t.TextMuted = pal.TextMuted
+	t.Accent = pal.Accent
+	t.AccentHover = pal.Accent.Mix(ui.Hex("#ffffff"), 0.08)
+	t.AccentPressed = pal.Accent.Mix(ui.Hex("#000000"), 0.08)
+	t.AccentText = ui.Hex("#ffffff")
+	t.Danger = pal.Danger
+	t.Warning = pal.Attention
+	t.Success = pal.Success
+	t.Selection = pal.Accent.Alpha(0.25)
+	t.Focus = pal.Accent
+	t.Inverse = pal.Text
+	t.InverseText = pal.Sidebar
+	t.Scrollbar = pal.KbdBorder
+	t.ScrollbarWidth = 8
+	t.Radius = radius
+	t.Spacing = spacing
+	t.FontSize = fontSize
+	return &t
 }
 
-// lightTheme is the shell in the set light appearance: the browser client's
-// [data-theme="light"] block, token for token. It is not the dark block
-// inverted: the light appearance has its own ground, its own accent, and its own
-// state colours, which are darker because they have to be read on white.
-func lightTheme() *ui.Theme {
-	return &ui.Theme{
-		Background:     ui.Hex("#f0f0f0"),
-		Surface:        ui.Hex("#ffffff"),
-		SurfaceHover:   ui.Hex("#e6e6e6"),
-		SurfacePressed: ui.Hex("#dddddd"),
-		Border:         ui.Hex("#d0d0d0"),
-		Text:           ui.Hex("#222222"),
-		TextMuted:      ui.Hex("#666666"),
-		Accent:         ui.Hex("#606060"),
-		AccentHover:    ui.Hex("#4a4a4a"),
-		AccentPressed:  ui.Hex("#4a4a4a"),
-		AccentText:     ui.Hex("#ffffff"),
-		Danger:         ui.Hex("#ad4545"),
-		Warning:        ui.Hex("#8d661f"),
-		Success:        ui.Hex("#35744a"),
-		Selection:      ui.RGBA(102, 102, 102, 0.22),
-		Focus:          ui.Hex("#606060"),
-		Inverse:        ui.Hex("#222222"),
-		InverseText:    ui.Hex("#f0f0f0"),
-		Scrollbar:      ui.Hex("#d0d0d0"),
-		ScrollbarWidth: 8,
-		Radius:         radius,
-		Spacing:        spacing,
-		FontSize:       fontSize,
-	}
-}
-
-// shellColors are the shades the shell draws that the ui's theme has no name
-// for: the ground of the panels, the sidebar's recessed ground, the face of a
-// raised pill, the hairlines between them, the wash behind a chosen row and the
-// quiet of a control that is not on. They are the CSS tokens --bg-raised,
-// --bg-sunken, --tab-on, --line, --line-soft, --active, --kbd-bg and --fg-dim,
-// which have no ui.Theme field.
-type shellColors struct {
-	pane     ui.Color // the header, the tabs, the composer, the status bar
-	side     ui.Color // the sidebar, one step below the window ground
-	field    ui.Color // chips, keys and pills: --kbd-bg, as a solid
-	tabOn    ui.Color // the raised pill of the tab on screen: --tab-on
-	line     ui.Color // a border that has to be seen: --line
-	hairline ui.Color // the line between panes: --line-soft
-	chosen   ui.Color // the wash behind a chosen row: --active
-	icon     ui.Color // drawings and secondary text: --fg-2
-	quiet    ui.Color // meta and placeholders: --fg-dim
-}
-
-func shellColorsFor(t *ui.Theme) shellColors {
-	if t.Dark {
-		return shellColors{
-			pane:     ui.Hex("#191919"),
-			side:     ui.Hex("#141414"),
-			field:    ui.Hex("#222222"),
-			tabOn:    ui.Hex("#2b2b2b"),
-			line:     ui.Hex("#303030"),
-			hairline: ui.Hex("#292929"),
-			chosen:   ui.Hex("#292929"),
-			icon:     ui.Hex("#a0a0a0"),
-			quiet:    ui.Hex("#777777"),
-		}
-	}
-	return shellColors{
-		pane:     ui.Hex("#ffffff"),
-		side:     ui.Hex("#e6e6e6"),
-		field:    ui.Hex("#ececf0"),
-		tabOn:    ui.Hex("#ffffff"),
-		line:     ui.Hex("#d0d0d0"),
-		hairline: ui.Hex("#dddddd"),
-		chosen:   ui.Hex("#e5e5e5"),
-		icon:     ui.Hex("#666666"),
-		quiet:    ui.Hex("#75757f"),
-	}
-}
-
-// Preserve distinct ANSI colors and TrueColor output on a neutral background.
-func terminalTheme(_ bool) *terminal.Theme {
-	return &terminal.Theme{
-		Foreground: ui.Hex("#d7dae2"),
-		Background: ui.Hex("#111111"),
-		Cursor:     ui.Hex("#dedede"),
-		CursorText: ui.Hex("#111111"),
-		Selection:  ui.RGBA(153, 153, 153, 0.28),
-		Palette: [16]ui.Color{
-			ui.Hex("#26262e"), ui.Hex("#ff8b93"), ui.Hex("#6fd39a"), ui.Hex("#e6c07d"),
-			ui.Hex("#9ecbff"), ui.Hex("#b6a6ff"), ui.Hex("#7dd3fc"), ui.Hex("#d7dae2"),
-			ui.Hex("#4a4a56"), ui.Hex("#ffa3aa"), ui.Hex("#8ce3ae"), ui.Hex("#f0d095"),
-			ui.Hex("#b3d7ff"), ui.Hex("#c9bcff"), ui.Hex("#9be0ff"), ui.Hex("#eef0f6"),
-		},
-	}
+// terminalTheme is the terminal's colors for an appearance: kero's, which are
+// Apple's system colors tuned to read on the card they sit on. ANSI stays
+// distinct and TrueColor passes through untouched.
+func terminalTheme(dark bool) *terminal.Theme {
+	return uitokens.TermTheme(dark)
 }

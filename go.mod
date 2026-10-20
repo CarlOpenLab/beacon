@@ -6,7 +6,7 @@ require (
 	github.com/UserExistsError/conpty v0.1.4
 	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
-	github.com/egoist/mygo v0.5.5
+	github.com/egoist/mygo v0.5.6-0.20261020063447-d5bcfdb3d75b
 	golang.org/x/image v0.46.0
 )
 

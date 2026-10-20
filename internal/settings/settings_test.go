@@ -2,6 +2,7 @@ package settings
 
 import (
 	"os"
+	"reflect"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -11,7 +12,7 @@ import (
 func TestLoadMissingIsZero(t *testing.T) {
 	dir := t.TempDir()
 	got := Load(dir)
-	if got != (Settings{}) {
+	if !reflect.DeepEqual(got, Settings{}) {
 		t.Fatalf("Load(%q) = %+v, want zero Settings", dir, got)
 	}
 	// Zero Settings is the first-run contract: the local service is on.
@@ -34,7 +35,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if err := Save(dir, want); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if got := Load(dir); got != want {
+	if got := Load(dir); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Load = %+v, want %+v", got, want)
 	}
 }
@@ -62,7 +63,7 @@ func TestLoadDamagedFileIsZero(t *testing.T) {
 	if err := os.WriteFile(Path(dir), []byte("{not json"), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
-	if got := Load(dir); got != (Settings{}) {
+	if got := Load(dir); !reflect.DeepEqual(got, Settings{}) {
 		t.Fatalf("Load of a damaged file = %+v, want zero Settings", got)
 	}
 	// A damaged file must not stop the next write from succeeding.

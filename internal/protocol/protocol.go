@@ -6,7 +6,7 @@
 package protocol
 
 // Version is the protocol version carried by the hello handshake.
-const Version = 1
+const Version = 2
 
 // Client -> server discriminators.
 const (
@@ -157,4 +157,22 @@ type Summary struct {
 	Controller string   `json:"controller,omitempty"`
 	Viewers    []string `json:"viewers,omitempty"`
 	CreatedAt  string   `json:"createdAt"`
+
+	// What the shell is doing, which the daemon follows from the session's own
+	// output: see internal/status. Status is one of idle, working, waiting,
+	// error or exited; Unread marks a state the user has not looked at yet;
+	// Message is what the program said about it; Kind says what a waiting
+	// program wants (permission, question, auth); Progress is 0-100 while a
+	// working program reports one, -1 otherwise; Since is when the state began,
+	// in Unix milliseconds.
+	Status   string `json:"status,omitempty"`
+	Unread   bool   `json:"unread,omitempty"`
+	Message  string `json:"message,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	Progress int    `json:"progress,omitempty"`
+	Since    int64  `json:"since,omitempty"`
+	// Process is the program in the foreground of the pane — "zsh" at a prompt,
+	// "claude" while an agent runs — which the daemon reads from the terminal's
+	// own process group. Empty on a host that cannot say.
+	Process string `json:"process,omitempty"`
 }

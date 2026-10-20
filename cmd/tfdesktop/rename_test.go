@@ -69,7 +69,7 @@ func TestEscapeLeavesTheShellNamedAsItWas(t *testing.T) {
 
 	tt := drawNav(t, w)
 	tt.Frame()
-	w.beginRename(tb.machine, tb.id)
+	w.beginRename(tb.machine, tb.id, before)
 	tt.Frame()
 	tt.Type("a name that will not stick")
 	tt.Key(0, ui.KeyEscape)
@@ -83,6 +83,82 @@ func TestEscapeLeavesTheShellNamedAsItWas(t *testing.T) {
 	}
 	if named := hubTitle(t, f, tb.id, ""); named != "" {
 		t.Fatalf("the hub was told a name the person did not commit: %q", named)
+	}
+}
+
+// A press anywhere else commits the name, the way a blur does in the browser
+// client: the field does not outstay its welcome on the row. The press that
+// opened the field is not one of those — it landed on the row a frame before
+// the field existed — so the field survives its own opening.
+func TestAPressElsewhereCommitsTheName(t *testing.T) {
+	w, f := newSplitWindow(t)
+	tb := openShell(t, w, f, testDir(t))
+
+	tt := drawNav(t, w)
+	tt.Frame()
+	where, ok := tt.Find(tb.name())
+	if !ok {
+		t.Fatalf("the 会话 panel does not list %q; texts = %v", tb.name(), tt.Texts())
+	}
+	x, y := where.X+where.W/2, where.Y+where.H/2
+	tt.ClickAt(x, y)
+	tt.Frame()
+	tt.ClickAt(x, y)
+	tt.Frame()
+	if !w.renamingIs(tb.machine, tb.id) {
+		t.Fatal("a double-click on the row did not put its name into a field")
+	}
+
+	tt.Type("build box")
+	// A press on the row's own edge — beside the name, not in the field — is a
+	// press elsewhere as far as the field is concerned.
+	tt.ClickAt(where.X+2, y)
+	tt.Frame()
+	drainFor(t, w, func() bool { return w.renaming == nil })
+
+	if named := hubTitle(t, f, tb.id, "build box"); named != "build box" {
+		t.Fatalf("the hub names the shell %q, want the name that was typed", named)
+	}
+	// And the tab reads it, which is the person who typed it seeing it land.
+	if got := tb.name(); got != "build box" {
+		t.Fatalf("the tab reads %q, want the name it was given", got)
+	}
+}
+
+// A field nobody typed into names nothing: the press that lets go of it leaves
+// the shell with the name it had, rather than pinning the name the row showed
+// as a title of its own.
+func TestAnUntouchedFieldNamesNothing(t *testing.T) {
+	w, f := newSplitWindow(t)
+	tb := openShell(t, w, f, testDir(t))
+	before := tb.name()
+
+	tt := drawNav(t, w)
+	tt.Frame()
+	where, ok := tt.Find(before)
+	if !ok {
+		t.Fatalf("the 会话 panel does not list %q; texts = %v", before, tt.Texts())
+	}
+	x, y := where.X+where.W/2, where.Y+where.H/2
+	tt.ClickAt(x, y)
+	tt.Frame()
+	tt.ClickAt(x, y)
+	tt.Frame()
+	if !w.renamingIs(tb.machine, tb.id) {
+		t.Fatal("a double-click on the row did not put its name into a field")
+	}
+
+	tt.ClickAt(where.X+2, y)
+	tt.Frame()
+	drainFor(t, w, func() bool { return w.renaming == nil })
+
+	if got := tb.name(); got != before {
+		t.Fatalf("the shell is named %q, want the name it had, %q", got, before)
+	}
+	// Nothing was sent: the hub never heard a title, so its own list still
+	// names the shell after its program.
+	if named := hubTitle(t, f, tb.id, ""); named != "" {
+		t.Fatalf("the hub was told a name nobody typed: %q", named)
 	}
 }
 
@@ -115,7 +191,7 @@ func TestAnEmptyNameGivesTheShellItsProgramBack(t *testing.T) {
 	w, f := newSplitWindow(t)
 	tb := openShell(t, w, f, testDir(t))
 
-	w.beginRename(tb.machine, tb.id)
+	w.beginRename(tb.machine, tb.id, tb.name())
 	w.renameDraft = "  "
 	w.commitRename()
 

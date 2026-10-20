@@ -51,56 +51,72 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
 
 - PTY sessions, byte-offset output history, one multiplexed WebSocket, and a
   single-controller model with viewers.
-- The browser client: tabs, session inventory, keyboard-driven new/close,
-  selection with a copy button at it, reopen-from-cursor after a dropped link,
-  and a machine-grouped sidebar when more than one machine is reachable. A new
-  tab opens in the directory the shell on screen stands in — the same follow the
-  desktop's splits use — and a double-click on a tab names the shell.
+- The browser client: a session list grouped by machine, keyboard-driven
+  new/close, selection with a copy button at it, reopen-from-cursor after a
+  dropped link, and kero's five-state glyph on every row — working, waiting,
+  idle, error, exited — with the message the program itself reported. A new
+  shell opens in the directory the shell on screen stands in — the same follow
+  the desktop's splits use — and a double-click on a row names the shell. There
+  is no tab strip: the list is the switcher, on a phone as on a desktop.
 - It is served by the daemon *and* by the relay, from one build: the server
   reports which transport it speaks (`/tf/config`), so a browser tab and a
   phone load the same code. The desktop window is native, and attaches to the
   same sessions rather than loading that code.
 - `tfdesktop`: the same daemon behind a native Mygo window — mygo's `ui`
-  controls and its terminal plugin draw the tabs, so there is no WebView and no
-  xterm in the PC client. A tab there is a real shell on the machine, and the
-  daemon underneath is what lets a browser drive the very shell on screen.
-  The column beside the strip holds two panels with a draggable line between
-  them — the shells on top, the machines under them — and the 会话 panel's title
-  row carries 新建标签页 / 关闭标签页 as icon buttons. The 机器 panel lists the
-  machines this window can reach, as a list you switch between: this machine
-  first, then every other machine on the relay. The one that is picked is the
-  machine the 会话 panel is about, and the one its 新建标签页 opens a shell on, so
-  driving another machine is a matter of picking it. The relay itself gets no
-  row — it is the pipe, not a machine — and 新建 on another machine asks that
-  machine's hub for a shell over the relay, which lands in a tab here under that
-  machine's arbitration.
-  The body splits: `⌘D` puts a second shell beside the one on screen and `⌘⇧D`
-  above or below it, with a divider the pointer drags between the panes. A
-  split shell is an ordinary shell — the 会话 panel lists it, and closing its
-  pane leaves it running — and the pane on screen is the one the composer types
-  into, the header describes and `⌘W` closes. Splitting a shell on another
-  machine opens the second shell there, over the same relay link.
-  A new shell — from a split, from `⌘T`, or from the panel's ＋ — opens in the
+  controls and its terminal plugin draw the window, so there is no WebView and
+  no xterm in the PC client. A shell there is a real shell on the machine, and
+  the daemon underneath is what lets a browser drive the very shell on screen.
+  The window is kero v2's: a wash of colour behind floating cards, and a column
+  at the left that is the fleet itself — this machine first, then every machine
+  the relay says is here, each a group of sessions with a state glyph, the time
+  since its state began and a count. There is no tab strip and no status bar:
+  the column's foot carries the palette, the settings and the counts of what
+  needs you, is working and has finished, and the window's title carries the
+  count of what needs you.
+  The body is cards: a 44px header with the shell's name, its directory, the
+  message the program reported and — on the hover — the split and close
+  controls, and the terminal under it, the card's corners clipping both. `⌘D`
+  puts a second shell beside the one on screen and `⌘⇧D` above or below it,
+  with an 8px gap the pointer drags between the panes, and a pane the user is
+  not in fades with its text. `⌘P` opens the command palette — sessions,
+  machines and commands, with kero's own fuzzy order — and `⌘J` goes to the
+  next session that needs you.
+  A new shell — from a split, from `⌘T`, or from a group's ＋ — opens in the
   directory the shell beside it stands in, so a person who has cd'd somewhere
   gets the second pane there rather than at the home directory. The daemon asks
   the operating system where the process is now (`/proc` on Linux, `lsof` on
   macOS) and falls back to the directory the shell was started in.
-  A shell is named by a double-click on its row in the 会话 panel — Enter
-  commits, Escape lets go — and the name is the session's title, so every
-  client watching the shell reads it. The interface language is chosen in
-  设置 → 终端: 跟随系统, 中文 or English.
-  A Settings window (the 设置 row at the bottom of the column, under the shells)
-  picks the terminal's font, size and language, stores this machine's relay
-  credential, turns the local service on or off, and decides whether other
-  clients may take this machine's shells — the same surface Gloss keeps, drawn
-  the same way. Reaching the other machines needs nothing typed: a window asks
-  the relay for a short-lived *control token*, proving itself with the device
-  credential it already joins the fleet with (`/relay/control-token`), and that
-  credential — not the fleet's shared secret — is what its client link presents. The font field suggests the families installed on the machine
-  and takes any name, so a Nerd Font build ("Maple Mono NF" beside "Maple Mono")
-  is selectable. Edited text fields are saved by 应用, which the toolbar offers
-  only while there is something to apply; a tab is named after its shell
-  ("zsh 1") until the shell sets a title of its own.
+  A shell is named by a double-click on its row — Enter commits, Escape lets go
+  — and the name is the session's title, so every client watching the shell
+  reads it. The interface language is chosen in 设置 → 终端: 跟随系统, 中文 or
+  English; the appearance and the window's wash are chosen in 设置 → 外观.
+  The settings window picks the terminal's font, size and language, stores this
+  machine's relay credential, turns the local service on or off, and decides
+  whether other clients may take this machine's shells. Reaching the other
+  machines needs nothing typed: a window asks the relay for a short-lived
+  *control token*, proving itself with the device credential it already joins
+  the fleet with (`/relay/control-token`), and that credential — not the fleet's
+  shared secret — is what its client link presents. The font field suggests the
+  families installed on the machine and takes any name, so a Nerd Font build
+  ("Maple Mono NF" beside "Maple Mono") is selectable. Edited text fields are
+  saved by 应用, which the header offers only while there is something to
+  apply; a shell is named after its program ("zsh 1") until it sets a title.
+- **What each shell is doing**, on both clients: the daemon reads the program's
+  own reports (`OSC 7501`), a notification sequence (`OSC 9`), the bell, a
+  spinner in the terminal title and whether output is still arriving, and
+  reports `idle`, `working`, `waiting`, `error` or `exited` with the message,
+  its kind, a progress and an unread mark. A program can drive its own row:
+  `printf '\033]7501;state=blocked:kind=permission:msg=%s\033\\' "$(printf 'Approve?' | base64)"`.
+- **It tells you when one needs you.** A session that comes to need the user, a
+  program that reports a failure, or an agent that finishes while the window is
+  behind something else posts a notification; its click puts that session on
+  screen. The Dock icon counts what needs you, and 设置 → 通知 decides which of
+  the three is worth a banner.
+- **Every shortcut is yours.** The window's keys are an action list — the
+  keyboard, the command palette, the buttons on an empty card and the menu
+  accelerators all read it — so 设置 → 键盘 can record a new chord, name a
+  collision, clear one, or put the defaults back. Rebinding ⌘D to ⌘K moves the
+  split, not just the label.
 - `tfrelay` + `agent`: machines dial out to a public relay and are controllable
   from anywhere; a dropped link is a routing outage, not data loss — sessions
   and their output history live in the member and survive it.

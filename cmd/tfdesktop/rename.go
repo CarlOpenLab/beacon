@@ -7,7 +7,8 @@ package main
 // an empty title gives the shell its program's name back. The gesture is a
 // double-click on the shell's row in the 会话 panel, the way every list on a Mac
 // renames what it lists, with the same act in the row's menu for anybody who
-// does not double-click.
+// does not double-click. The field commits on Enter and on a press anywhere
+// else, and lets go on Escape.
 //
 // The lease is not consulted: a title is a label on a shell everybody watching
 // sees, not the keyboard. A phone reading a shell may name what it is reading,
@@ -32,26 +33,18 @@ type renameTarget struct {
 }
 
 // beginRename puts a shell's name into the field on its row: the draft starts
-// as the name it has now, so editing is editing rather than typing it again.
-func (w *window) beginRename(machine, session string) {
+// as the name the row shows, so editing is editing rather than typing it again.
+// The name the draft starts as is kept as the seed, which is what tells a field
+// nobody touched from a renamed one.
+func (w *window) beginRename(machine, session, label string) {
 	if session == "" {
 		return
 	}
 	w.renaming = &renameTarget{machine: machine, session: session, tab: w.tabOf(machine, session)}
-	w.renameDraft = w.renaming.name()
+	w.renameDraft = label
+	w.renameSeed = label
+	w.renameArmed = false
 	w.invalidate()
-}
-
-// name is what the shell is called right now: its title when it has one, and
-// the program-and-number name the window gives it when it does not.
-func (r *renameTarget) name() string {
-	if r == nil {
-		return ""
-	}
-	if r.tab != nil {
-		return r.tab.name()
-	}
-	return r.session
 }
 
 // renamingIs reports whether the shell being named is this one, which is what
@@ -62,15 +55,24 @@ func (w *window) renamingIs(machine, session string) bool {
 
 // commitRename sends the draft to the hub. The row's own name moves at once —
 // the person who typed it should see it — and the session list that follows
-// confirms it for every client watching the shell, this window included.
+// confirms it for every client watching the shell, this window included. A
+// draft nobody touched names nothing: the shell keeps the name it had, derived
+// or titled, rather than having the name the row showed pinned to it as one.
 func (w *window) commitRename() {
 	at := w.renaming
 	w.renaming = nil
+	w.renameArmed = false
 	if at == nil {
 		return
 	}
 	title := strings.TrimSpace(w.renameDraft)
+	seed := w.renameSeed
 	w.renameDraft = ""
+	w.renameSeed = ""
+	if title == seed {
+		w.invalidate()
+		return
+	}
 	if at.tab != nil {
 		at.tab.setTitle(title)
 	}
@@ -82,24 +84,35 @@ func (w *window) commitRename() {
 func (w *window) cancelRename() {
 	w.renaming = nil
 	w.renameDraft = ""
+	w.renameSeed = ""
+	w.renameArmed = false
 	w.invalidate()
 }
 
 // renameField is the row's name while it is being edited: a field in the name's
-// place, Enter committing and Escape letting go. It takes the keyboard focus
-// the moment it appears, with the whole name selected, so typing replaces it
-// the way renaming does everywhere else — and editing it is still there for
-// anybody who wants to change one letter.
+// place, Enter committing, a press anywhere else committing and Escape letting
+// go. It takes the keyboard focus the moment it appears, with the whole name
+// selected, so typing replaces it the way renaming does everywhere else — and
+// editing it is still there for anybody who wants to change one letter.
+//
+// The field wears the row's own typography on the panel's raised field ground,
+// at a height that sits inside the row rather than filling it: the name becoming
+// editable is the row changing state, not a box landing on it. The border is the
+// panel's hairline until the caret is in the field, which is the moment it
+// appears, and the accent while it is.
 func (w *window) renameField(c *ui.Context) {
-	t := c.Theme()
+	col := shellColorsFor(c.Theme())
 	box := ui.TextInput(c, &w.renameDraft).
 		Fill().
+		Height(22).
 		AutoFocus().
 		SetTextSelection(0, len([]rune(w.renameDraft))).
+		PaddingX(8).PaddingY(2).
 		Radius(radiusSmall).
-		Background(t.Background).
+		FontSize(12).
+		Background(col.field).
 		BorderWidth(1).
-		BorderColor(t.Accent).
+		BorderColor(col.line).
 		Placeholder(locales.RenamePlaceholder())
 	if box.Submitted() {
 		w.commitRename()
@@ -107,5 +120,16 @@ func (w *window) renameField(c *ui.Context) {
 	}
 	if box.Shortcut(0, ui.KeyEscape) {
 		w.cancelRename()
+		return
 	}
+	// A press anywhere but the field is the field losing the floor, the way a
+	// blur is in the browser client: the name is kept. The press that opened the
+	// field is not one of those — it landed on the row a frame before the field
+	// existed — so the field only starts listening once it has been on screen
+	// for a frame.
+	if w.renameArmed && box.PressedOutside() {
+		w.commitRename()
+		return
+	}
+	w.renameArmed = true
 }

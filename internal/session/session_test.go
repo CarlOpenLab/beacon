@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A session has to report the program it runs. Clients label a tab with it when
@@ -80,4 +81,41 @@ func TestANewShellKeepsTheDirectoryItWasGiven(t *testing.T) {
 	if got := sess.Summary().Cwd; got != dir {
 		t.Fatalf("Cwd = %q, want the directory the client asked for %q", got, dir)
 	}
+}
+
+// The foreground program is what a card's header chips: the shell at its prompt,
+// whatever the shell is running on top of it. `exec` replaces the shell in its
+// own process group, which is the same place a job-control shell puts a command,
+// so the test does not depend on job control being on.
+func TestForegroundNamesTheProgramInThePane(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a ConPTY does not hand its foreground process group over")
+	}
+	sess, err := Start("fg", 80, 24, "", "sh")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer sess.Close()
+
+	waitForeground(t, sess, func(name string) bool {
+		return name == "sh" || name == "bash" || name == "dash"
+	})
+	if err := sess.Write([]byte("exec sleep 5\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	waitForeground(t, sess, func(name string) bool { return name == "sleep" })
+}
+
+func waitForeground(t *testing.T, s *Session, ok func(string) bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		last = s.Foreground()
+		if ok(last) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("the foreground program stayed %q", last)
 }

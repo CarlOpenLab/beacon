@@ -6,12 +6,23 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
     />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#101014" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#eceef4" />
     <meta name="description" content="Terminal sessions from every machine, in one browser tab." />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/favicon.png" />
     <title>term-fleet</title>
+    <style>
+      /* The window ground is the wash before the bundle paints it: no white
+         flash between the document and the app, and the same colour the
+         browser's own chrome is told to wear. */
+      html {
+        background: #eceef4;
+      }
+      html[data-theme="dark"] {
+        background: #141418;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

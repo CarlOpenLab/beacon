@@ -64,6 +64,8 @@ export interface Summary {
   pid: number
   cwd: string
   title: string
+  /** The program the session runs; the name falls back to it until a title. */
+  shell?: string
   cols: number
   rows: number
   alive: boolean
@@ -71,6 +73,27 @@ export interface Summary {
   controller?: string
   viewers?: string[]
   createdAt: string
+  /**
+   * What the shell is doing, followed by the daemon from its output:
+   * idle | working | waiting | error | exited. A daemon that does not report it
+   * leaves it empty, and the client reads an empty one as idle.
+   */
+  status?: string
+  /** A finish the person has not looked at yet. */
+  unread?: boolean
+  /** What the program said about its state, when it said anything. */
+  message?: string
+  /** What a waiting program wants: permission, question, auth. */
+  kind?: string
+  /** 0-100 while working, -1 when there is no progress to report. */
+  progress?: number
+  /** When the state began, in Unix milliseconds. */
+  since?: number
+  /**
+   * The program in the foreground of the pane: "zsh" at a prompt, "claude"
+   * while an agent runs. Empty on a host that cannot say.
+   */
+  process?: string
 }
 
 /**

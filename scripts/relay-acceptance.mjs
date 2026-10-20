@@ -15,6 +15,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const RELAY_PORT = 7698
+
+// PROTOCOL is internal/protocol.Version: the daemon refuses a client that speaks
+// another one, so the script names it once.
+const PROTOCOL = 2
 const DAEMON_PORT = 7679
 const RELAY = `127.0.0.1:${RELAY_PORT}`
 const TOKEN = 'acceptance-client-token'
@@ -204,7 +208,9 @@ async function main() {
   const acc = await c.waitFor('accept', (f) => f.t === 'accept' && f.stream === STREAM)
   check('open is accepted', acc.machine === deviceId)
 
-  c.inner(STREAM, { t: 'hello', v: 1 })
+  // The inner handshake speaks the same protocol the daemon does; the two ends
+  // must agree on the version, which is what a wire change bumps.
+  c.inner(STREAM, { t: 'hello', v: PROTOCOL })
   const hello = decodeInner(await c.waitFor('inner hello', (f) => f.t === 'data' && decodeInner(f).t === 'hello'))
   check('inner handshake carries the host', Boolean(hello.host?.platform))
 
@@ -235,7 +241,7 @@ async function main() {
   const S2 = 2
   c.send({ t: 'open', machine: deviceId, stream: S2 })
   await c.waitFor('accept on stream 2', (f) => f.t === 'accept' && f.stream === S2)
-  c.inner(S2, { t: 'hello', v: 1 })
+  c.inner(S2, { t: 'hello', v: PROTOCOL })
   await c.waitFor('inner hello on stream 2', (f) => {
     if (f.t !== 'data' || f.stream !== S2) return false
     return decodeInner(f).t === 'hello'

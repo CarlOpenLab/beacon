@@ -3,8 +3,10 @@ package main
 import (
 	"testing"
 
-	"github.com/CarlOpenLab/term-fleet/locales"
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // The shell is the part of the window that is not a terminal: the band across
@@ -12,14 +14,22 @@ import (
 // check that each of them still says and offers what it is there for; the
 // pictures in TestRenderShellPreviews are what says whether they look right.
 
-// The header is the only way to change the window itself, so both of its
-// controls have to be on it and both have to work.
-func TestTheHeaderNamesTheActiveTerminalAndOffersNewTerminal(t *testing.T) {
+// A card's header names the shell on screen, and where the window's own controls
+// went: the shell's name is on the card, and 新建终端 and 设置 are in the
+// sidebar's foot and top bar. The old band across the top, with a sentence that
+// stitched the machine and the shell together, is gone.
+func TestTheCardHeaderNamesTheActiveTerminal(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
-	w.tabs[1].alive = true
+	tb := w.tabs[1]
+	tb.alive = true
+	tb.term = fedTerminal(t, previewScreen())
 	tt := ui.NewTester(w.view, 900, 600)
-	if !tt.HasText(locales.HeaderMachineShell(locales.MachineLocal(), "one")) {
-		t.Fatalf("missing terminal title: %v", tt.Texts())
+	tt.Frame()
+	if !tt.HasText("one") {
+		t.Fatalf("missing the shell's name on its card: %v", tt.Texts())
+	}
+	if tt.HasText(locales.HeaderMachineShell(locales.MachineLocal(), "one")) {
+		t.Fatal("the removed band across the top is still drawn")
 	}
 	if _, ok := tt.Find(locales.ActionNewTerminalTip()); !ok {
 		t.Fatal("missing new terminal action")
@@ -38,7 +48,7 @@ func TestEmptyStateInvitesTheFirstShell(t *testing.T) {
 	w, _ := newTestShellWindow(t)
 	tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
-		w.emptyState(c)
+		w.emptyState(c, paletteFor(c))
 	}, 600, 320)
 
 	if !tt.HasText(locales.EmptyTitle()) {
@@ -49,22 +59,21 @@ func TestEmptyStateInvitesTheFirstShell(t *testing.T) {
 	}
 }
 
-// The bottom line is where the service's address lives and the machine the shell
-// on screen runs on, with the shell itself at the end of it. The build is in the
-// status chip's tooltip: the line already names the platform it is running on,
-// and naming it a second time was the one thing on the line that said nothing.
-func TestStatusBarNamesTheServiceAndTheMachine(t *testing.T) {
+// The service and the fleet live in the sidebar's foot now: a dot for the local
+// service and how many machines answer, with the address in its tooltip. It is
+// the one line the old status bar was for, in the corner kero keeps it.
+func TestTheSidebarFootNamesTheService(t *testing.T) {
 	w, _ := newTestShellWindow(t)
 	tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
-		w.statusBar(c)
-	}, 600, statusHeight)
+		w.sidebarFooter(c, paletteFor(c))
+	}, 300, uitokens.FooterH)
 
 	if !tt.HasText(w.serviceLine()) {
-		t.Fatalf("the bottom line does not name the service; it shows %v", tt.Texts())
+		t.Fatalf("the foot does not name the service; it shows %v", tt.Texts())
 	}
 	if _, ok := tt.Find(locales.ServiceOff()); !ok {
-		t.Fatalf("the status chip is not a chip a pointer can rest on; texts = %v", tt.Texts())
+		t.Fatalf("the service line is not a chip a pointer can rest on; texts = %v", tt.Texts())
 	}
 }
 
@@ -79,22 +88,33 @@ func TestTheMarkIsEmbedded(t *testing.T) {
 	}
 }
 
-// The shell brings its own palette: the two set appearances, a sidebar that sits
-// off the window ground, and a terminal that is part of the window rather than a
-// program that wandered into it.
+// The shell brings its own palette: kero's light and dark sets, a card that is
+// not the ground it sits on, and a terminal whose colors match the card the
+// window draws around it.
 func TestTheShellBringsItsOwnPalette(t *testing.T) {
 	dark := darkTheme()
-	if !dark.Dark || dark.Background != ui.Hex("#111111") {
+	if !dark.Dark || dark.Background != uitokens.Dark.Sidebar {
 		t.Fatal("wrong desktop ground")
 	}
-	if dark.Accent != ui.Hex("#d0d0d0") {
-		t.Fatal("chrome accent is not neutral")
+	if dark.Accent != uitokens.Dark.Accent {
+		t.Fatal("chrome accent is not the palette's")
 	}
 	term := terminalTheme(true)
-	if term.Background != terminalGround || term.Cursor != ui.Hex("#dedede") {
-		t.Fatal("terminal does not match desktop")
+	if term.Background != uitokens.Dark.Card || term.Cursor != ui.Hex("#e6e6ea") {
+		t.Fatal("terminal does not match the card")
 	}
 	if term.Palette[1] == term.Palette[2] || term.Palette[2] == term.Palette[4] {
 		t.Fatal("ANSI colors lost their distinction")
+	}
+
+	// The light appearance is its own set, not the dark one inverted: its card is
+	// white, its ink is near black, and its terminal reads on the white.
+	light := lightTheme()
+	if light.Dark || light.Background == dark.Background {
+		t.Fatal("the light appearance is the dark one")
+	}
+	lightTerm := terminalTheme(false)
+	if lightTerm.Background != uitokens.Light.Card || lightTerm.Foreground != ui.Hex("#1d1d1f") {
+		t.Fatal("the light terminal does not read on its card")
 	}
 }

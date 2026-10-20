@@ -3,9 +3,11 @@ package main
 import (
 	"log"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
@@ -55,9 +57,9 @@ func themeName(mode string) string {
 	return themeChoices[themeIndex(mode)].label
 }
 
-// themeFor is the palette an explicit mode asks for. The system default is nil
-// on purpose: the ui follows the system unless a frame sets a theme, so
-// following the system is the absence of a choice, not a third palette.
+// themeFor is the palette an explicit mode asks for, or nil to follow the
+// system. It is the appearance the window's material follows, before any frame
+// runs.
 func themeFor(mode string) *ui.Theme {
 	switch normalizeTheme(mode) {
 	case themeLight:
@@ -68,8 +70,103 @@ func themeFor(mode string) *ui.Theme {
 	return nil
 }
 
-// Desktop chrome stays dark regardless of older saved appearance preferences.
-func applyTheme(c *ui.Context, _ string) { c.SetTheme(darkTheme()) }
+// applyAppearance tells the app which appearance the person asked for, so that
+// the window's material, its menus and the frame agree. The empty mode follows
+// the system.
+func applyAppearance(mode string) {
+	switch normalizeTheme(mode) {
+	case themeLight:
+		mygo.Theme.SetSource(mygo.ThemeLight)
+	case themeDark:
+		mygo.Theme.SetSource(mygo.ThemeDark)
+	default:
+		mygo.Theme.SetSource(mygo.ThemeSystem)
+	}
+}
+
+// paletteFor returns the colors of the appearance in force in a frame. The
+// frame's theme is what applyTheme left there, so this is the one place the two
+// agree.
+func paletteFor(c *ui.Context) *uitokens.Palette {
+	return uitokens.For(c.Theme().Dark)
+}
+
+// paletteOf returns the colors of an appearance, for the code that has a theme
+// but no frame (a settings window's first frame, a test).
+func paletteOf(t *ui.Theme) *uitokens.Palette {
+	return uitokens.For(t.Dark)
+}
+
+// applyTheme makes the frame's chrome kero's: the accent, the surfaces and the
+// sizes of its controls. The mode is the stored appearance; the empty mode is
+// whatever the system says, which is what c.Theme() already holds.
+func applyTheme(c *ui.Context, mode string) {
+	t := c.Theme()
+	switch normalizeTheme(mode) {
+	case themeLight:
+		c.SetTheme(chromeTheme(t, false))
+	case themeDark:
+		c.SetTheme(chromeTheme(t, true))
+	default:
+		c.SetTheme(chromeTheme(t, t.Dark))
+	}
+}
+
+// backdrop paints the window's wash: the base on the root, and the glow from
+// the top right on the row that holds everything else. Over the window's
+// material, which shows through a little when the window is translucent; the
+// plain wash is the material alone.
+func backdrop(c *ui.Context, pal *uitokens.Palette, row ui.Element, washID string) {
+	w := uitokens.WashFor(washID)
+	if w.ID == "plain" {
+		bg := pal.Sidebar
+		if c.Vibrancy() {
+			bg = bg.Alpha(0.82)
+		}
+		c.Root().Background(bg)
+		return
+	}
+	alpha := float32(1)
+	if c.Vibrancy() {
+		alpha = 0.95
+	}
+	base := w.Base(pal.Dark)
+	for i := range base.Stops {
+		base.Stops[i].Color = base.Stops[i].Color.Alpha(alpha)
+	}
+	c.Root().LinearGradient(base)
+	row.LinearGradient(w.Glow(pal.Dark))
+}
+
+// shellColors are the shades the shell draws that the ui's theme has no name
+// for. It is the palette above in the names the shell's older code uses, so
+// that a surface-by-surface restyle need not rename everything at once.
+type shellColors struct {
+	pane     ui.Color // a card
+	side     ui.Color // the sidebar
+	field    ui.Color // chips, keys and pills
+	tabOn    ui.Color // the chosen row
+	line     ui.Color // a border that has to be seen
+	hairline ui.Color // the line between panes
+	chosen   ui.Color // the wash behind a chosen row
+	icon     ui.Color // drawings and secondary text
+	quiet    ui.Color // meta and placeholders
+}
+
+func shellColorsFor(t *ui.Theme) shellColors {
+	pal := paletteOf(t)
+	return shellColors{
+		pane:     pal.Card,
+		side:     pal.Sidebar,
+		field:    pal.Chip,
+		tabOn:    pal.RowSelected,
+		line:     pal.CardBorder,
+		hairline: pal.Divider,
+		chosen:   pal.RowSelected,
+		icon:     pal.TextMuted,
+		quiet:    pal.TextFaint,
+	}
+}
 
 // flipTheme is what the rail's appearance entry does: it names the mode a click
 // switches to. From the system default it picks the opposite of what is on
@@ -95,19 +192,35 @@ func themeActionLabel(mode string, dark bool) string {
 	return locales.ThemeToLight()
 }
 
-// setTheme saves an appearance and repaints every window the shell has open, so
-// a switch made in either place — the rail or the settings window — is visible
-// in the terminal at once.
+// setTheme saves an appearance, tells the app which one it is, and repaints
+// every window the shell has open, so a switch made in the settings window is
+// visible in the terminal at once.
 func (w *window) setTheme(mode string) {
 	mode = normalizeTheme(mode)
 	if _, err := w.store.Update(func(s *settings.Settings) { s.Theme = mode }); err != nil {
 		log.Printf("tfdesktop: save appearance: %v", err)
 	}
+	applyAppearance(mode)
 	if win := w.win; win != nil {
 		win.Invalidate()
 	}
 	w.invalidateSettings()
 }
 
-// Match the first native frame to the desktop ground.
-func windowGround(_ string) string { return "#111111" }
+// windowGround is the color the window is painted before its first frame: the
+// wash's first stop, so that the frame that follows does not flash a color the
+// wash never shows.
+func windowGround(mode string, dark bool) string {
+	switch normalizeTheme(mode) {
+	case themeLight:
+		dark = false
+	case themeDark:
+		dark = true
+	}
+	w := uitokens.WashFor("rex")
+	stops := w.Light
+	if dark {
+		stops = w.Dark
+	}
+	return stops[0]
+}

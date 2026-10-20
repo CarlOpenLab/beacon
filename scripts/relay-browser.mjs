@@ -300,7 +300,7 @@ try {
 
   // Create a terminal and use it. Nothing below this line would work if the
   // browser's tunnel framing were wrong.
-  await desktop.evaluate(`document.querySelector('.tf-tab-add').click(); true`)
+  await desktop.evaluate(`document.querySelector('.tf-side-new').click(); true`)
   await waitFor('a session to be created', () =>
     desktop.evaluate(`Boolean(document.querySelector('.tf-session[data-session-id]'))`),
   )
@@ -309,7 +309,10 @@ try {
   )
   check('creating a terminal created a host session', sessionId.length > 0, sessionId)
 
-  await waitFor('the shell prompt', async () => (await desktop.rows()).includes('$'))
+  // Any painted prompt will do: the shell on the member is whatever the person
+  // runs, and its prompt is not this test's business - what it checks is that
+  // the screen reached the browser through the relay at all.
+  await waitFor('the shell prompt', async () => (await desktop.rows()).trim().length > 0)
   check('the shell prompt renders through the relay', true)
 
   await desktop.send(`echo ${MARKER}`)
@@ -393,9 +396,14 @@ try {
       return true
     })()
   `
+  // The pane is compared with itself rather than with a character: a prompt of
+  // this machine's may well contain a tilde, and a check that looks for one
+  // would pass on the prompt alone.
+  const beforeKey = await phone.rows()
   await phone.evaluate(tapTilde)
   await sleep(900)
-  check('a touch key is ignored while the phone is read-only', !(await phone.rows()).includes('~'))
+  const afterKey = await phone.rows()
+  check('a touch key is ignored while the phone is read-only', afterKey === beforeKey)
 
   // Taking over from the phone must work, and must demote the desktop. It asks
   // first — taking a shell from under someone is a thing a person asks for — so
@@ -418,8 +426,9 @@ try {
 
   // Now that the phone owns the session, the accessory keys are the whole
   // reason a phone is usable: tap `~` and the shell's own echo shows it.
+  const beforeOwned = await phone.rows()
   await phone.evaluate(tapTilde)
-  await waitFor('the touch key to reach the shell', async () => (await phone.rows()).includes('~'))
+  await waitFor('the touch key to reach the shell', async () => (await phone.rows()) !== beforeOwned)
   check('a touch key sends a real keystroke once the phone holds control', true)
 
   await phone.send(`echo ${FROM_PHONE}`)

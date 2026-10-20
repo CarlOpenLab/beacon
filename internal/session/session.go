@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/internal/status"
 )
 
 var (
@@ -34,6 +35,10 @@ type Session struct {
 	ring    *Ring
 	changes chan struct{} // coalesced "there is new output" nudge
 	exited  chan struct{} // closed once the process is reaped
+	// st follows what the session is doing, and statusChanges carries its
+	// changes to whoever broadcasts them.
+	st            *status.Tracker
+	statusChanges chan struct{}
 
 	mu       sync.Mutex
 	pty      ptyProcess
@@ -74,20 +79,23 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 		dir, _ = os.Getwd()
 	}
 	s := &Session{
-		ID:        id,
-		CreatedAt: time.Now(),
-		ring:      NewRing(ringCapacity),
-		changes:   make(chan struct{}, 1),
-		exited:    make(chan struct{}),
-		pty:       pty,
-		cols:      cols,
-		rows:      rows,
-		cwd:       dir,
-		pid:       pty.PID(),
-		alive:     true,
-		shell:     path,
+		ID:            id,
+		CreatedAt:     time.Now(),
+		ring:          NewRing(ringCapacity),
+		changes:       make(chan struct{}, 1),
+		exited:        make(chan struct{}),
+		statusChanges: make(chan struct{}, 1),
+		pty:           pty,
+		cols:          cols,
+		rows:          rows,
+		cwd:           dir,
+		pid:           pty.PID(),
+		alive:         true,
+		shell:         path,
 	}
+	s.st = status.New(s.notifyStatus)
 	go s.pump()
+	go s.pollForeground()
 	go s.wait()
 	return s, nil
 }
@@ -107,6 +115,63 @@ func startDir(cwd string) string {
 		return ""
 	}
 	return home
+}
+
+// StatusChanges is signalled whenever what the session is doing changes.
+func (s *Session) StatusChanges() <-chan struct{} { return s.statusChanges }
+
+// pollForeground asks what is running in the pane, once a second, and tells the
+// status tracker when it changes: the chip on a card's header, and the one
+// signal an agent that reports nothing still leaves behind.
+func (s *Session) pollForeground() {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-s.exited:
+			return
+		case <-tick.C:
+			if s.st == nil {
+				continue
+			}
+			s.st.SetProcess(s.Foreground())
+		}
+	}
+}
+
+// Foreground is the program in the foreground of the pane, or "" when the
+// platform cannot say.
+func (s *Session) Foreground() string {
+	s.mu.Lock()
+	pty, alive := s.pty, s.alive
+	s.mu.Unlock()
+	if !alive || pty == nil {
+		return ""
+	}
+	name, _ := pty.Foreground()
+	return name
+}
+
+func (s *Session) notifyStatus() {
+	select {
+	case s.statusChanges <- struct{}{}:
+	default:
+	}
+}
+
+// Snapshot is what the session is doing now.
+func (s *Session) Snapshot() status.Snapshot {
+	if s.st == nil {
+		return status.Snapshot{State: status.Idle, Progress: -1}
+	}
+	return s.st.Snapshot()
+}
+
+// Viewed marks the session read, which a client attaching to it does.
+func (s *Session) Viewed() {
+	if s.st != nil {
+		s.st.Viewed()
+	}
 }
 
 // Changes is signalled whenever new output lands in the ring. Signals are
@@ -173,7 +238,7 @@ func (s *Session) LiveCwd() string {
 func (s *Session) Summary() protocol.Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return protocol.Summary{
+	sum := protocol.Summary{
 		SessionID: s.ID,
 		PID:       s.pid,
 		Cwd:       s.cwd,
@@ -185,6 +250,19 @@ func (s *Session) Summary() protocol.Summary {
 		Cursor:    s.ring.End(),
 		CreatedAt: s.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
+	if s.st != nil {
+		snap := s.st.Snapshot()
+		sum.Status = string(snap.State)
+		sum.Unread = snap.Unread
+		sum.Message = snap.Message
+		sum.Kind = snap.Kind
+		sum.Progress = snap.Progress
+		sum.Process = snap.Process
+		if !snap.Since.IsZero() {
+			sum.Since = snap.Since.UnixMilli()
+		}
+	}
+	return sum
 }
 
 // Write feeds bytes to the process's stdin.
@@ -194,6 +272,9 @@ func (s *Session) Write(p []byte) error {
 	s.mu.Unlock()
 	if !alive {
 		return ErrClosed
+	}
+	if s.st != nil && len(p) > 0 {
+		s.st.Typed()
 	}
 	_, err := pty.Write(p)
 	return err
@@ -246,6 +327,9 @@ func (s *Session) pump() {
 		n, err := s.pty.Read(buf)
 		if n > 0 {
 			s.ring.Write(buf[:n])
+			if s.st != nil {
+				s.st.Observe(buf[:n])
+			}
 			s.notify()
 		}
 		if err != nil {
@@ -270,6 +354,10 @@ func (s *Session) wait() {
 	s.exitCode = code
 	s.alive = false
 	s.mu.Unlock()
+	if s.st != nil {
+		s.st.Exited()
+		s.notifyStatus()
+	}
 	_ = s.closePTY()
 	close(s.exited)
 }

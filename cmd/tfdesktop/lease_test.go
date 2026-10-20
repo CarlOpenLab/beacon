@@ -30,7 +30,7 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 	tb.term = fedTerminal(t, previewScreen())
 	if tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
-		w.body(c)
+		w.body(c, paletteFor(c))
 	}, 900, 600); tt.HasText(locales.StateReadonly()) {
 		t.Errorf("a shell this window holds is marked 只读; texts = %v", tt.Texts())
 	}
@@ -46,7 +46,7 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 	}
 	if tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
-		w.body(c)
+		w.body(c, paletteFor(c))
 	}, 900, 600); !tt.HasText(locales.StateReadonly()) {
 		t.Errorf("the sheet does not mark itself 只读; texts = %v", tt.Texts())
 	}
@@ -124,7 +124,7 @@ func TestOnlyThisMachinesTakenShellIsLit(t *testing.T) {
 
 			tt := ui.NewTester(func(c *ui.Context) {
 				applyTheme(c, w.store.Get().Theme)
-				w.body(c)
+				w.body(c, paletteFor(c))
 			}, 900, 600)
 			tt.Frame()
 			// The fade is the eye's; the state is a step. Run the clock past it so
@@ -165,7 +165,7 @@ func TestAnEndedShellIsMarkedOnTheSheet(t *testing.T) {
 
 	tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
-		w.body(c)
+		w.body(c, paletteFor(c))
 	}, 900, 600)
 	if !tt.HasText(locales.StateEnded()) {
 		t.Fatalf("an ended shell is not marked on the sheet; texts = %v", tt.Texts())
@@ -263,15 +263,16 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 	tb.setLease(protocol.RoleViewer, "c9", 4)
 	w.live = []protocol.Summary{{SessionID: tb.id, Controller: "c9", Alive: true}}
 
-	head := ui.NewTester(func(c *ui.Context) {
-		applyTheme(c, w.store.Get().Theme)
-		w.header(c)
-	}, 720, headerHeight)
+	// The card's header is where the window says whose shell it is now: the
+	// banner chip names the holder and offers the way back.
+	tb.term = fedTerminal(t, previewScreen())
+	head := ui.NewTester(w.view, 720, 460)
+	head.Frame()
 	if !head.HasText(locales.BannerReadonlyHolder("c9")) {
-		t.Fatalf("the header does not name the holder; texts = %v", head.Texts())
+		t.Fatalf("the card's header does not name the holder; texts = %v", head.Texts())
 	}
 	if _, ok := head.Find(locales.ActionTakeBack()); !ok {
-		t.Fatalf("the header does not offer the shell back; texts = %v", head.Texts())
+		t.Fatalf("the card's header does not offer the shell back; texts = %v", head.Texts())
 	}
 
 	nav := drawNav(t, w)
@@ -306,6 +307,9 @@ func TestAMachineTakingItsShellBackKeepsTheWayBack(t *testing.T) {
 	tb := w.tabs[1]
 	tb.machine = "other-box"
 	tb.alive = true
+	// The card's header carries the banner and the lease's panel, so the tab
+	// needs the terminal the card is drawn around.
+	tb.term = fedTerminal(t, previewScreen())
 	sess := newSession(tb.id, nil, nil)
 	tb.sess = sess
 	w.remote = map[string]*relayLink{}
@@ -457,7 +461,7 @@ func TestAFreeShellIsMarkedReadOnlyAndOffersTheWayIn(t *testing.T) {
 	// The sheet says it as well, in the corner the browser client uses.
 	sheet := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
-		w.body(c)
+		w.body(c, paletteFor(c))
 	}, 900, 600)
 	if !sheet.HasText(locales.StateReadonly()) {
 		t.Fatalf("the sheet is not marked 只读; texts = %v", sheet.Texts())

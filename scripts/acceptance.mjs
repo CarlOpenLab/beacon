@@ -147,10 +147,13 @@ class Page {
     return this.evaluate(`document.querySelector('.tf-pane.active .xterm-rows')?.innerText ?? ''`)
   }
   tabs() {
-    return this.evaluate(`document.querySelectorAll('.tf-tab').length`)
+    // One pane per open session; the sidebar is the switcher now.
+    return this.evaluate(`document.querySelectorAll('.tf-pane').length`)
   }
   labels() {
-    return this.evaluate(`[...document.querySelectorAll('.tf-tab-label')].map(n => n.textContent).join('|')`)
+    return this.evaluate(
+      `[...document.querySelectorAll('.tf-session.active .tf-session-name')].map(n => n.textContent).join('|')`,
+    )
   }
   sideCount() {
     return this.evaluate(`document.querySelectorAll('.tf-session').length`)
@@ -220,7 +223,7 @@ class Page {
   }
   async waitReady() {
     await waitFor('app shell', async () =>
-      this.evaluate(`!!document.querySelector('.tf-tab-add') && !!document.querySelector('.tf-side')`),
+      this.evaluate(`!!document.querySelector('.tf-side-new') && !!document.querySelector('.tf-side')`),
     )
     await waitFor('websocket online', async () => (await this.chip()) === '已连接', 20000)
   }
@@ -298,12 +301,12 @@ try {
   // ------------------------------------------------------------ single client
   page1 = await Page.open(APP, TRACK_SOCKETS + TRACK_CLIPBOARD + TRACK_CONFIRM)
   await page1.waitReady()
-  check('页面加载出应用外壳（侧栏 + 标签栏）', true)
+  check('页面加载出应用外壳（侧栏 + 卡片）', true)
   check('WebSocket 连上 daemon', true, await page1.status())
 
   await page1.evaluate(`document.querySelector('.tf-btn-primary').click()`)
   await waitFor('first tab', async () => (await page1.tabs()) === 1)
-  check('点击「新建终端」建出标签', true)
+  check('点击「新建终端」建出面板', true)
 
   const prompt = await waitFor('shell prompt', async () => {
     const t = await page1.rows()
@@ -356,19 +359,17 @@ try {
   await page1.focusTerminal()
   await page1.press('t', 'KeyT', 4, 84)
   await waitFor('second tab', async () => (await page1.tabs()) === 2, 20000)
-  check('快捷键 ⌘T 新建第二个标签', true)
+  check('快捷键 ⌘T 新建第二个面板', true)
   await waitFor('two sessions', async () => (await page1.sideCount()) === 2, 20000)
   check('主机上确实起了第二个会话', true)
 
   // ------------------------------------------------ close tab is detach only
   // Close by position, not by label: two shells started in the same directory
   // legitimately share a title.
-  await page1.evaluate(
-    `[...document.querySelectorAll('.tf-tab')].at(-1).querySelector('.tf-tab-close').click()`,
-  )
+  await page1.evaluate(`document.querySelector('.tf-card-close').click()`)
   await waitFor('tab closed', async () => (await page1.tabs()) === 1)
-  check('点 × 关闭标签', true)
-  check('关标签只是 detach，主机会话仍在', (await page1.sideCount()) === 2, `侧栏仍有 ${await page1.sideCount()} 个会话`)
+  check('点 × 关闭面板', true)
+  check('关面板只是 detach，主机会话仍在', (await page1.sideCount()) === 2, `侧栏仍有 ${await page1.sideCount()} 个会话`)
 
   // ------------------------------------------------------- reconnect+resume
   await page1.evaluate(`window.__sockets.at(-1).close()`)

@@ -18,6 +18,11 @@ type ptyProcess interface {
 	// Wait blocks until the process exits and reports its exit code.
 	Wait() (int, error)
 	PID() int
+	// Foreground is the program in the foreground of the PTY — the shell at its
+	// prompt, or whatever the shell is running — and its process group. It is
+	// best effort: "" when the platform cannot say, which is the answer on
+	// Windows and on a PTY whose process is gone.
+	Foreground() (name string, pid int)
 }
 
 // ptySpec is what to launch, described the same way on both hosts.

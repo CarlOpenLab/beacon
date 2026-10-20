@@ -52,6 +52,11 @@ func conPTYAvailable() bool { return conpty.IsConPtyAvailable() }
 
 func (p *winPTY) PID() int { return p.ConPty.Pid() }
 
+// Foreground is not something a ConPTY hands over the way a Unix terminal
+// does, and asking the console for its process list from here would name this
+// daemon's own children rather than the pane's. A session reports none.
+func (p *winPTY) Foreground() (string, int) { return "", 0 }
+
 func (p *winPTY) Wait() (int, error) {
 	code, err := p.ConPty.Wait(context.Background())
 	if err != nil {

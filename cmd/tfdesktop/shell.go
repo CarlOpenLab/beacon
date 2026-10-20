@@ -2,13 +2,13 @@ package main
 
 import (
 	_ "embed"
-	"fmt"
-	"runtime"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
-	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 )
@@ -25,7 +25,6 @@ import (
 // The terminal fills the workspace without a floating card around it.
 const paneInset = 0
 
-var terminalGround = ui.Hex("#111111")
 
 //go:embed assets/mark.png
 var markPNG []byte
@@ -58,41 +57,6 @@ func markTile(c *ui.Context, size float32) {
 // client's arrangement: the tab says which shell this is, the sidebar lists the
 // rest, and the one sentence worth the middle of the band — a shell that is not
 // this window's to type into — is what the band is actually for.
-func (w *window) header(c *ui.Context) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-	bar := c.TitleBar()
-
-	leftPad := float32(12)
-	if w.sidebarHidden && bar.Left > 0 {
-		leftPad = bar.Left + 12
-	}
-
-	rightPad := float32(12)
-	if bar.Right > 0 {
-		rightPad = bar.Right + 12
-	}
-
-	ui.Row(c).
-		Height(headerHeight).Padding(0, rightPad, 0, leftPad).Gap(10).
-		AlignItems(ui.Center).
-		Background(col.pane).
-		BorderWidth(0, 0, 1, 0).BorderColor(col.hairline).
-		DragWindow().
-		Children(func() {
-			if w.sidebarHidden && iconButton(c, iconSettings, locales.ActionSettings(), headerButtonSize).Clicked() {
-				w.openSettings()
-			}
-			name := locales.HeaderTitle()
-			if tb := w.activeTab(); tb != nil {
-				name = locales.HeaderMachineShell(w.machineName(tb.machine), tb.name())
-			}
-			ui.Text(c, name).FontSize(12).SingleLine().Shrink(1).MaxWidth(300)
-			ui.Spacer(c)
-			w.headerBanner(c)
-			w.headerActions(c)
-		})
-}
 
 // headerActions is the right-hand group: what the window can be told to do,
 // then the one thing a person does most.
@@ -108,69 +72,13 @@ func (w *window) header(c *ui.Context) {
 // accepting the typing of the person sitting at it, with no holder to name and
 // nothing on screen to say why. A shell of this machine's is typed into here;
 // there is no one to give it to.
-func (w *window) headerActions(c *ui.Context) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-	if tb := w.activeTab(); tb != nil && tb.alive && tb.held() && tb.machine != machineLocal {
-		rel := ui.Box(c).
-			Height(22).PaddingX(10).Radius(radiusPill).
-			AlignItems(ui.Center).Justify(ui.Center).Shrink(0).
-			Background(col.field).BorderWidth(1).BorderColor(col.line).
-			Label(locales.ActionRelease()).Tooltip(locales.ActionReleaseTip())
-		if rel.Hovered() {
-			rel.Background(t.SurfaceHover)
-		}
-		rel.Children(func() {
-			ui.Text(c, locales.ActionRelease()).FontSize(11).TextColor(t.TextMuted)
-		})
-		if rel.Clicked() {
-			w.releaseLease(tb)
-		}
-	}
-}
 
 // headerButtonSize is the square the header's icon buttons take, and the height
 // of the primary control beside them. It is the browser client's .btn height.
-const headerButtonSize = 30
 
 // headerBanner is the one sentence the window has to say about the shell on
 // screen, with the action that answers it. It is the browser client's banner:
 // a state in the state's own colour, and one button.
-func (w *window) headerBanner(c *ui.Context) {
-	text, action, tone, run := w.bannerState(c)
-	if text == "" {
-		return
-	}
-	ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
-		ui.Text(c, text).FontSize(12).TextColor(tone).MaxWidth(240).SingleLine().Shrink(1)
-		if action == "" {
-			return
-		}
-		tooltip := action
-		switch action {
-		case locales.ActionTakeOver():
-			tooltip = locales.ActionTakeOverTip()
-		case locales.ActionTakeBack():
-			tooltip = locales.ActionTakeBackTip()
-		case locales.TabCloseTab():
-			tooltip = locales.TabCloseTabTip()
-		}
-		act := ui.Box(c).
-			Height(20).PaddingX(9).Radius(radiusPill).
-			AlignItems(ui.Center).Justify(ui.Center).
-			Label(action).Tooltip(tooltip)
-		act.Background(tone.Alpha(0.10)).BorderWidth(1).BorderColor(tone.Alpha(0.42))
-		if act.Hovered() {
-			act.Background(tone.Alpha(0.22))
-		}
-		act.Children(func() {
-			ui.Text(c, action).FontSize(11).FontWeight(600).TextColor(tone)
-		})
-		if act.Clicked() {
-			run()
-		}
-	})
-}
 
 // bannerState is what the band has to say, as a sentence, the word on the
 // button that answers it, the colour it is said in, and what the button does.
@@ -221,23 +129,6 @@ func (w *window) bannerState(c *ui.Context) (text, action string, tone ui.Color,
 
 // kbdChip is a keystroke written the way a keyboard writes it: a chip in the
 // chrome's quiet greys, or in the accent's own ink when it sits on the accent.
-func kbdChip(c *ui.Context, text string, onAccent bool) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-
-	chip := ui.Box(c).Height(18).PaddingX(6).Radius(radiusSmall).
-		AlignItems(ui.Center).Justify(ui.Center)
-	ink := col.quiet
-	if onAccent {
-		chip.Background(ui.RGBA(0, 0, 0, 0.16)).BorderWidth(1).BorderColor(ui.RGBA(1, 1, 1, 0.22))
-		ink = t.AccentText
-	} else {
-		chip.Background(col.field).BorderWidth(1).BorderColor(col.line)
-	}
-	chip.Children(func() {
-		ui.Text(c, text).FontSize(11).TextColor(ink)
-	})
-}
 
 // iconButton is a square control in the chrome: a wash under the pointer, and
 // the caption kept as its label so it has a name on screen and in a test.
@@ -285,47 +176,8 @@ func (w *window) serviceLine() string {
 // its name, its platform, and how many shells it has. The browser client's
 // status bar says the same, so a person moving between the two reads one line
 // either way.
-func (w *window) statusHostLine() string {
-	tb := w.activeTab()
-	if tb == nil {
-		return ""
-	}
-	line := w.machineName(tb.machine)
-	if m, ok := w.machineByID(tb.machine); ok && m.Host.Platform != "" {
-		line = line + " · " + m.Host.Platform + "/" + m.Host.Arch
-	}
-	if n := len(w.sessionsOn(tb.machine)); n > 0 {
-		return locales.StatusHostSessions(line, n)
-	}
-	return line
-}
 
 // statusSessionLine is the shell on screen itself: its id, its role, its size.
-func (w *window) statusSessionLine() string {
-	tb := w.activeTab()
-	if tb == nil {
-		return ""
-	}
-	role := "—"
-	switch {
-	case tb.isEnded():
-		role = locales.StateEnded()
-	case tb.isPending():
-		role = locales.StatePending()
-	case tb.held():
-		role = locales.StateControlling()
-	case tb.controller != "":
-		role = locales.StateReadonly()
-	}
-	line := or(tb.id, locales.LabelPending())
-	if role != "—" {
-		line = fmt.Sprintf("%s · %s", line, role)
-	}
-	if size := tb.size(); size != "" {
-		line = fmt.Sprintf("%s · %s", line, size)
-	}
-	return line
-}
 
 // sessionsOn is how many shells a machine is running, as the panel last heard.
 func (w *window) sessionsOn(machine string) []protocol.Summary {
@@ -335,57 +187,59 @@ func (w *window) sessionsOn(machine string) []protocol.Summary {
 	return w.remoteSessions[machine]
 }
 
-// body is the shell itself, or, with nothing open, the empty state. The terminal
-// sits on a sheet of its own — inset from the window's ground, rounded, with a
-// hairline off its edge — the way the browser client draws its panes, and a
-// shell that is not this window's to type into is marked on the sheet rather
-// than behind it.
-//
-// With a split open the body is a tree of panes instead of one, and each pane
-// is the same sheet: see splitView. What only the focused pane gets is the
-// keyboard, the light along its edge and the panel about who holds its shell.
-func (w *window) body(c *ui.Context) {
-	if len(w.order) == 0 {
-		w.emptyState(c)
-		return
-	}
+// body is the workspace: one shell on its card, or the split tree of them.
+func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 	if w.split != nil {
-		ui.Box(c).Fill().Children(func() { w.splitView(c, w.split) })
+		// A zoomed pane is the whole body: the others are still there, one ⌘⇧↩
+		// away, which is what kero's zoom means.
+		if w.zoomed && w.focus != nil && w.focus.tab != nil {
+			w.paneCard(c, pal, w.focus.tab, true, func() { w.focusSplit(w.focus) })
+			return
+		}
+		w.splitView(c, pal, w.split)
 		return
 	}
 	tb := w.activeTab()
 	if tb == nil || tb.term == nil {
+		// The empty window is one card, as kero's is: what to do about a window
+		// with nothing open is a card's worth of chrome, not a paragraph floating
+		// on the wash.
+		ui.Box(c).Fill().Children(func() {
+			card := ui.Column(c).Fill().Radius(uitokens.CardRadius).Clip()
+			raised(card.Background(pal.Card), pal)
+			card.Children(func() { w.emptyState(c, pal) })
+		})
 		return
 	}
-	w.paneSheet(c, tb, true, nil)
+	w.paneCard(c, pal, tb, true, nil)
 }
 
-// paneSheet is one shell on its sheet: the terminal itself, the marks on the
-// sheet, and — for the focused pane of a split — the light along the edge and
-// the panel about who holds the shell. focus, when it is not nil, is what a
-// click on the sheet or the terminal taking the keyboard does: it makes this
-// the pane on screen.
-func (w *window) paneSheet(c *ui.Context, tb *tab, focused bool, focus func()) {
+// paneCard is one shell in a card, kero's way: a header with the shell's name,
+// where it stands and what it is doing, and the terminal under it, the card's
+// corners clipping both. A pane the user is not in fades — its text too — so
+// that a split says which of its halves has the keyboard without a border.
+func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool, focus func()) {
 	if tb == nil || tb.term == nil {
 		return
 	}
-
-	// Whether this window may type into the shell on screen, and who it is that
-	// can instead — the one answer the sheet and the room around it are drawn
-	// from, and the panel's own words. See readOnly.
 	holder := tb.holder()
+	multi := w.split != nil && w.split.count() > 1
 
-	// The pane floats on the window's ground, and the light along its edge is
-	// drawn over both, so it can spill past the edge it belongs to. A light
-	// clipped to the pane would be a coloured border on it.
 	ui.Box(c).Fill().Children(func() {
-		sheet := ui.Box(c).Fill().Margin(paneInset).
-			Background(terminalGround)
-		if focus != nil && sheet.Clicked() {
+		bg := pal.Card
+		if multi && !focused {
+			bg = pal.CardDim
+		}
+		card := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Radius(uitokens.CardRadius).Clip()
+		raised(card.Background(card.AnimateColor("bg", bg, ui.Animation{Duration: 140e6})), pal)
+		if focus != nil && card.Pressed() && !focused {
 			focus()
 		}
-		sheet.Children(func() {
-			ui.Box(c).Fill().Children(func() {
+		card.Children(func() {
+			w.cardHeader(c, pal, tb, focused)
+			// The terminal fills the card under the header. It draws its own
+			// background, so a full-screen program's color reaches the edges.
+			ui.Box(c).Grow(1).MinHeight(0).Children(func() {
 				view := terminal.View(c, tb.term).Fill()
 				if focused {
 					view.AutoFocus()
@@ -393,52 +247,176 @@ func (w *window) paneSheet(c *ui.Context, tb *tab, focused bool, focus func()) {
 				// A click on a terminal gives it the keyboard, which is how a
 				// person moves between panes: the pane the keyboard is in is the
 				// pane on screen.
-				if focus != nil && view.Focused() {
+				if focus != nil && view.Focused() && !focused {
 					focus()
 				}
 			})
 			if tb.isEnded() {
-				// A shell that has ended says so on the sheet: the tab and the
-				// banner say it too, and the pane is where a person is looking.
 				endedBadge(c)
 			} else if readOnly(tb) && !tb.isPending() {
 				readOnlyBadge(c)
 			}
+			if multi && !focused {
+				// The panes the user is not in fade, text and all. It is drawn at
+				// its full strength rather than faded in: the frame that first
+				// shows a split is the frame a person reads it in, and a veil
+				// still fading would say the wrong pane had the keyboard.
+				ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).PassThrough().Background(pal.Veil)
+			}
 		})
 
-		// What is left below is the shell that is somebody else's or nobody's. A
-		// shell that has ended is not that — the banner has already said what
-		// happened to it — and a panel offering 拿回控制权 over a process the hub
-		// has forgotten would be offering a button that cannot work. It is also
-		// only ever about the pane on screen: a panel over a shell nobody is
-		// working on is a panel in the way.
+		// What is left below is the shell that is somebody else's or nobody's,
+		// and only ever about the pane on screen.
 		if !focused || tb.isEnded() || tb.isPending() || !readOnly(tb) {
 			return
 		}
-
-		// The light along the edge is for one state only: a shell this machine
-		// runs, with another client on its keyboard. Every other 只读 shell gets
-		// the chip and the panel and no light, because the light is a thing a
-		// person reads from across the room — "somebody has this machine's
-		// terminal" — and it would say nothing at all about a process on a
-		// machine they are not sitting at.
 		if w.drivenElsewhere(tb) {
-			// The fade is an animation, so a desktop asking for less motion gets
-			// the light at once rather than slowly, and the drift stands still
-			// for the same reason, which is the preference the shader reads.
 			strength := ui.Box(c).Fill().Animate("lease", 1, glowFade)
 			leaseGlow(c, float64(strength), c.Preferences().ReduceMotion)
 		}
-
-		// The panel hangs from a marker at the top of the pane, so it floats over
-		// the terminal's first rows: a panel hung from the pane itself would have
-		// no room below it and flip above the window. The marker is an overlay
-		// like the badge, so the terminal keeps the whole sheet.
-		marker := ui.Box(c).Absolute().Top(paneInset).Start(paneInset).Size(2, 2)
+		marker := ui.Box(c).Absolute().Top(uitokens.HeaderH).Start(uitokens.CardGap).Size(2, 2)
 		leasePopover(c, marker, &w.leaseOpen, holder, tb.machine != machineLocal, func() {
 			w.reclaim(tb)
 		})
 	})
+}
+
+// cardHeader is a card's title row: the state, the shell's name, where it
+// stands, the one sentence the window has to say about it, and — while the
+// pointer is there — the controls that act on the card.
+func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool) {
+	bar := c.TitleBar()
+	left := float32(uitokens.CardGap + 8)
+	if w.sidebarHidden && bar.Left > 0 {
+		left = bar.Left + uitokens.CardGap + 8
+	}
+	h := ui.Row(c).Height(uitokens.HeaderH).Shrink(0).AlignItems(ui.Center).
+		Padding(0, 10, 0, left).Gap(8)
+	hovered := h.Hovered()
+	h.DragWindow()
+
+	name := tb.name()
+	h.Children(func() {
+		// With the sidebar hidden, the two buttons that live in its top bar come
+		// over to the card's header, where kero puts them.
+		if w.sidebarHidden {
+			if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), 26).Clicked() {
+				w.sidebarHidden = false
+			}
+			if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), 26).Clicked() {
+				w.newTab()
+			}
+		}
+		state := w.leaseColor(c.Theme(), tb.machine, tb.id, tb.holder(), tb.alive)
+		ui.Box(c).Size(8, 8).Radius(4).Background(state).Shrink(0)
+		title := ui.Text(c, name).FontSize(13.5).FontWeight(600).SingleLine().Ellipsis("…").Shrink(1).MinWidth(30)
+		if !focused {
+			title.TextColor(pal.TextMuted)
+		}
+		if dir := shortDir(tb.cwd); dir != "" && dir != name {
+			ui.Text(c, dir).FontSize(13).TextColor(pal.TextFaint).SingleLine().Ellipsis("…").Shrink(2).MinWidth(0)
+		}
+		// What it is doing, when that is worth saying: the message a program
+		// gave, or how far along it is.
+		w.attentionChip(c, pal, tb)
+		// What is running in the pane, when it is a program rather than the shell
+		// itself: kero's chip, and the answer to "which of these is the agent".
+		if sum, ok := w.summaryOf(tb.machine, tb.id); ok && !isShellName(sum.Process) {
+			chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+				ui.Text(c, sum.Process).FontSize(12).SingleLine().Ellipsis("…").MaxWidth(160)
+			})
+		}
+		// Where it runs, when that is not this machine: a chip, as kero shows a
+		// pane's program.
+		if tb.machine != machineLocal {
+			chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+				ui.Text(c, w.machineName(tb.machine)).FontSize(12).SingleLine().Ellipsis("…")
+			})
+		}
+		ui.Spacer(c)
+		if focused {
+			w.cardBanner(c, pal, tb)
+			if tb.alive && tb.held() && tb.machine != machineLocal {
+				// The lease is state, not a hover: the way to hand a shell back
+				// is on screen while the shell is another machine's.
+				if chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+					ui.Text(c, locales.ActionRelease()).FontSize(12).SingleLine()
+				}).Clicked() {
+					w.releaseLease(tb)
+				}
+			}
+			if hovered {
+				w.cardActions(c, pal, tb)
+			}
+		}
+	})
+}
+
+// cardBanner is the one sentence the window has to say about this card — a
+// shell that ended, or one that is not this window's to type into — as a chip
+// whose click answers it. It is the old band's banner, in the header's terms.
+func (w *window) cardBanner(c *ui.Context, pal *uitokens.Palette, tb *tab) {
+	text, action, tone, run := w.bannerState(c)
+	if text == "" || w.activeTab() != tb {
+		return
+	}
+	box := chipBox(c, pal, tone.Alpha(0.12), tone, func() {
+		ui.Text(c, text).FontSize(12).SingleLine().Ellipsis("…").MaxWidth(280)
+		if action != "" {
+			ui.Text(c, action).FontSize(12).FontWeight(600).TextColor(tone)
+		}
+	})
+	if action != "" && box.Clicked() && run != nil {
+		run()
+	}
+}
+
+// cardActions is what a card can be told to do, while the pointer is on it:
+// split, close the tab, and the lease when the shell is another machine's.
+func (w *window) cardActions(c *ui.Context, pal *uitokens.Palette, tb *tab) {
+	if iconButton(c, iconSplitRight, locales.ActionSplitRight(), 26).Clicked() {
+		w.splitFocused(true)
+	}
+	if iconButton(c, iconSplitDown, locales.ActionSplitDown(), 26).Clicked() {
+		w.splitFocused(false)
+	}
+	if w.split != nil && w.split.count() > 1 {
+		if iconButton(c, iconClose, locales.TabCloseTab(), 26).Clicked() {
+			w.closeSplitPane()
+		}
+	}
+}
+
+// shells are the programs a pane runs when it is not running something: a chip
+// that said "zsh" beside a shell named "zsh" would be a chip saying nothing.
+var shells = map[string]bool{
+	"zsh": true, "bash": true, "sh": true, "dash": true, "ksh": true, "fish": true,
+	"tcsh": true, "csh": true, "nu": true, "elvish": true, "xonsh": true,
+	"pwsh": true, "powershell": true, "cmd": true, "cmd.exe": true,
+}
+
+// isShellName reports whether a foreground program is a shell, and so not worth
+// a chip of its own.
+func isShellName(name string) bool {
+	name = strings.TrimSpace(name)
+	return name == "" || shells[strings.ToLower(name)]
+}
+
+// shortDir is a directory as a person reads it: the home directory as ~, and
+// nothing when the shell has not said where it stands.
+func shortDir(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if dir == home {
+			return "~"
+		}
+		if strings.HasPrefix(dir, home+string(os.PathSeparator)) {
+			return "~" + strings.TrimPrefix(dir, home)
+		}
+	}
+	return filepath.Base(dir)
 }
 
 // readOnlyBadge is the mark on a sheet another client is typing into, in the
@@ -502,32 +480,25 @@ func (w *window) releaseLease(tb *tab) {
 // emptyState is the window with nothing open. It is not a dead end: it says what
 // the window is for and offers the one action that starts it, the way the
 // browser client's empty state does.
-func (w *window) emptyState(c *ui.Context) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-
+func (w *window) emptyState(c *ui.Context, pal *uitokens.Palette) {
 	ui.Column(c).
 		Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(24).
 		Children(func() {
-			ui.Column(c).Gap(8).MaxWidth(400).AlignItems(ui.Start).Children(func() {
-				// The mark in a tile of its own, the accent's wash under it: the
-				// empty window is the one screen that is all chrome, so it is the
-				// one screen allowed a picture.
-				tile := ui.Box(c).Size(44, 44).Radius(radius).
-					AlignItems(ui.Center).Justify(ui.Center).
-					Background(col.chosen).BorderWidth(1).BorderColor(t.Accent.Alpha(0.42))
-				tile.Children(func() {
-					markTile(c, 30)
+			ui.Column(c).Gap(0).MaxWidth(420).AlignItems(ui.Center).Children(func() {
+				// kero's empty state: a chip of an icon, the title, one sentence,
+				// and the two things a person can do about it.
+				ui.Box(c).Size(52, 52).Radius(14).Center().Background(pal.Chip).TextColor(pal.TextMuted).
+					Margin(0, 0, 18, 0).Children(func() {
+					ui.Icon(c, iconTerminal).Size(26, 26)
 				})
-				ui.Box(c).Height(4)
-				ui.Text(c, locales.EmptyTitle()).FontSize(15).FontWeight(600)
-				ui.Text(c, w.emptyLine()).FontSize(12.5).TextColor(t.TextMuted)
-				ui.Box(c).Height(6)
-				ui.Row(c).Gap(8).Children(func() {
-					if ui.Button(c, locales.ActionNewTerminal()).Tooltip(locales.ActionNewTerminalTip()).Clicked() {
+				ui.Text(c, locales.EmptyTitle()).FontSize(19).FontWeight(650).TextColor(pal.Text)
+				ui.Text(c, w.emptyLine()).FontSize(13.5).TextColor(pal.TextMuted).
+					MaxWidth(380).TextAlign(ui.Center).LineHeight(1.45).Margin(8, 0, 22, 0)
+				ui.Row(c).Gap(10).Children(func() {
+					if keroButton(c, pal, "empty-new", locales.ActionNewTerminal(), w.keyFor("session.new"), true) {
 						w.newTab()
 					}
-					if ui.Button(c, locales.MenuSettings()).Clicked() {
+					if keroButton(c, pal, "empty-settings", locales.ActionSettings(), w.keyFor("settings.open"), false) {
 						w.openSettings()
 					}
 				})
@@ -557,144 +528,8 @@ func (w *window) emptyLine() string {
 // The connection is a chip — a dot in a rounded wash — the way the browser
 // client states it, so "is anything attached to this machine" reads the same in
 // both, and the rest is the same three facts in the same order.
-func (w *window) statusBar(c *ui.Context) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-
-	ui.Row(c).
-		Height(statusHeight).PaddingX(12).Gap(14).
-		AlignItems(ui.Center).
-		Background(col.pane).
-		BorderWidth(1, 0, 0, 0).BorderColor(col.hairline).
-		Children(func() {
-			// The chip's wash is the state's own colour at low strength: green
-			// while a client is attached, amber while the service is listening
-			// for one, quiet while there is no service at all.
-			state := w.fleetColor(t)
-			chip := ui.Row(c).Gap(6).AlignItems(ui.Center).
-				PaddingX(8).Height(19).Radius(radiusPill).
-				Background(state.Alpha(0.10)).
-				BorderWidth(1).BorderColor(state.Alpha(0.38)).
-				Tooltip(w.serviceLine() + " · " + buildLine())
-			chip.Children(func() {
-				ui.Box(c).Size(6, 6).Radius(3).Background(state)
-				ui.Text(c, w.serviceLine()).FontSize(11).TextColor(state).SingleLine().MaxWidth(190)
-			})
-			// The machine the shell on screen runs on. Its platform is on the
-			// same line, and the build's own platform is not repeated beside it:
-			// on this machine's own shells the two are the same string, and a
-			// status bar that says darwin/arm64 twice says it once too often.
-			// Which build this is lives in the chip's tooltip and in 设置 → 更新.
-			if host := w.statusHostLine(); host != "" {
-				ui.Text(c, host).FontSize(11).TextColor(col.quiet).SingleLine().Shrink(1).MaxWidth(220)
-			}
-			ui.Spacer(c)
-			// The window's own news, when there is any: a machine that took its
-			// shell back, or a lease given up, is something the person here has to
-			// be told, and the line the fleet already lives on is where they look.
-			if n := w.currentNotice(); n != "" {
-				ui.Text(c, n).FontSize(11).TextColor(t.Warning).MaxWidth(460).SingleLine()
-			}
-			// The shell on screen itself, at the end of the line, which is where
-			// the browser client keeps it.
-			if sess := w.statusSessionLine(); sess != "" {
-				ui.Text(c, sess).FontSize(11).TextColor(t.TextMuted).SingleLine().Shrink(0)
-			}
-			w.statusLeaseBar(c)
-		})
-}
 
 // statusLeaseBar renders the current shell's input lease state (只读 / 控制中)
 // and corresponding action buttons (接管 / 释放控制权) at the bottom right.
-func (w *window) statusLeaseBar(c *ui.Context) {
-	t := c.Theme()
-	tb := w.activeTab()
-	if tb == nil {
-		return
-	}
-	if tb.isEnded() {
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(6, 6).Radius(3).Background(t.Danger)
-			ui.Text(c, locales.StateEnded()).FontSize(11).TextColor(t.Danger)
-		})
-		return
-	}
-	if tb.isPending() {
-		col := shellColorsFor(t)
-		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(6, 6).Radius(3).Background(col.quiet)
-			ui.Text(c, locales.StatusCreating()).FontSize(11).TextColor(col.quiet)
-		})
-		return
-	}
-	if readOnly(tb) {
-		holder := tb.holder()
-		label := locales.StateReadonly()
-		if holder != "" {
-			label = locales.StatusReadonlyHolder(holder)
-		} else {
-			label = locales.StatusReadonlyNone()
-		}
-		take := locales.ActionTakeBack()
-		takeTip := locales.StatusTakeBackTip()
-		if tb.machine != machineLocal {
-			take = locales.ActionTakeOver()
-			takeTip = locales.StatusTakeOverTip()
-		}
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(6, 6).Radius(3).Background(t.Warning)
-				ui.Text(c, label).FontSize(11).TextColor(t.Warning)
-			})
-			act := ui.Box(c).
-				Height(20).PaddingX(8).Radius(radiusPill).
-				AlignItems(ui.Center).Justify(ui.Center).
-				Background(t.Warning.Alpha(0.12)).
-				BorderWidth(1).BorderColor(t.Warning.Alpha(0.42)).
-				Label(take).Tooltip(takeTip)
-			if act.Hovered() {
-				act.Background(t.Warning.Alpha(0.24))
-			}
-			act.Children(func() {
-				ui.Text(c, take).FontSize(10.5).FontWeight(600).TextColor(t.Warning)
-			})
-			if act.Clicked() {
-				w.reclaim(tb)
-			}
-		})
-		return
-	}
-	if tb.held() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(6, 6).Radius(3).Background(t.Success)
-				ui.Text(c, locales.StateControlling()).FontSize(11).TextColor(t.Success)
-			})
-			if tb.machine != machineLocal {
-				rel := ui.Box(c).
-					Height(20).PaddingX(8).Radius(radiusPill).
-					AlignItems(ui.Center).Justify(ui.Center).
-					Background(shellColorsFor(t).field).
-					BorderWidth(1).BorderColor(shellColorsFor(t).line).
-					Label(locales.ActionRelease()).Tooltip(locales.ActionReleaseTip())
-				if rel.Hovered() {
-					rel.Background(t.SurfaceHover)
-				}
-				rel.Children(func() {
-					ui.Text(c, locales.ActionRelease()).FontSize(10.5).TextColor(t.TextMuted)
-				})
-				if rel.Clicked() {
-					w.releaseLease(tb)
-				}
-			}
-		})
-	}
-}
 
 // buildLine is the version and the platform, the way a status bar says it.
-func buildLine() string {
-	if v := strings.TrimSpace(mygo.App.Version()); v != "" {
-		return "v" + v + " · " + runtime.GOOS + "/" + runtime.GOARCH
-	}
-	return runtime.GOOS + "/" + runtime.GOARCH
-}

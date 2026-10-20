@@ -1,0 +1,24 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "term-fleet 落地页 v2": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-10-20T09:04:47.033Z",
+          "status": "needs-review",
+          "subtitle": "纸感编辑方向；项目真实 logo；三端产品窗切换；断线续接/租约接管演示；动态文案与产品界面全量中英切换；出站中继拓扑补齐 relay→客户端连线",
+          "viewport": {
+            "width": 1440,
+            "height": 1000
+          },
+          "section": "Landing"
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-20T09:04:47.034Z",
+  "updatedAt": "2026-10-20T10:07:03.715Z"
+}
