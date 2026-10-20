@@ -91,7 +91,7 @@ func (c *termConn) Write(p []byte) (int, error) {
 		// happened.
 		return len(p), nil
 	}
-	c.sess.link.input(c.sess.id, append([]byte(nil), p...))
+	c.sess.link.input(c.sess.sessionID(), append([]byte(nil), p...))
 	return len(p), nil
 }
 
@@ -111,7 +111,7 @@ func (c *termConn) Resize(cols, rows int) error {
 	c.syncedCols, c.syncedRows = cols, rows
 	c.mu.Unlock()
 
-	c.sess.link.resize(c.sess.id, cols, rows)
+	c.sess.link.resize(c.sess.sessionID(), cols, rows)
 	return nil
 }
 
@@ -139,7 +139,7 @@ func (c *termConn) syncSize(cols, rows int) {
 	c.syncedCols, c.syncedRows = cols, rows
 	c.mu.Unlock()
 
-	c.sess.link.resize(c.sess.id, cols, rows)
+	c.sess.link.resize(c.sess.sessionID(), cols, rows)
 }
 
 // Close detaches this view. It never ends the session: the shell keeps running
@@ -166,14 +166,14 @@ func (c *termConn) lease() (role, controller string, epoch uint64) {
 
 // claiming asks for the lease, stealing it from a live holder when asked.
 func (c *termConn) claiming(steal bool) {
-	c.sess.link.claim(c.sess.id, steal)
+	c.sess.link.claim(c.sess.sessionID(), steal)
 }
 
 // releasing gives the lease up without giving up the session: the shell keeps
 // running and this window keeps watching it, it just stops being the one that
 // types into it.
 func (c *termConn) releasing() {
-	c.sess.link.release(c.sess.id)
+	c.sess.link.release(c.sess.sessionID())
 }
 
 // holderName is who holds the lease, or "" when this window does.

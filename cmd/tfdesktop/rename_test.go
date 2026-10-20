@@ -16,7 +16,7 @@ import (
 // band and the inspector all move together.
 func TestADoubleClickOnTheRowNamesTheShell(t *testing.T) {
 	w, f := newSplitWindow(t)
-	tb := openShell(t, w, f, t.TempDir())
+	tb := openShell(t, w, f, testDir(t))
 	if got := tb.name(); got == "" {
 		t.Fatal("the shell has no name to edit")
 	}
@@ -64,7 +64,7 @@ func TestADoubleClickOnTheRowNamesTheShell(t *testing.T) {
 // out of it is a field nobody dares open.
 func TestEscapeLeavesTheShellNamedAsItWas(t *testing.T) {
 	w, f := newSplitWindow(t)
-	tb := openShell(t, w, f, t.TempDir())
+	tb := openShell(t, w, f, testDir(t))
 	before := tb.name()
 
 	tt := drawNav(t, w)
@@ -113,7 +113,7 @@ func hubTitle(t *testing.T, f *fleet, id, want string) string {
 // rather than kept as a blank, and the hub's own list says so.
 func TestAnEmptyNameGivesTheShellItsProgramBack(t *testing.T) {
 	w, f := newSplitWindow(t)
-	tb := openShell(t, w, f, t.TempDir())
+	tb := openShell(t, w, f, testDir(t))
 
 	w.beginRename(tb.machine, tb.id)
 	w.renameDraft = "  "
@@ -131,7 +131,7 @@ func TestAnEmptyNameGivesTheShellItsProgramBack(t *testing.T) {
 // does not double-click.
 func TestTheRowsMenuOffersTheRename(t *testing.T) {
 	w, f := newSplitWindow(t)
-	tb := openShell(t, w, f, t.TempDir())
+	tb := openShell(t, w, f, testDir(t))
 	tt := drawNav(t, w)
 	tt.Frame()
 	where, ok := tt.Find(tb.name())

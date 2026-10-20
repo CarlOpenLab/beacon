@@ -31,6 +31,19 @@ func testShell() string {
 	return "/bin/sh"
 }
 
+// testDir is the directory a test's shell opens in: a temporary one where the
+// platform can be asked where a process stands, and the default elsewhere. On
+// Windows a ConPTY process holds its working directory, so a temporary one
+// cannot be removed while the test's shell still runs — and a live cwd cannot
+// be read there anyway, so the tests that assert one are skipped.
+func testDir(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	return t.TempDir()
+}
+
 // openShell gives the window one shell of its own, in dir, and waits until the
 // hub has named it and the window has adopted the tab.
 func openShell(t *testing.T, w *window, f *fleet, dir string) *tab {
@@ -84,6 +97,9 @@ func resolvedDir(t *testing.T, dir string) string {
 // whole point of the key: a person who has cd'd somewhere wants the second pane
 // there, without typing the path again.
 func TestSplitOpensTheNewShellWhereTheShellOnScreenStands(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a ConPTY process cannot be asked where it stands")
+	}
 	w, f := newSplitWindow(t)
 	dir := t.TempDir()
 	first := openShell(t, w, f, dir)
@@ -130,7 +146,7 @@ func TestSplitOpensTheNewShellWhereTheShellOnScreenStands(t *testing.T) {
 // ⌘⇧D is the same split with the panes one above the other.
 func TestShiftCmdDSplitsAboveAndBelow(t *testing.T) {
 	w, f := newSplitWindow(t)
-	openShell(t, w, f, t.TempDir())
+	openShell(t, w, f, testDir(t))
 
 	tt := drawWindow(w)
 	tt.Key(ui.Cmd|ui.Shift, ui.KeyD)
@@ -146,7 +162,7 @@ func TestShiftCmdDSplitsAboveAndBelow(t *testing.T) {
 // its tab stays in the strip, the way closing any tab leaves a shell running.
 func TestClosingAPaneLeavesItsShellRunning(t *testing.T) {
 	w, f := newSplitWindow(t)
-	openShell(t, w, f, t.TempDir())
+	openShell(t, w, f, testDir(t))
 
 	tt := drawWindow(w)
 	tt.Key(ui.Cmd, ui.KeyD)
@@ -172,7 +188,7 @@ func TestClosingAPaneLeavesItsShellRunning(t *testing.T) {
 // its shape and the shell the pane had stays in the strip, still running.
 func TestNewTabInASplitLandsInThePaneOnScreen(t *testing.T) {
 	w, f := newSplitWindow(t)
-	first := openShell(t, w, f, t.TempDir())
+	first := openShell(t, w, f, testDir(t))
 
 	tt := drawWindow(w)
 	tt.Key(ui.Cmd, ui.KeyD)
@@ -206,7 +222,7 @@ func TestNewTabInASplitLandsInThePaneOnScreen(t *testing.T) {
 // because the strip is the roster and the panes are what is on screen.
 func TestTheStripMovesTheFocusAndKeepsTheSplit(t *testing.T) {
 	w, f := newSplitWindow(t)
-	first := openShell(t, w, f, t.TempDir())
+	first := openShell(t, w, f, testDir(t))
 
 	tt := drawWindow(w)
 	tt.Key(ui.Cmd, ui.KeyD)
@@ -246,7 +262,7 @@ func TestTheStripMovesTheFocusAndKeepsTheSplit(t *testing.T) {
 // the pane out of the tree and leaves the other one whole.
 func TestClosingATabThatIsAPaneLeavesTheOtherPane(t *testing.T) {
 	w, f := newSplitWindow(t)
-	first := openShell(t, w, f, t.TempDir())
+	first := openShell(t, w, f, testDir(t))
 
 	tt := drawWindow(w)
 	tt.Key(ui.Cmd, ui.KeyD)

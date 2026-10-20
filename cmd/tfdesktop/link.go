@@ -328,6 +328,16 @@ func (s *session) epochOf() uint64 {
 	return s.epoch
 }
 
+// sessionID is the session's id, read under its lock: the link's reader
+// goroutine gives a session its id when the hub names it, and the UI thread
+// reads it while it draws. An unlocked read here races that write — the race
+// detector found it in followLease, which asks for a lease as a frame builds.
+func (s *session) sessionID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.id
+}
+
 // bind gives the session its id, once the hub has named it. Until then the
 // window has asked for a shell and not yet been told which one it got.
 func (s *session) bind(id string) {

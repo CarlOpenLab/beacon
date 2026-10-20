@@ -854,7 +854,11 @@ func TestTheMachinesOwnWindowCanLetAShellGo(t *testing.T) {
 // started in. A split pane and a second tab both want this: the alternative is
 // a new shell at the home directory and a cd to type every time.
 func TestANewShellOpensWhereTheShellItFollowsStands(t *testing.T) {
-	ts := newTestHub(t)
+	// The hub itself, not only its server: the test asks the source session
+	// where its process stands, which is the answer the follow is built on.
+	h := hub.New(hub.Options{Host: protocol.Host{Hostname: "test", Platform: "test", Arch: "test"}})
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
 	c := dialTest(t, ts)
 
 	start := t.TempDir()
@@ -863,10 +867,15 @@ func TestANewShellOpensWhereTheShellItFollowsStands(t *testing.T) {
 		return m.T == protocol.STCreated && m.SessionID == "src"
 	})
 
-	// The shell is driven somewhere else, the way a person drives one.
+	// The shell is driven somewhere else, the way a person drives one. The echo
+	// of the line arrives as it is typed, before the shell has run it, so the
+	// wait is on where the process stands rather than on what it printed.
 	elsewhere := t.TempDir()
 	c.send(protocol.Msg{T: protocol.CTInput, SessionID: "src", Data: []byte("cd " + elsewhere + "\n")})
 	c.waitOutput(elsewhere)
+	if live := liveCwdOf(t, h, "src", elsewhere); live != "" {
+		t.Fatalf("the source shell stands in %q, want %q", live, elsewhere)
+	}
 
 	c.send(protocol.Msg{T: protocol.CTCreate, SessionID: "next", Cols: 80, Rows: 24, From: "src"})
 	c.waitFor("created", func(m protocol.Msg) bool {
@@ -887,6 +896,28 @@ func TestANewShellOpensWhereTheShellItFollowsStands(t *testing.T) {
 		return
 	}
 	t.Fatalf("the roster does not hold the following shell: %+v", list.Sessions)
+}
+
+// liveCwdOf waits until a session's process stands in want and returns "",
+// or the directory it stands in when the deadline passes: the shell runs the
+// cd a moment after its echo is seen, and a machine that cannot say where a
+// process stands falls back to where it started.
+func liveCwdOf(t *testing.T, h *hub.Hub, id, want string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		src, ok := h.Session(id)
+		if !ok {
+			t.Fatalf("session %q is gone", id)
+		}
+		if resolved(t, src.LiveCwd()) == resolved(t, want) {
+			return ""
+		}
+		if time.Now().After(deadline) {
+			return src.LiveCwd()
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // resolved resolves symlinks so a comparison holds on a machine where the
