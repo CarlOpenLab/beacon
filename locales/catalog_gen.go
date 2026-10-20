@@ -2794,6 +2794,34 @@ func (msgs Messages) SessionRefresh() string {
 	return Catalog.Format(msgs.locale, "session_refresh", nil)
 }
 
+// SessionRefreshMachine says "刷新此机器的会话"
+// in the language the app shows.
+//
+// 机器分组头右侧的刷新按钮，重新获取这台机器的会话列表。
+func SessionRefreshMachine() string { return In(i18n.Locale()).SessionRefreshMachine() }
+
+// SessionRefreshMachine says "刷新此机器的会话"
+// in the language of msgs.
+//
+// 机器分组头右侧的刷新按钮，重新获取这台机器的会话列表。
+func (msgs Messages) SessionRefreshMachine() string {
+	return Catalog.Format(msgs.locale, "session_refresh_machine", nil)
+}
+
+// SessionNewOnMachine says "在此机器新建终端"
+// in the language the app shows.
+//
+// 机器分组头右侧的新建终端按钮。
+func SessionNewOnMachine() string { return In(i18n.Locale()).SessionNewOnMachine() }
+
+// SessionNewOnMachine says "在此机器新建终端"
+// in the language of msgs.
+//
+// 机器分组头右侧的新建终端按钮。
+func (msgs Messages) SessionNewOnMachine() string {
+	return Catalog.Format(msgs.locale, "session_new_on_machine", nil)
+}
+
 // StatusCreating says "创建中…"
 // in the language the app shows.
 //

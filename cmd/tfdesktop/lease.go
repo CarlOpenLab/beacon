@@ -131,16 +131,18 @@ func glowDrift(now time.Time, still bool) float64 {
 	return now.Sub(glowEpoch).Seconds()
 }
 
-// leasePopoverWidth is how wide the panel under the pane's top is allowed to be.
-// The panel hangs from the top of a pane, and a pane can be narrower than a
-// sentence: a panel that grew to fit its words would hang off the terminal it
-// belongs to.
-const leasePopoverWidth = 268
+// leasePopoverWidth is how wide the panel over the pane's foot is allowed to be.
+// The panel sits at the bottom center of the pane, and a pane can be narrower
+// than a sentence: a panel that grew to fit its words would hang off the
+// terminal it belongs to.
+const leasePopoverWidth = 320
 
 // leasePopover is the panel that names the holder of the shell on screen, and
-// the way back. anchor is the pane it hangs from; open is the window's own
-// state, so the panel stays where the user left it. Its width is fixed rather
-// than fitted, so it never runs past the pane it is about.
+// the way back. anchor is a point at the pane's bottom center, so the panel sits
+// there rather than over the top-left corner of the terminal the person is
+// reading. open is the window's own state, so the panel stays where the user
+// left it. Its width is fixed rather than fitted, so two panels read the same
+// and the lines do not reflow as the holder's name changes.
 //
 // It says three things and no more: who has the shell, what that means for the
 // person typing here, and what pressing the button will do to the other side.
@@ -159,6 +161,7 @@ const leasePopoverWidth = 268
 // question about who may type.
 func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, steal bool, reclaim func()) {
 	t := c.Theme()
+	pal := paletteFor(c)
 
 	// The word is about which machine the shell runs on: one this window never
 	// drove is 接管, one it drove and lost is 拿回.
@@ -168,40 +171,39 @@ func leasePopover(c *ui.Context, anchor ui.Element, open *bool, holder string, s
 	}
 	who := locales.LeaseWho(holder)
 	outcome := locales.LeaseOutcomeBack(holder)
-	tip := locales.LeaseTipOver(holder)
 	if holder == "" {
 		// Nobody's shell: the panel says so rather than leaving a blank where a
 		// name goes, and the button promises nothing about a person who is not
 		// there.
 		who = locales.LeaseWhoNobody()
 		outcome = locales.LeaseOutcomeFree()
-		tip = locales.LeaseTipFree()
 	} else if steal {
 		// Another machine's shell: this window never had it, so it is taken
 		// rather than taken back, and the holder is told.
 		outcome = locales.LeaseOutcomeOver(holder)
-	} else {
-		tip = locales.LeaseTipBack(holder)
 	}
 
-	ui.Popover(c, anchor, open, func() {
-		ui.Column(c).Gap(10).Padding(13).Width(leasePopoverWidth).Children(func() {
+	ui.PopoverBase(c, anchor, open, func(panel ui.Element) {
+		// Above the anchor's point, its own bottom edge on it: the panel sits at
+		// the bottom center of the pane, clear of the last line a person reads.
+		panel.AttachTo(anchor, ui.AnchorTop, ui.AnchorBottom).Label("lease-panel")
+		floating(panel.Width(leasePopoverWidth).Radius(14).Background(pal.Popover).Padding(14), pal)
+		ui.Column(c).Gap(0).Children(func() {
 			// Who holds it, with the dot the 会话 row carries and in the colour
 			// the pane's 只读 chip is drawn in, so the three never disagree.
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(3.5).Background(t.Warning)
-				ui.Text(c, who).
-					FontSize(13).FontWeight(600).SingleLine()
+				ui.Box(c).Size(8, 8).Radius(4).Background(t.Warning)
+				ui.Text(c, who).FontSize(13).FontWeight(600).TextColor(t.Text).SingleLine()
 			})
 			ui.Text(c, locales.LeaseReadonlyNote()).
-				FontSize(11.5).TextColor(t.TextMuted)
+				FontSize(12).TextColor(t.TextMuted).Margin(9, 0, 0, 0).LineHeight(1.4)
 			ui.Text(c, outcome).
-				FontSize(11.5).TextColor(t.TextMuted)
-			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-				if ui.Button(c, locales.LeaseStay()).Tooltip(locales.LeaseStayTip()).Clicked() {
+				FontSize(12).TextColor(t.TextMuted).Margin(4, 0, 0, 0).LineHeight(1.4)
+			ui.Row(c).Gap(8).Justify(ui.End).Margin(14, 0, 0, 0).Children(func() {
+				if chromeButton(c, pal, "lease-stay", locales.LeaseStay(), "", false) {
 					*open = false
 				}
-				if ui.PrimaryButton(c, take).Tooltip(tip).Clicked() {
+				if chromeButton(c, pal, "lease-take", take, "", true) {
 					reclaim()
 					*open = false
 				}

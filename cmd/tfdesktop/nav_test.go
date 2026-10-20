@@ -480,7 +480,7 @@ func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
 	}
 }
 
-// The window is kero's: a wash behind cards, not a flat dark ground. The two
+// The window is the app's: a wash behind cards, not a flat dark ground. The two
 // appearances are both real - the light one is not the dark one inverted - and a
 // card takes the palette's own color in each.
 func TestDesktopUsesTheWash(t *testing.T) {

@@ -416,7 +416,7 @@ func parseReport(body string) (report, bool) {
 			case Idle, Working, Waiting, Error:
 				rep.state = State(v)
 			case "done":
-				// kero's name for "finished, and the user has not looked": the
+				// the name for "finished, and the user has not looked": the
 				// state a fleet draws as a check.
 				rep.state = Idle
 				rep.done = true

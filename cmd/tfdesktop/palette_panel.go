@@ -67,7 +67,7 @@ func (w *window) paletteItems() []paletteItem {
 }
 
 // fuzzy scores how well query matches s, as its letters in order: higher is
-// better, -1 no match. Starts of words and runs score more. It is kero's, so
+// better, -1 no match. Starts of words and runs score more. It is the app's, so
 // the same query offers the same order.
 func fuzzy(query, s string) int {
 	if query == "" {

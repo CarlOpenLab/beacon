@@ -4,7 +4,7 @@
 // M3 turns this from "a client for one daemon" into "a client for a fleet":
 // several machines are reachable at once, each with its own sessions. There is
 // no tab strip: the sidebar is the switcher, one pane is on screen at a time,
-// and the pane wears a card's header the way kero's window does. A pane still
+// and the pane wears a card's header the way the desktop window does. A pane still
 // remembers which machine it belongs to, because one session id is only unique
 // within its own host.
 
@@ -99,7 +99,7 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p
 }
 
-/** The short relative time kero puts at the end of a row: now, 4m, 2h, 3d, 1w. */
+/** The short relative time the row shows at the end of a row: now, 4m, 2h, 3d, 1w. */
 function ago(ms: number, now = Date.now()): string {
   if (!ms || !Number.isFinite(ms)) return ''
   const d = Math.max(0, now - ms)
@@ -125,7 +125,7 @@ function kindLabel(kind?: string): string {
 }
 
 /**
- * kero's five-state glyph, as markup. The row and the footer wear the same one,
+ * the five-state glyph, as markup. The row and the footer wear the same one,
  * at different sizes: a turning arc while a session works, an amber ring with a
  * pulsing dot when it needs a person, a red disc with a bang when it failed, an
  * X ring when it exited, and a check — filled when the finish was unseen, faint
@@ -180,7 +180,7 @@ function statusGlyph(state: string, unread: boolean, size = 15): HTMLElement {
   return box
 }
 
-/** The small icon buttons kero's chrome is made of: one glyph, no label. */
+/** The small icon buttons the chrome is made of: one glyph, no label. */
 function iconButton(className: string, title: string, svg: string, run: (ev: MouseEvent) => void): HTMLButtonElement {
   const btn = el('button', className) as HTMLButtonElement
   btn.type = 'button'

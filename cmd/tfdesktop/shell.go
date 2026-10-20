@@ -190,17 +190,17 @@ func (w *window) sessionsOn(machine string) []protocol.Summary {
 func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 	if w.split != nil {
 		// A zoomed pane is the whole body: the others are still there, one ⌘⇧↩
-		// away, which is what kero's zoom means.
+		// away, which is what zoom means.
 		if w.zoomed && w.focus != nil && w.focus.tab != nil {
-			w.paneCard(c, pal, w.focus.tab, true, true, true, func() { w.focusSplit(w.focus) })
+			w.paneCard(c, pal, w.focus.tab, true, func() { w.focusSplit(w.focus) })
 			return
 		}
-		w.splitView(c, pal, w.split, true, true)
+		w.splitView(c, pal, w.split)
 		return
 	}
 	tb := w.activeTab()
 	if tb == nil || tb.term == nil {
-		// The empty window is one card, as kero's is: what to do about a window
+		// The empty window is one card: what to do about a window
 		// with nothing open is a card's worth of chrome, not a paragraph floating
 		// on the wash.
 		ui.Box(c).Fill().Children(func() {
@@ -217,18 +217,14 @@ func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 		})
 		return
 	}
-	w.paneCard(c, pal, tb, true, true, true, nil)
+	w.paneCard(c, pal, tb, true, nil)
 }
 
-// paneCard is one shell in a card, kero's way: a header with the shell's name,
-// where it stands and what it is doing, and the terminal under it, the card's
-// corners clipping both. A pane the user is not in fades — its text too — so
-// that a split says which of its halves has the keyboard without a border.
-//
-// top and right say the card touches the window's top and right edges, which is
-// where the window's own controls are drawn: the top-right card keeps that corner
-// of its header clear (see winControlsInset, and windowControls in frame.go).
-func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused, top, right bool, focus func()) {
+// paneCard is one shell in a card: a header with the shell's name, where it
+// stands and what it is doing, and the terminal under it, the card's corners
+// clipping both. A pane the user is not in fades — its text too — so that a
+// split says which of its halves has the keyboard without a border.
+func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool, focus func()) {
 	if tb == nil || tb.term == nil {
 		return
 	}
@@ -246,7 +242,7 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 			focus()
 		}
 		card.Children(func() {
-			w.cardHeader(c, pal, tb, focused, top, right)
+			w.cardHeader(c, pal, tb, focused)
 			w.takeoverBar(c, tb, focused)
 			// The terminal fills the card under the header. It draws its own
 			// background, so a full-screen program's color reaches the edges.
@@ -284,14 +280,11 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 			strength := glow.Animate("lease", 1, glowFade)
 			leaseGlow(c, float64(strength), c.Preferences().ReduceMotion)
 		}
-		// The panel hangs under the header, or under the takeover strip when
-		// there is one: a panel that covered the sentence it belongs to would be
-		// answering a question it hid.
-		top := float32(uitokens.HeaderH)
-		if text, _, _, _ := w.bannerState(c); text != "" {
-			top += takeoverBarH
-		}
-		marker := ui.Box(c).Absolute().Top(top).Start(uitokens.CardGap).Size(2, 2)
+		// The panel sits at the bottom center of the pane: the sentence is about
+		// the terminal, not part of its header, and the foot is where the eye
+		// already goes for the shell's last line.
+		marker := ui.Box(c).Absolute().Attach(ui.AnchorBottom, ui.AnchorBottom).
+			Bottom(18).Size(0, 0)
 		leasePopover(c, marker, &w.leaseOpen, holder, tb.machine != machineLocal, func() {
 			w.reclaim(tb)
 		})
@@ -302,34 +295,15 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 // stands, what it is running, and — while the pointer is there — the controls
 // that act on the card. A pane the window is not in says 只读 or 已退出 here; the
 // pane on screen has the sentence and the button in takeoverBar instead.
-func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused, top, right bool) {
-	left := w.headerLead(c.TitleBar())
-	// The top-right card is under the window's own controls: its header keeps
-	// that corner clear, so the takeover sentence and its button never end up
-	// under the close button.
-	rightPad := float32(10)
-	if top && right && ownWindowControls {
-		// Reserve the corner whether or not the frame is set yet: the first
-		// frame of a new window must not have its header laid out twice.
-		rightPad = winControlsInset
-	}
+func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool) {
+	left := w.headerLead()
 	h := ui.Row(c).Height(uitokens.HeaderH).Shrink(0).AlignItems(ui.Center).
-		Padding(0, rightPad, 0, left).Gap(8)
+		Padding(0, 10, 0, left).Gap(8)
 	hovered := h.Hovered()
 	h.DragWindow()
 
 	name := tb.name()
 	h.Children(func() {
-		// With the sidebar hidden, the two buttons that live in its top bar come
-		// over to the card's header, where kero puts them.
-		if w.sidebarHidden {
-			if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), 26).Clicked() {
-				w.sidebarHidden = false
-			}
-			if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), 26).Clicked() {
-				w.newTab()
-			}
-		}
 		state := w.leaseColor(c.Theme(), tb.machine, tb.id, tb.holder(), tb.alive)
 		ui.Box(c).Size(8, 8).Radius(4).Background(state).Shrink(0)
 		title := ui.Text(c, name).FontSize(13.5).FontWeight(600).SingleLine().Ellipsis("…").Shrink(1).MinWidth(30)
@@ -343,14 +317,13 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 		// gave, or how far along it is.
 		w.attentionChip(c, pal, tb)
 		// What is running in the pane, when it is a program rather than the shell
-		// itself: kero's chip, and the answer to "which of these is the agent".
+		// itself: a chip, and the answer to "which of these is the agent".
 		if sum, ok := w.summaryOf(tb.machine, tb.id); ok && !isShellName(sum.Process) {
 			chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
 				ui.Text(c, sum.Process).FontSize(12).SingleLine().Ellipsis("…").MaxWidth(160)
 			})
 		}
-		// Where it runs, when that is not this machine: a chip, as kero shows a
-		// pane's program.
+		// Where it runs, when that is not this machine: a chip naming the machine.
 		if tb.machine != machineLocal {
 			chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
 				ui.Text(c, w.machineName(tb.machine)).FontSize(12).SingleLine().Ellipsis("…")
@@ -381,27 +354,19 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 	})
 }
 
-// headerLead is where a card's header starts: at its own inset, or after the
-// traffic lights when the sidebar is hidden and they would be under it.
-func (w *window) headerLead(bar ui.TitleBar) float32 {
-	left := float32(uitokens.CardGap + 8)
-	if w.sidebarHidden && bar.Left > 0 {
-		left = bar.Left + uitokens.CardGap + 8
-	}
-	return left
+// headerLead is where a card's header starts: its own inset while the sidebar is
+// shown, and after the traffic lights and the sidebar's buttons while it is
+// folded away.
+func (w *window) headerLead() float32 {
+	return w.chromeNow().headerPad
 }
 
 // emptyCardHeader is the header of the card a window with no shell shows. It has
 // nothing to say, but it is still the window's title bar: the pointer drags the
-// window by it, and it keeps the top-right corner clear for the window's own
-// controls, which are drawn above it.
+// window by it.
 func (w *window) emptyCardHeader(c *ui.Context) {
-	rightPad := float32(10)
-	if ownWindowControls {
-		rightPad = winControlsInset
-	}
 	ui.Row(c).Height(uitokens.HeaderH).Shrink(0).
-		Padding(0, rightPad, 0, 10).DragWindow()
+		Padding(0, 10, 0, 10).DragWindow()
 }
 
 // takeoverBar is the one sentence the window has to say about the shell on
@@ -553,7 +518,7 @@ func (w *window) emptyState(c *ui.Context, pal *uitokens.Palette) {
 		Fill().AlignItems(ui.Center).Justify(ui.Center).Padding(24).
 		Children(func() {
 			ui.Column(c).Gap(0).MaxWidth(420).AlignItems(ui.Center).Children(func() {
-				// kero's empty state: a chip of an icon, the title, one sentence,
+				// the empty state: a chip of an icon, the title, one sentence,
 				// and the two things a person can do about it.
 				ui.Box(c).Size(52, 52).Radius(14).Center().Background(pal.Chip).TextColor(pal.TextMuted).
 					Margin(0, 0, 18, 0).Children(func() {
@@ -563,10 +528,10 @@ func (w *window) emptyState(c *ui.Context, pal *uitokens.Palette) {
 				ui.Text(c, w.emptyLine()).FontSize(13.5).TextColor(pal.TextMuted).
 					MaxWidth(380).TextAlign(ui.Center).LineHeight(1.45).Margin(8, 0, 22, 0)
 				ui.Row(c).Gap(10).Children(func() {
-					if keroButton(c, pal, "empty-new", locales.ActionNewTerminal(), w.keyFor("session.new"), true) {
+					if chromeButton(c, pal, "empty-new", locales.ActionNewTerminal(), w.keyFor("session.new"), true) {
 						w.newTab()
 					}
-					if keroButton(c, pal, "empty-settings", locales.ActionSettings(), w.keyFor("settings.open"), false) {
+					if chromeButton(c, pal, "empty-settings", locales.ActionSettings(), w.keyFor("settings.open"), false) {
 						w.openSettings()
 					}
 				})

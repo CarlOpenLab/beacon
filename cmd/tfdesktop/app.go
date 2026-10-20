@@ -48,6 +48,10 @@ type window struct {
 	sidebarHidden   bool
 	dismissed       map[string]bool
 
+	// chrome is where the sidebar's fold has the column and the cards this
+	// frame; see sidebar.go. The view writes it and the parts it draws read it.
+	chrome sideChrome
+
 	// sidebarWidth, sideDrag and collapsed are the column's own state: how wide
 	// it is (0 for the default), the width a drag started from, and which
 	// machine groups the person folded away.
@@ -55,7 +59,7 @@ type window struct {
 	sideDrag     float32
 	collapsed    map[string]bool
 
-	// zoomed fills the body with the focused pane of a split, kero's ⌘⇧↩.
+	// zoomed fills the body with the focused pane of a split, ⌘⇧↩.
 	zoomed bool
 
 	// pal is the command palette's state.
@@ -254,7 +258,7 @@ func (w *window) sessionsArrived(list []protocol.Summary) {
 // reportStatuses tells the user — with a notification, and with the Dock badge
 // — what changed while they were looking elsewhere. It runs on the window's
 // thread, from the list each machine pushed, and it is the only place a
-// notification is made: kero's rule, that a session coming to need you, failing
+// notification is made: the rule that a session coming to need you, failing
 // or finishing unseen is news, and everything else is the window's own business.
 func (w *window) reportStatuses(machine string, list []protocol.Summary) {
 	if w.statusSeen == nil {
@@ -580,7 +584,7 @@ func (w *window) view(c *ui.Context) {
 	}
 	w.followLease()
 
-	// kero's chrome, in the appearance the person chose; terminal ANSI keeps its
+	// The app's chrome, in the appearance the person chose; terminal ANSI keeps its
 	// own colors.
 	mode := w.store.Get().Theme
 	applyTheme(c, mode)
@@ -602,28 +606,33 @@ func (w *window) view(c *ui.Context) {
 	pal := paletteFor(c)
 	row := ui.Row(c).Fill().AlignItems(ui.Stretch)
 	backdrop(c, pal, row, w.store.Get().Background)
+	// The column's fold: one progress drives the sidebar's width, the cards'
+	// left padding and the header's inset, so the three move as one surface.
+	ch := chromeFor(row.AnimateTo("sidebar", b2f(!w.sidebarHidden), sidebarMotion), w.sideWidth())
+	w.chrome = ch
 	row.Children(func() {
-		if !w.sidebarHidden {
+		if ch.shown > 0.001 {
 			w.sidebar(c, pal)
 		}
 		// The cards' column: the wash shows in the gaps around a card, and the
 		// left gap closes when the sidebar is shown, so the column reads as the
 		// sidebar's neighbour rather than a second panel.
-		left := float32(uitokens.CardGap)
-		if !w.sidebarHidden {
-			left = 0
-		}
 		ui.Column(c).Grow(1).MinWidth(0).
-			Padding(uitokens.CardGap, uitokens.CardGap, uitokens.CardGap, left).DragWindow().Children(func() {
+			Padding(uitokens.CardGap, uitokens.CardGap, uitokens.CardGap, ch.mainPad).DragWindow().Children(func() {
 			w.body(c, pal)
 		})
+		// The column's buttons over the cards while it folds away, so they stay
+		// where the pointer found them; the card's header takes their place.
+		if ch.shown < 0.75 {
+			w.sidebarPeek(c)
+		}
 		w.settingsDialog(c)
 		w.reachDialog(c)
 		w.paletteView(c, pal)
 		// Last, so the window's own controls are over the dialogs and the
 		// palette: a window's close, minimize and maximize stay where they are
 		// while one of them is open, as the system's do.
-		w.windowControls(c, pal)
+		w.windowControls(c)
 	})
 }
 
@@ -807,7 +816,7 @@ func (w *window) settingsDialog(c *ui.Context) {
 	width, height := c.Size()
 	pal := paletteFor(c)
 	ui.Modal(c, &w.settingsOpen, func() {
-		// The settings window in kero's terms: a small window of its own, on the
+		// The settings window in the app's terms: a small window of its own, on the
 		// wash, with the pages and their card inside it.
 		panel := ui.Column(c).Width(min(760, width-80)).Height(min(600, height-80)).
 			Radius(uitokens.CardRadius).Clip()

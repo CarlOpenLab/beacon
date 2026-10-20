@@ -61,7 +61,7 @@ func TestEmptyStateInvitesTheFirstShell(t *testing.T) {
 
 // The service and the fleet live in the sidebar's foot now: a dot for the local
 // service and how many machines answer, with the address in its tooltip. It is
-// the one line the old status bar was for, in the corner kero keeps it.
+// the one line the old status bar was for, in the corner the footer keeps it.
 func TestTheSidebarFootNamesTheService(t *testing.T) {
 	w, _ := newTestShellWindow(t)
 	tt := ui.NewTester(func(c *ui.Context) {
@@ -88,7 +88,7 @@ func TestTheMarkIsEmbedded(t *testing.T) {
 	}
 }
 
-// The shell brings its own palette: kero's light and dark sets, a card that is
+// The shell brings its own palette: the app's light and dark sets, a card that is
 // not the ground it sits on, and a terminal whose colors match the card the
 // window draws around it.
 func TestTheShellBringsItsOwnPalette(t *testing.T) {

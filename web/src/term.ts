@@ -3,7 +3,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 
-// The terminal's palette is the card's, on the terminal's own terms: kero draws
+// The terminal's palette is the card's, on the terminal's own terms: the desktop draws
 // a light terminal on a white card and a dark one on a graphite card, and the
 // ANSI sixteen are Apple's system colors deepened for whichever ground they sit
 // on. The numbers are internal/uitokens' TermLight / TermDark, token for token,

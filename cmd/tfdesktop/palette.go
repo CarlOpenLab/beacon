@@ -12,11 +12,11 @@ import (
 // cannot drift; the numbers below are the ones the two layouts share.
 
 // chromeMetrics are the layout numbers the two clients share. They are the CSS
-// custom properties of the same names in web/src/style.css, and kero's own
+// custom properties of the same names in web/src/style.css, and the app's own
 // numbers (see uitokens).
 const (
 	// headerHeight is a card's header: the session's name, where it stands, and
-	// the controls that act on its pane. kero's is 2*(barMid-cardGap) = 44, the
+	// the controls that act on its pane. The header is 2*(barMid-cardGap) = 44, the
 	// line the traffic lights and the sidebar's buttons center on.
 	headerHeight = uitokens.HeaderH
 	// tabBarHeight is the strip of open shells in the browser client, a pill row
@@ -48,7 +48,7 @@ func darkTheme() *ui.Theme { return chromeTheme(ui.DarkTheme(), true) }
 // deeper because they have to read on white.
 func lightTheme() *ui.Theme { return chromeTheme(ui.LightTheme(), false) }
 
-// chromeTheme makes a ui theme kero's, from whatever theme the frame or the
+// chromeTheme makes a ui theme the app's, from whatever theme the frame or the
 // system already had: the accent, the surfaces and the sizes of its controls.
 // The appearance's own Dark flag stays the caller's.
 func chromeTheme(base *ui.Theme, dark bool) *ui.Theme {
@@ -82,7 +82,7 @@ func chromeTheme(base *ui.Theme, dark bool) *ui.Theme {
 	return &t
 }
 
-// terminalTheme is the terminal's colors for an appearance: kero's, which are
+// terminalTheme is the terminal's colors for an appearance: the app's, which are
 // Apple's system colors tuned to read on the card they sit on. ANSI stays
 // distinct and TrueColor passes through untouched.
 func terminalTheme(dark bool) *terminal.Theme {

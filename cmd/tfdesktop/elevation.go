@@ -9,7 +9,7 @@ import (
 // Surfaces stand out by their color and an edge, crisp, on whole pixels. In the
 // light, the edge is a small soft shadow and no line; in the dark, where shadows
 // hardly show, a hairline a little lighter than the surface, over a dark shadow,
-// as a lit edge. These are kero's levels, and the same numbers either way.
+// as a lit edge. These are the app's levels, and the same numbers either way.
 
 // raised lifts a surface off what is under it a little: a card, a chosen row.
 func raised(e ui.Element, pal *uitokens.Palette) ui.Element {
@@ -61,9 +61,9 @@ func face(e ui.Element, pal *uitokens.Palette, bg ui.Color) ui.Element {
 	return darkShadow(litEdge(e, pal))
 }
 
-// keroButton is a button as kero draws it: a raised surface, or the accent's for
+// chromeButton is a button as the app draws it: a raised surface, or the accent's for
 // the primary one, with a label and, optionally, its keys.
-func keroButton(c *ui.Context, pal *uitokens.Palette, key, label, keys string, primary bool) bool {
+func chromeButton(c *ui.Context, pal *uitokens.Palette, key, label, keys string, primary bool) bool {
 	b := ui.ButtonBase(c.Key(key)).Height(30).Padding(0, 14).Gap(8).Radius(8).AlignItems(ui.Center).Label(label)
 	bg, fg := pal.Control, pal.Text
 	if primary {
@@ -87,7 +87,7 @@ func keroButton(c *ui.Context, pal *uitokens.Palette, key, label, keys string, p
 	return b.Clicked()
 }
 
-// toggle is kero's switch: a track that shows on and off alike, the accent's when
+// toggle is the app's switch: a track that shows on and off alike, the accent's when
 // on, with a knob that springs across. It returns the switch.
 func toggle(c *ui.Context, pal *uitokens.Palette, key string, on *bool) ui.Element {
 	sw := ui.SwitchBase(c.Key(key), on).Size(38, 22).Radius(11).Padding(2).Shrink(0)

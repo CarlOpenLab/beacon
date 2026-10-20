@@ -8,7 +8,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 )
 
-// kero's small things: a chip, a keystroke, a status glyph. They are the pieces
+// The small things: a chip, a keystroke, a status glyph. They are the pieces
 // the sidebar and a card's header are built from, so they live in one place and
 // the two cannot drift.
 
@@ -18,7 +18,7 @@ func chipBox(c *ui.Context, pal *uitokens.Palette, bg, fg ui.Color, fn func()) u
 		AlignItems(ui.Center).Background(bg).TextColor(fg).Children(fn)
 }
 
-// kbd is a keystroke as kero writes one: small, in the chrome's quiet greys.
+// kbd is a keystroke as the chrome writes one: small, in the chrome's quiet greys.
 func kbd(c *ui.Context, pal *uitokens.Palette, keys string) {
 	ui.Text(c, keys).FontSize(11).TextColor(pal.TextMuted).Padding(1, 5).Radius(4).
 		Background(pal.Kbd).SingleLine()

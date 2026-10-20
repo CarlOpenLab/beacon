@@ -1,7 +1,7 @@
 package main
 
 import (
-	"runtime"
+	"math"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -11,12 +11,71 @@ import (
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
-// The sidebar is kero's: groups of sessions with their own headers, the chosen
-// session a raised row, and a foot of quiet icon buttons. term-fleet's groups
-// are machines — this one first, then every machine the relay says is here —
-// which is the same shape kero gives a project's sessions; a machine this
-// window has not asked for its shells yet says so in one row instead of showing
-// an empty group.
+// The sidebar is a column of machines, each with its sessions: the chosen one a
+// raised row, a group header that folds it away, and a foot of quiet icon
+// buttons. A machine the window has not asked for its shells yet says so in one
+// row instead of showing an empty group.
+
+// The column folds and unfolds rather than appearing whole: the width it takes
+// is animated, and the cards beside it move with it. The measurements below are
+// what the animation and the layout agree on.
+const (
+	// toolbarButton is the square of the top bar's buttons, and of the same
+	// buttons when the card header holds them with the column hidden.
+	toolbarButton = float32(28)
+
+	// headerPadShown is a card header's own left inset while the column is
+	// shown. With it hidden the header starts after the traffic lights and the
+	// column's buttons, which it then carries.
+	headerPadShown = float32(uitokens.CardGap + 8)
+	cardTitleLead  = windowLead + 2*toolbarButton + 2 + 8
+)
+
+// sidebarMotion is the fold's curve. It lands quickly and moves in every frame:
+// a spring's long tail, quantized to the column's pixels, would crawl and stop.
+var sidebarMotion = ui.Animation{Duration: 260 * time.Millisecond, Ease: ui.CubicBezier(0.25, 1, 0.5, 1)}
+
+// sideChrome is where the fold has the sidebar and the cards this frame, in
+// whole pixels so that edges stay crisp. Each is rounded from one progress so
+// that they move together.
+type sideChrome struct {
+	ready     bool
+	shown     float32 // 0 hidden, 1 shown
+	width     float32 // the column's visible width
+	mainPad   float32 // the left padding of the cards' column
+	headerPad float32 // a card header's left padding
+}
+
+// chromeFor is the layout at a point in the fold.
+func chromeFor(progress, width float32) sideChrome {
+	round := func(v float32) float32 { return float32(math.Round(float64(v))) }
+	s := min(max(progress, 0), 1)
+	w := round(width * s)
+	shown := float32(1)
+	if width > 0 {
+		shown = w / width
+	}
+	pad := round(uitokens.CardGap * (1 - shown))
+	// Where the header's title starts in the window, rounded once: after the
+	// column's buttons with it hidden, 16 into the card with it shown.
+	hidden, shownAt := cardTitleLead, width+headerPadShown
+	x := round(hidden + (shownAt-hidden)*shown)
+	return sideChrome{ready: true, shown: shown, width: w, mainPad: pad, headerPad: x - w - pad}
+}
+
+// chromeNow is the layout the window is drawn with. A view that has not run the
+// fold yet — a panel drawn on its own in a test — is at the state the window
+// says it is in.
+func (w *window) chromeNow() sideChrome {
+	if w.chrome.ready {
+		return w.chrome
+	}
+	if w.sidebarHidden {
+		return sideChrome{shown: 0, width: 0, mainPad: uitokens.CardGap,
+			headerPad: cardTitleLead - uitokens.CardGap}
+	}
+	return sideChrome{shown: 1, width: w.sideWidth(), headerPad: headerPadShown}
+}
 
 // sideWidth is how wide the column is, clamped to what a name fits in.
 func (w *window) sideWidth() float32 {
@@ -24,15 +83,6 @@ func (w *window) sideWidth() float32 {
 		return uitokens.SidebarWidth
 	}
 	return min(max(w.sidebarWidth, uitokens.MinSidebar), uitokens.MaxSidebar)
-}
-
-// lead is where the sidebar's contents start: after the traffic lights on macOS,
-// at the window's own edge elsewhere.
-func lead(bar ui.TitleBar) float32 {
-	if bar.Left > 0 {
-		return bar.Left + uitokens.CardGap
-	}
-	return 12
 }
 
 // sidebar draws the column: the window's buttons, the machine groups, and the
@@ -43,43 +93,73 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 	if bar.Height > topHeight {
 		topHeight = bar.Height
 	}
+	ch := w.chromeNow()
 
-	ui.Column(c).Width(w.sideWidth()).FillHeight().Shrink(0).ClipX().Children(func() {
-		w.resizeHandle(c, pal)
-		ui.Row(c).Height(topHeight).Shrink(0).Padding(0, 12, 0, lead(bar)).Gap(2).AlignItems(ui.Center).DragWindow().Children(func() {
-			// On macOS the traffic lights hold the left of the bar, so the
-			// buttons go right, as they do in every Mac app that hides its
-			// sidebar; elsewhere there is nothing to clear, and they lead.
-			if runtime.GOOS == "darwin" {
+	// The column is as wide as the fold has it and clips what does not fit;
+	// its contents keep their full width and slide out under the clip, so the
+	// rows do not reflow as the column narrows.
+	side := ui.Row(c).Width(ch.width).FillHeight().Shrink(0).ClipX()
+	side.Children(func() {
+		ui.Column(c).Width(w.sideWidth()).FillHeight().Shrink(0).
+			Margin(0, 0, 0, ch.width-w.sideWidth()).
+			Opacity(ch.shown).Children(func() {
+			if ch.shown > 0.99 {
+				w.resizeHandle(c, pal)
+			}
+			ui.Row(c).Height(topHeight).Shrink(0).Padding(0, 12, 0, windowLead).Gap(2).
+				AlignItems(ui.Center).DragWindow().Children(func() {
+				if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
+					w.sidebarHidden = true
+				}
+				if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), toolbarButton).Clicked() {
+					w.newTab()
+				}
 				ui.Spacer(c)
-			}
-			if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), 28).Clicked() {
-				w.sidebarHidden = true
-			}
-			if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), 28).Clicked() {
-				w.newTab()
-			}
-			if runtime.GOOS != "darwin" {
-				ui.Spacer(c)
-			}
-		})
+			})
 
-		ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, 10, 16, 10).Children(func() {
-			for i, m := range w.groups() {
-				w.machineGroup(c, pal, m, i)
-			}
+			ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, 10, 16, 10).Children(func() {
+				for i, m := range w.groups() {
+					w.machineGroup(c, pal, m, i)
+				}
 
+			})
+			w.sidebarFooter(c, pal)
 		})
-		w.sidebarFooter(c, pal)
 	})
 	// Times on the rows move on without anything else changing.
 	c.After(20 * time.Second)
 }
 
+// sidebarPeek draws the top bar's buttons over the cards while the column is
+// folding away. They stay where they were in the window rather than travelling
+// with the column, so the pointer finds them where it left them, and they fade
+// as the card's own header takes over.
+func (w *window) sidebarPeek(c *ui.Context) {
+	ch := w.chromeNow()
+	// The column buttons slide out with the column; these take over before they
+	// leave, and stay where they were in the window as the card slides under
+	// them.
+	alpha := min(1, (0.75-ch.shown)/0.10)
+	if alpha <= 0.01 {
+		return
+	}
+	ui.Row(c).Key("sidebar-peek").Absolute().
+		Left(windowLead).
+		Top((uitokens.TopBar - toolbarButton) / 2).
+		Height(toolbarButton).Gap(2).AlignItems(ui.Center).Opacity(alpha).Children(func() {
+		if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
+			w.sidebarHidden = false
+		}
+		if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), toolbarButton).Clicked() {
+			w.newTab()
+		}
+	})
+}
+
 // resizeHandle is the column's edge, which a drag moves and a double click puts
 // back.
 func (w *window) resizeHandle(c *ui.Context, pal *uitokens.Palette) {
-	h := ui.Box(c).Absolute().Left(w.sideWidth()-4).Top(0).Bottom(0).Width(8).Cursor(ui.CursorResizeEW)
+	h := ui.Box(c).Absolute().Left(w.sideWidth() - 4).Top(0).Bottom(0).Width(8).Cursor(ui.CursorResizeEW)
 	if dx, _, ok := h.Dragged(); ok {
 		if w.sideDrag == 0 {
 			w.sideDrag = w.sideWidth()
@@ -108,7 +188,7 @@ func (w *window) groups() []tunnel.Machine {
 	return out
 }
 
-// machineGroup is one machine and, under it, its sessions: kero's project group,
+// machineGroup is one machine and, under it, its sessions: a project group,
 // with the machine's state in the header and a "+" that opens a shell there.
 func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Machine, index int) {
 	selected := w.selectedMachine() == m.ID
@@ -149,7 +229,7 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		hdr.Background(pal.RowHover.Alpha(0.5))
 	}
 	hdr.Children(func() {
-		// The machine's state, where kero's group has a count: a dot that says
+		// The machine's state, where a project group has a count: a dot that says
 		// whether this machine answers, and the count of what it runs.
 		state := w.machineDot(c, m)
 		ui.Box(c).Size(7, 7).Radius(4).Background(state).Shrink(0)
@@ -165,7 +245,14 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		chev.Opacity(chev.Animate("shown", float32(b2f(hovered || collapsed)), 120e6))
 		ui.Spacer(c)
 		if hovered {
-			if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), 20).Clicked() {
+			// The row's own controls, at its right: ask this machine for its
+			// session list again, then open a shell there. The refresh is left
+			// of the new terminal, where the eye looks first for the row's more
+			// frequent action.
+			if iconButton(c, iconRefresh, locales.SessionRefreshMachine(), 20).Clicked() {
+				w.refreshSessions(m.ID)
+			}
+			if iconButton(c, iconPlus, locales.SessionNewOnMachine(), 20).Clicked() {
 				w.newTabOn(m.ID)
 			}
 		}
@@ -229,7 +316,7 @@ func (w *window) newTabOn(machine string) {
 }
 
 // sidebarFooter is the foot: the buttons for a shell, the palette and the
-// settings; then, at the right, how the fleet stands — kero's quiet footer, in
+// settings; then, at the right, how the fleet stands — a quiet footer, in
 // place of the band across the bottom of the window.
 func (w *window) sidebarFooter(c *ui.Context, pal *uitokens.Palette) {
 	ui.Row(c).Height(uitokens.FooterH).Shrink(0).Padding(0, 12, 4, 12).Gap(2).AlignItems(ui.Center).DragWindow().Children(func() {

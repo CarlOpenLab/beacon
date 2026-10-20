@@ -1,5 +1,5 @@
 /* ==========================================================================
-   term-fleet web client — kero v2
+   term-fleet web client
 
    The window is a wash: a vertical gradient in four stops with a glow from the
    top right. The sidebar sits directly on it, without a panel of its own, and
@@ -60,7 +60,7 @@
   /* the terminal's own size, which term.ts writes into xterm */
   --fs-term: 12.5px;
 
-  /* kero's measurements — shared with cmd/tfdesktop */
+  /* the shared measurements with cmd/tfdesktop */
   --h-card-head: 44px;
   --h-side-top: 44px;
   --h-group: 28px;
@@ -133,7 +133,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* The window ground: kero's four-stop wash, with the glow the card column
+/* The window ground: the four-stop wash, with the glow the card column
    adds from the top right. The sidebar paints nothing over it. */
 body {
   background:
@@ -328,7 +328,7 @@ svg {
   font-size: var(--fs-12);
 }
 
-/* A machine is kero's project group: a dot, a name, a count, a chevron. */
+/* A machine is a project group: a dot, a name, a count, a chevron. */
 .tf-machine {
   height: var(--h-group);
   display: flex;

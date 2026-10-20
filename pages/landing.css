@@ -1604,7 +1604,7 @@ pre.code[hidden] { display: none; }
 
 
 /* ============================================================================
-   The app's own window, in the 0.5 look: kero's wash, cards and state glyphs.
+   The app's own window, in the 0.5 look: the app's wash, cards and state glyphs.
    The mock keeps the page's editorial chrome around it; inside the window the
    daemon's palette takes over, so the shot is the app a person downloads.
    ========================================================================== */

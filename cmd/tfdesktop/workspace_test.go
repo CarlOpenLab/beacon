@@ -23,7 +23,7 @@ func splitWindow(t *testing.T) *window {
 	return w
 }
 
-// A split is one session with two panes, as kero draws it: the sidebar lists the
+// A split is one session with two panes, as the window draws it: the sidebar lists the
 // workspace once, not once per shell behind the divider. ⌘D that quietly added a
 // second row was the strip the sidebar replaced.
 func TestASplitIsOneRowInTheSidebar(t *testing.T) {

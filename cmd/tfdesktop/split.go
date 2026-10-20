@@ -272,15 +272,13 @@ func replaceSplit(root, from, to *splitNode) *splitNode {
 
 // splitView draws a subtree. A leaf is a shell on its card; a branch is two of
 // them with the gap between, which the pointer drags from a grip that shows on
-// the hover, and a double click puts back in the middle. top and right say the
-// subtree touches the window's top and right edges, which is what tells the
-// top-right card to keep its corner clear for the window's own controls.
-func (w *window) splitView(c *ui.Context, pal *uitokens.Palette, n *splitNode, top, right bool) {
+// the hover, and a double click puts back in the middle.
+func (w *window) splitView(c *ui.Context, pal *uitokens.Palette, n *splitNode) {
 	if n == nil {
 		return
 	}
 	if n.leaf() {
-		w.paneCard(c, pal, n.tab, n == w.focus, top, right, func() { w.focusSplit(n) })
+		w.paneCard(c, pal, n.tab, n == w.focus, func() { w.focusSplit(n) })
 		return
 	}
 	pct := n.pct
@@ -294,16 +292,12 @@ func (w *window) splitView(c *ui.Context, pal *uitokens.Palette, n *splitNode, t
 	box.Fill().MinWidth(0).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 		first := ui.Column(c).Grow(pct).Basis(0).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 		first.Children(func() {
-			// Beside each other, the first card is the left one and does not
-			// reach the right edge; stacked, it is the top one.
-			w.splitView(c, pal, n.a, top, right && !n.side)
+			w.splitView(c, pal, n.a)
 		})
 		w.splitGap(c, pal, n, pct)
 		second := ui.Column(c).Grow(100 - pct).Basis(0).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 		second.Children(func() {
-			// Beside each other, the second card is the right one and shares the
-			// top edge; stacked, it is the bottom one and does not reach the top.
-			w.splitView(c, pal, n.b, top && n.side, right)
+			w.splitView(c, pal, n.b)
 		})
 	})
 }
@@ -344,7 +338,7 @@ func (w *window) splitGap(c *ui.Context, pal *uitokens.Palette, n *splitNode, pc
 }
 
 // cyclePane moves the focus to the next or previous pane of the split, in the
-// order the body draws them: kero's ⌘] and ⌘[.
+// order the body draws them: ⌘] and ⌘[.
 func (w *window) cyclePane(delta int) {
 	leaves := w.workspaceLeaves()
 	if len(leaves) < 2 {
@@ -368,7 +362,7 @@ func (w *window) cyclePane(delta int) {
 }
 
 // zoomFocused fills the body with the focused pane, and puts the split back on
-// the next press: kero's ⌘⇧↩. It is a view of the split, not another layout.
+// the next press: ⌘⇧↩. It is a view of the split, not another layout.
 func (w *window) zoomFocused() {
 	if w.split == nil {
 		return
@@ -378,7 +372,7 @@ func (w *window) zoomFocused() {
 }
 
 // focusDirection moves the focus to the nearest pane that lies in a direction,
-// walking up the tree until a branch divides that way: kero's ⌘⌥arrows.
+// walking up the tree until a branch divides that way: ⌘⌥ arrows.
 func (w *window) focusDirection(dir string) {
 	leaf := w.focus
 	if w.split == nil || leaf == nil {

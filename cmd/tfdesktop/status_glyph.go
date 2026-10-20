@@ -9,7 +9,7 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 )
 
-// statusGlyph draws what a session is doing, as kero's sidebar does it: a ring
+// statusGlyph draws what a session is doing, as the sidebar does it: a ring
 // turning while it works, a ring that fills for a progress it reported, an
 // amber ring with a pulsing dot when it needs the user, a filled check when it
 // finished unseen, a faint one once seen, an X ring for a shell that ended and
@@ -106,7 +106,7 @@ func statusGlyph(c *ui.Context, pal *uitokens.Palette, state string, unread bool
 }
 
 // ago is how long ago a time in Unix milliseconds was, shortly: the relative
-// time kero puts at the end of a row. It is recomputed by the frame that draws
+// time shown at the end of a row. It is recomputed by the frame that draws
 // it, and the sidebar asks for another frame every 20 seconds.
 func ago(ms int64, now time.Time) string {
 	if ms == 0 {

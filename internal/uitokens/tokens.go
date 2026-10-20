@@ -7,9 +7,9 @@
 // drifted. They cannot drift now: the browser's tokens are generated from this
 // package by `go run ./gen` and checked by TestCSS (see tokens_test.go).
 //
-// The palette is egoist/kero v2's (MIT): its light and dark palettes, its five
-// window washes, and its terminal themes, which are Apple's system colors tuned
-// to read on the card they sit on.
+// The palette is the desktop's: its light and dark sets, its five window washes,
+// and its terminal themes, which are Apple's system colors tuned to read on the
+// card they sit on.
 package uitokens
 
 import (
@@ -21,7 +21,7 @@ import (
 )
 
 // Palette is the chrome's colors, for one appearance. The field names are
-// kero's, so that a line of its source reads the same here.
+// shared by name, so that a line of the source reads the same everywhere.
 type Palette struct {
 	Dark bool
 
@@ -66,7 +66,7 @@ type Palette struct {
 	KbdBorder ui.Color
 }
 
-// Light is the light appearance: kero's lightPalette.
+// Light is the light appearance.
 var Light = Palette{
 	Sidebar:     ui.Hex("#eceef4"),
 	Text:        ui.Hex("#1d1d1f"),
@@ -104,7 +104,7 @@ var Light = Palette{
 	KbdBorder: ui.RGBA(0, 0, 0, 0.09),
 }
 
-// Dark is the dark appearance: kero's darkPalette.
+// Dark is the dark appearance.
 var Dark = Palette{
 	Dark:        true,
 	Sidebar:     ui.Hex("#141418"),
@@ -154,9 +154,9 @@ func For(dark bool) *Palette {
 	return &Light
 }
 
-// The measurements of the chrome, in DIPs. They are kero's: barMid is the line
-// the title bar's contents center on, and everything else is derived from it so
-// that the traffic lights, the sidebar's buttons and a card's header line up.
+// The measurements of the chrome, in DIPs. BarMid is the line the title bar's
+// contents center on, and everything else is derived from it so that the
+// traffic lights, the sidebar's buttons and a card's header line up.
 const (
 	BarMid  = 30
 	TopBar  = 2 * BarMid
@@ -187,7 +187,7 @@ type Wash struct {
 }
 
 // Washes are the backgrounds the appearance settings offer, in their order.
-// rex is kero's default: pink lavender above, rose at the top right, butter
+// rex is the default: pink lavender above, rose at the top right, butter
 // cream below.
 var Washes = []Wash{
 	{"rex", []string{"#ebe0f3", "#f3e7f1", "#f7eee4", "#f6efcf"}, []string{"#17141f", "#191620", "#1b1916"}, ui.RGBA(247, 220, 241, 0.75), ui.RGBA(120, 70, 120, 0.22)},

@@ -397,6 +397,34 @@ func TestLeasePanelStaysInsideThePane(t *testing.T) {
 	}
 }
 
+// The panel sits at the bottom center of the pane it is about, not in its
+// top-left corner: it explains the shell under the terminal, and its way out
+// belongs within reach of the last line a person reads.
+func TestTheLeasePanelSitsAtTheBottomCenter(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	tb := w.tabs[1]
+	tb.term = fedTerminal(t, previewScreen())
+	tb.alive = true
+	tb.setLease(protocol.RoleViewer, "c9", 4)
+	w.leaseOpen = true
+
+	tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, 900, 600)
+	tt.Frame()
+	panel, ok := tt.Find("lease-panel")
+	if !ok {
+		t.Fatalf("the lease panel is not on screen; texts = %v", tt.Texts())
+	}
+	// The card starts after the 268 column and ends at the window's 8px inset,
+	// so its center is 268 + (900-268-8)/2.
+	if center := panel.X + panel.W/2; center < 578 || center > 582 {
+		t.Errorf("the panel is centered at x=%v, want the pane's center 580", center)
+	}
+	if bottom := panel.Y + panel.H; bottom < 570 || bottom > 578 {
+		t.Errorf("the panel's bottom is at y=%v, want it above the pane's foot (574)", bottom)
+	}
+}
+
 // The panel has a state for a holder that is nobody. It opens on the frame that
 // takes a shell away from this window, and that frame can hand the shell to no
 // one: a shell on another machine whose lease was let go while the machine that

@@ -97,7 +97,7 @@ func paletteOf(t *ui.Theme) *uitokens.Palette {
 	return uitokens.For(t.Dark)
 }
 
-// applyTheme makes the frame's chrome kero's: the accent, the surfaces and the
+// applyTheme makes the frame's chrome the app's: the accent, the surfaces and the
 // sizes of its controls. The mode is the stored appearance; the empty mode is
 // whatever the system says, which is what c.Theme() already holds.
 func applyTheme(c *ui.Context, mode string) {

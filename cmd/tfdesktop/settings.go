@@ -348,10 +348,10 @@ func (s *settingsWindow) view(c *ui.Context) {
 			if dirty {
 				ui.Text(c, locales.SettingsDirty()).FontSize(12).TextColor(t.Warning)
 			}
-			if keroButton(c, pal, "restore", locales.SettingsRestore(), "", false) {
+			if chromeButton(c, pal, "restore", locales.SettingsRestore(), "", false) {
 				s.restoreDefaults()
 			}
-			if dirty && keroButton(c, pal, "apply", locales.SettingsApply(), "", true) {
+			if dirty && chromeButton(c, pal, "apply", locales.SettingsApply(), "", true) {
 				s.commit()
 			}
 			if iconButton(c, iconClose, locales.SettingsClose(), 28).Clicked() && s.desk != nil {
@@ -359,7 +359,7 @@ func (s *settingsWindow) view(c *ui.Context) {
 			}
 		})
 		ui.Row(c).Fill().MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-			// kero's Settings: the pages down the left, the chosen one on a card
+			// Settings: the pages down the left, the chosen one on a card
 			// of its own at the right.
 			ui.Column(c).Width(184).Shrink(0).FillHeight().Padding(8, 8, 8, 4).Gap(2).Children(func() {
 				for _, page := range settingsPages {
@@ -423,8 +423,8 @@ var settingsPages = []settingsPage{
 	{paneKeyboard, locales.SettingsPaneKeyboard, iconKeyboard},
 }
 
-// settingsNav is one page in the window's own list: kero's, with the chosen
-// page raised off the column.
+// settingsNav is one page in the window's own list, with the chosen page raised
+// off the column.
 func (s *settingsWindow) settingsNav(c *ui.Context, pal *uitokens.Palette, page settingsPage) {
 	selected := s.pane == page.id
 	item := ui.Row(c).Height(32).Padding(0, 10).Gap(10).AlignItems(ui.Center).
@@ -460,8 +460,8 @@ func groupTitle(c *ui.Context, pal *uitokens.Palette, title string) {
 	ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(pal.TextMuted).Padding(0, 4)
 }
 
-// settingsGroup is a titled set of settings on a soft panel, as kero groups
-// them: a chip of a card, its rows divided by hairlines.
+// settingsGroup is a titled set of settings on a soft panel, as the settings are
+// grouped: a chip of a card, its rows divided by hairlines.
 func settingsGroup(c *ui.Context, pal *uitokens.Palette, title string, fn func()) {
 	ui.Column(c).Gap(8).Children(func() {
 		if title != "" {
@@ -544,7 +544,7 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 	})
 }
 
-// washTile previews a wash, and chooses it on a click: kero's background
+// washTile previews a wash, and chooses it on a click: the background
 // settings, with a card on the tile so that the wash is seen the way the window
 // shows it.
 func (s *settingsWindow) washTile(c *ui.Context, pal *uitokens.Palette, wsh uitokens.Wash, current string) {

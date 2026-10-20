@@ -241,6 +241,7 @@ func previewWindow(t *testing.T, mode string, shell bool) *window {
 	}
 	w, _ := newTestShellWindow(t, titles...)
 	w.fleet = newTestFleet(t)
+	w.frameStub = &fakeWindowFrame{}
 	if _, err := w.store.Update(func(s *settings.Settings) { s.Theme = mode }); err != nil {
 		t.Fatal(err)
 	}

@@ -195,6 +195,14 @@
   "machine_note_ready": "Pick a machine to switch to it: it becomes what the Sessions panel above is about.",
   "session_panel": "Sessions",
   "session_refresh": "Refresh sessions (⌘R)",
+  "session_refresh_machine": "Refresh this machine's sessions",
+  "session_new_on_machine": "New terminal on this machine",
+  "@session_new_on_machine": {
+    "description": "The new-terminal button at the right of a machine's group."
+  },
+  "@session_refresh_machine": {
+    "description": "The refresh button at the right of a machine's group: asks that machine for its session list again."
+  },
   "status_creating": "Creating…",
   "@status_creating": {
     "description": "The status bar, while a shell is on its way."

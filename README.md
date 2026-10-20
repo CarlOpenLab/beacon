@@ -53,7 +53,7 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   single-controller model with viewers.
 - The browser client: a session list grouped by machine, keyboard-driven
   new/close, selection with a copy button at it, reopen-from-cursor after a
-  dropped link, and kero's five-state glyph on every row — working, waiting,
+  dropped link, and the five-state glyph on every row — working, waiting,
   idle, error, exited — with the message the program itself reported. A new
   shell opens in the directory the shell on screen stands in — the same follow
   the desktop's splits use — and a double-click on a row names the shell. There
@@ -66,7 +66,7 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   controls and its terminal plugin draw the window, so there is no WebView and
   no xterm in the PC client. A shell there is a real shell on the machine, and
   the daemon underneath is what lets a browser drive the very shell on screen.
-  The window is kero v2's: a wash of colour behind floating cards, and a column
+  The window is a wash of colour behind floating cards, and a column
   at the left that is the fleet itself — this machine first, then every machine
   the relay says is here, each a group of sessions with a state glyph, the time
   since its state began and a count. There is no tab strip and no status bar:
@@ -79,7 +79,7 @@ client's tunnel mode, Windows hosts, and the deployment pieces.
   puts a second shell beside the one on screen and `⌘⇧D` above or below it,
   with an 8px gap the pointer drags between the panes, and a pane the user is
   not in fades with its text. `⌘P` opens the command palette — sessions,
-  machines and commands, with kero's own fuzzy order — and `⌘J` goes to the
+  machines and commands, with its own fuzzy order — and `⌘J` goes to the
   next session that needs you.
   A new shell — from a split, from `⌘T`, or from a group's ＋ — opens in the
   directory the shell beside it stands in, so a person who has cd'd somewhere

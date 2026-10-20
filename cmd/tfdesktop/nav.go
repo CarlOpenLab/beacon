@@ -157,7 +157,7 @@ func (w *window) leavesOn(machine string) []*tab {
 	return out
 }
 
-// workspaceRow is the one row a split earns in the sidebar — kero's session,
+// workspaceRow is the one row a split earns in the sidebar — a session,
 // its panes the bodies of the split. The sidebar lists what a person can switch
 // to, not every shell behind a divider: pressing ⌘D splits the shell on screen,
 // it does not quietly open a second session beside it.
@@ -188,8 +188,8 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 }
 
 // aggregateStatus is what the workspace's row says about its panes: the most
-// urgent of them, with that pane's message and clock. The order is the one kero
-// ranks a session's panes by — needs you, then failed, then finished unseen,
+// urgent of them, with that pane's message and clock. The order is the one the
+// sidebar ranks a session's panes by — needs you, then failed, then finished unseen,
 // then working, then quiet.
 func (w *window) aggregateStatus(leaves []*tab) (state string, unread bool, progress int, since int64) {
 	weight := func(sum protocol.Summary) int {
@@ -358,8 +358,8 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 	return out
 }
 
-// sessionRow is one shell in its machine's group, drawn the way kero draws a
-// session: the state on the left, the name, then the quiet facts — and the ×
+// sessionRow is one shell in its machine's group, drawn the way the sidebar draws
+// a session: the state on the left, the name, then the quiet facts — and the ×
 // that stops watching it, only while the pointer is on the row, because a row
 // that wears every control it has says nothing with any of them.
 func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry) {

@@ -1032,6 +1032,14 @@
     "description": "The sessions panel's title."
   },
   "session_refresh": "刷新会话 ⌘R",
+  "session_refresh_machine": "刷新此机器的会话",
+  "session_new_on_machine": "在此机器新建终端",
+  "@session_new_on_machine": {
+    "description": "机器分组头右侧的新建终端按钮。"
+  },
+  "@session_refresh_machine": {
+    "description": "机器分组头右侧的刷新按钮，重新获取这台机器的会话列表。"
+  },
   "@session_refresh": {
     "description": "The sessions panel's refresh button."
   },
