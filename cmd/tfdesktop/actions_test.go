@@ -177,3 +177,30 @@ func TestRecordingThroughThePage(t *testing.T) {
 		t.Fatal("the page is still recording")
 	}
 }
+
+// On Windows and Linux the platform's shortcut modifier is Control itself, so
+// Cmd and Ctrl are one bit. The written form must say that once — "cmd+ctrl+d"
+// was what the first version recorded there, and it stopped round-tripping.
+func TestAcceleratorsRoundTripWithoutACommandKey(t *testing.T) {
+	old := ui.Cmd
+	ui.Cmd = ui.Ctrl
+	defer func() { ui.Cmd = old }()
+
+	for _, accel := range []string{"cmd+t", "cmd+shift+d", "ctrl+alt+left", "cmd+bracketright"} {
+		mods, key, ok := parseAccel(accel)
+		if !ok {
+			t.Fatalf("%q does not parse", accel)
+		}
+		got := formatAccel(mods, key)
+		if strings.Contains(got, "cmd+ctrl") {
+			t.Fatalf("%q wrote %q", accel, got)
+		}
+		if m, k, ok := parseAccel(got); !ok || m != mods || k != key {
+			t.Fatalf("%q round-trips through %q to (%v,%v,%v)", accel, got, m, k, ok)
+		}
+	}
+	// The menu form has the same overlap.
+	if got := menuAccel("cmd+d"); got != "CmdOrCtrl+D" {
+		t.Fatalf("menuAccel = %q", got)
+	}
+}

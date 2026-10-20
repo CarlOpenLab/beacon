@@ -229,10 +229,12 @@ func formatAccel(mods ui.Modifiers, key ui.Key) string {
 		return ""
 	}
 	var parts []string
-	if mods&ui.Cmd != 0 {
+	// Cmd and Ctrl are one bit on Windows and Linux, where Control is the
+	// platform's shortcut modifier: write the canonical name once, never both.
+	switch {
+	case mods&ui.Cmd != 0:
 		parts = append(parts, "cmd")
-	}
-	if mods&ui.Ctrl != 0 {
+	case mods&ui.Ctrl != 0:
 		parts = append(parts, "ctrl")
 	}
 	if mods&ui.Alt != 0 {
@@ -378,10 +380,11 @@ func menuAccel(accel string) string {
 		label = strings.ToUpper(name[:1]) + name[1:]
 	}
 	var parts []string
-	if mods&ui.Cmd != 0 {
+	// One bit on Windows and Linux: spell it the platform's way, once.
+	switch {
+	case mods&ui.Cmd != 0:
 		parts = append(parts, "CmdOrCtrl")
-	}
-	if mods&ui.Ctrl != 0 {
+	case mods&ui.Ctrl != 0:
 		parts = append(parts, "Ctrl")
 	}
 	if mods&ui.Alt != 0 {

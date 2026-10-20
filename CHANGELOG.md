@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.5.1
+
+**Every platform records the same shortcut — 三个平台记下的快捷键一致**
+
+- **⌘ and Ctrl are one key on Windows and Linux.** Recording a shortcut there wrote "cmd+ctrl+shift+t": the platform's shortcut modifier *is* Control, so the two names were the same bit spelled twice. It is written once now, in the settings file and in the menus, and a test runs the round trip with the Command key absent so the case cannot come back.
+  — 在 Windows/Linux 上，平台的快捷键修饰键本身就是 Control，所以录制时曾写成 "cmd+ctrl+shift+t"——同一个按键写了两遍。现在只写一次，设置文件与菜单一致；并新增一个「没有 Command 键」的往返测试，防止这个情形回归。
+- **The tests read the app's own strings, and ignore a checkout's line endings.** The notification tests compared against Chinese literals and failed on a machine whose locale is English; the token test compared the generated sheet byte for byte and failed on a Windows checkout that turns LF into CRLF. Both compare against the source now.
+  — 通知相关的测试原先写死中文文案，在英文 locale 的机器上会失败；token 一致性测试按字节比较，在会把 LF 换成 CRLF 的 Windows 检出上会失败。两处都改为与源数据比较。
+
 ## 0.5.0
 
 **Desktop & web: kero v2's look — 桌面与浏览器换成 Kero v2 的外观**

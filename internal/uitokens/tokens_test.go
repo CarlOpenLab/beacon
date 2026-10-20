@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -21,7 +22,10 @@ func TestCSS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v (run `go run ./internal/uitokens/gen`)", path, err)
 	}
-	if string(got) != CSS() {
+	// Git may check the sheet out with CRLF; the line endings are the
+	// checkout's business, not the generator's.
+	text := strings.ReplaceAll(string(got), "\r\n", "\n")
+	if text != CSS() {
 		t.Fatalf("web/src/tokens.css is stale; run `go run ./internal/uitokens/gen`")
 	}
 }

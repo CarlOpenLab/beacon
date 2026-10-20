@@ -6,6 +6,7 @@ import (
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // notifyWindow is a window whose notifications are collected instead of shown:
@@ -47,7 +48,7 @@ func TestComingToNeedYouNotifies(t *testing.T) {
 	if len(*got) != 1 {
 		t.Fatalf("got %d notifications, want one: %v", len(*got), *got)
 	}
-	if !strings.Contains((*got)[0], "需要你") || !strings.Contains((*got)[0], "Approve the deploy?") {
+	if !strings.Contains((*got)[0], locales.NotifyNeedsYouTitle("")) || !strings.Contains((*got)[0], "Approve the deploy?") {
 		t.Fatalf("the notification reads %q", (*got)[0])
 	}
 
@@ -63,7 +64,7 @@ func TestWaitingWithoutAMessageNamesItsKind(t *testing.T) {
 	w, got := notifyWindow(t)
 	w.reportStatuses(machineLocal, state("working", "", "", false))
 	w.reportStatuses(machineLocal, state("waiting", "question", "", true))
-	if len(*got) != 1 || !strings.Contains((*got)[0], "有问题要问") {
+	if len(*got) != 1 || !strings.Contains((*got)[0], locales.StatusHasQuestion()) {
 		t.Fatalf("notifications = %v", *got)
 	}
 }
@@ -74,12 +75,12 @@ func TestFailingAndFinishingNotify(t *testing.T) {
 	w, got := notifyWindow(t)
 	w.reportStatuses(machineLocal, state("working", "", "", false))
 	w.reportStatuses(machineLocal, state("error", "", "build failed", true))
-	if len(*got) != 1 || !strings.Contains((*got)[0], "出错了") {
+	if len(*got) != 1 || !strings.Contains((*got)[0], locales.NotifyFailedTitle("")) {
 		t.Fatalf("a failure did not notify: %v", *got)
 	}
 	w.reportStatuses(machineLocal, state("working", "", "", false))
 	w.reportStatuses(machineLocal, state("idle", "", "", true))
-	if len(*got) != 2 || !strings.Contains((*got)[1], "完成了") {
+	if len(*got) != 2 || !strings.Contains((*got)[1], locales.NotifyDoneTitle("")) {
 		t.Fatalf("finishing did not notify: %v", *got)
 	}
 	// Idle again, still unread: nothing new to say.
