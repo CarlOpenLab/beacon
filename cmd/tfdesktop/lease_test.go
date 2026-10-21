@@ -154,14 +154,28 @@ func paneEdgeLit(img *image.RGBA) bool {
 
 // A shell that has ended is marked on the sheet as well, and with its own word:
 // 只读 and 已退出 are different states and a person reading the pane has to be
-// able to tell which one they are looking at.
+// able to tell which one they are looking at. The pane on screen says it on the
+// strip under its header, so the mark in a pane's own header is read on another
+// pane of a split.
 func TestAnEndedShellIsMarkedOnTheSheet(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
-	tb := w.tabs[1]
-	tb.term = fedTerminal(t, previewScreen())
-	tb.alive = false
-	tb.finish(0)
+	ended := w.tabs[1]
+	ended.term = fedTerminal(t, previewScreen())
+	ended.alive = false
+	ended.finish(0)
+
+	// A live second pane puts the ended one off screen.
+	live := &tab{id: "s2", machine: machineLocal, title: "two", ordinal: 2,
+		term: fedTerminal(t, previewScreen()), alive: true}
+	w.tabs[2] = live
+	w.order = append(w.order, 2)
+	w.split = &splitNode{
+		side: true, pct: splitHalf,
+		a: &splitNode{tab: ended}, b: &splitNode{tab: live},
+	}
+	w.focus = w.split.b
+	w.selectTabRaw(live)
 
 	tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
