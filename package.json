@@ -1,7 +1,7 @@
 {
   "name": "term-fleet",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Share a machine's PTY sessions over one WebSocket with desktop and mobile clients",
   "scripts": {
     "install:web": "pnpm --dir web install",

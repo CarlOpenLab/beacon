@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.2
+
+**Desktop: the window's controls in the platform's corner, and a settings window that floats — 桌面端：窗口按钮回到平台该在的一角，设置改成浮窗**
+
+- **Minimize, maximize and close at the top right on Windows and Linux.** The view used to draw macOS's three dots at the top-left on every platform. Windows and Linux now get Windows 11's flat minimize, maximize or restore, and close at the right end of the card header, the close one turning red under the pointer; macOS keeps its traffic lights. The top-right pane's header keeps the room the buttons take, the maximize button carries the system's snap-layout hit target on Windows 11, and with the sidebar folded away the card title no longer leaves the traffic lights' 58 pixels on platforms that have none.
+  — 桌面端窗口按钮按平台分角：Windows / Linux 原先也画在左上角的三颗 macOS 圆点，现在换成右上角 Windows 11 风格的最小化 / 最大化或还原 / 关闭（关闭悬停红底白字），macOS 保持红绿灯。占住窗口右上角的那个窗格，其卡片头给按钮留出位置；最大化按钮在 Windows 11 上仍能唤出贴靠布局；侧栏收起时，卡片标题也不再为不存在的红绿灯空出 58px。
+- **The settings window floats, and does not cover the page.** Opening settings used to lay the window's wash over every shell, so the appearance settings could not be tried against what they change. The dialog is now a floating card with no backdrop at all: the shells stay visible behind it, the pointer drags it aside by its title bar (it stays inside the window, a margin from the edges, and remembers where it was put for the session), and its title bar no longer drags the whole window.
+  — 设置不再盖住整页：原先打开设置会用窗口 wash 覆盖所有 shell，改外观时看不到实际效果。现在是一块没有任何幕布的浮动卡片——底下的 shell 一直可见，按住标题栏即可拖开（限制在窗口内、离边留 12px，并在本次运行内记住位置），标题栏也不再拖动整个窗口。
+
 ## 0.6.1
 
 **Desktop: a shell another window drives is shown at its own size — 桌面端：别人驱动的终端按它自己的尺寸显示**
