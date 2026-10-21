@@ -4,6 +4,21 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.5.4
+
+**Desktop: one tab for a split's terminals, and a settings sheet in the platform's style — 桌面端：分屏归为一个多终端 tab，设置页改为平台样式**
+
+- **A split is one tab, with its terminals listed under it.** The split's row stays one tab, and the panes after the first hang beneath it on a dotted branch; clicking one focuses that pane. A pane whose shell title is only the hostname takes the directory as its name, so four panes no longer read as four copies of the machine.
+  — 分屏仍只占一个 tab 行，第一个窗格就是父行，其余窗格以点状树线挂在下面，点子行即可聚焦对应终端。shell 标题只是主机名时改用目录名，四个窗格不会再显示成四台同名机器。
+- **A tab's state and its close stay on the row at rest.** The clock and the default checkmark are gone. Working is the loading ring, needs-you an amber dot, finished-unseen a green dot, failed a red dot, an exited shell a quiet ring, and a pane at its prompt a hollow ring. The close sits at the right of every tab row without waiting for a hover.
+  — tab 行不再显示时间，也不再默认画勾选：working 用旋转 loading 环、需要你为琥珀色圆点、完成未看为绿色圆点、失败为红色圆点、已退出为空心环、空闲窗格为空心圈；close 常驻在每行右侧，不再依赖悬停。
+- **Each machine keeps refresh and new-terminal on its group.** Both buttons stay visible at rest rather than appearing under the pointer; refresh asks that machine for its session list again.
+  — 每个机器分组的刷新与新建终端按钮都常驻，不再只在悬停时出现；刷新会重新拉取该机器的会话列表。
+- **The split divider follows the pointer by the room it divides.** A short drag no longer jumps the split to its 12/88 limit because the drag was measured against the divider's own eight pixels instead of the branch's width.
+  — 修复分屏分隔条拖动：原来按分隔条自身 8px 宽度换算比例，轻轻一拖就跳到 12/88 的边界；现在按整个分屏区域的尺寸换算，拖动跟手。
+- **Settings is a sheet on the window's wash.** The dimmed modal and its grey scrim are gone: the wash covers the window and the settings card floats on it. Each page has a fixed header, the form pages sit on the soft group panel the other pages use, controls line up on the right, and the saved line is a quiet footer with a state dot. Inputs, segmented controls and the size pop-up take the platform's light and dark field style.
+  — 设置改为落在窗口 wash 上的面板：去掉压暗遮罩和灰色背景；每页有固定页头，表单页放进与其他页一致的浅灰分组面板，控件右对齐，底部保存状态改为带状态圆点的静音 footer；输入框、分段控件和字号 popup 使用平台风格的浅色/深色字段样式。
+
 ## 0.5.3
 
 **Desktop: a folding sidebar, per-machine refresh, and a takeover panel at the foot — 桌面端：侧栏折叠、按机器刷新、接管浮窗移到底部**
