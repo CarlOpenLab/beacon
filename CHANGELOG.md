@@ -4,6 +4,16 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.1
+
+**Desktop: a shell another window drives is shown at its own size — 桌面端：别人驱动的终端按它自己的尺寸显示**
+
+- **A pushed-over screen is the machine's screen, not a reflow of it.** A tab watching a shell another window drives used to lay the replay out at its own pane's width. A full-screen program writes for one width, moves its cursor against it and erases to its edges, so the same bytes at another width wrapped where the machine's window does not and put every later redraw a row or a column off — the pushed-over pane read as a different screen, with columns out of place and a band of the program's own colour where the narrower screen ended. The pane now takes the size the machine reports for the shell (`Options.ResizeByConn`, fed by the session list and the attach reply) and draws that screen: a pane narrower than the shell shows the left of it, exactly as the machine's window shows all of it, and a shell this window drives still takes this pane's size, at the moment the window claims it. A resize is broadcast to the machine's other clients, so their panes follow it without a click, and a window that takes a shell back re-asserts its own size — the pane that released it then follows that size again, instead of going on drawing the shell at the width it had while it drove it, which is the garbled screen a person saw right after 释放.
+  — 修复「推过来的终端样式不对」：观看别的窗口驱动的 shell 时，原先会把重放的字节按本窗格宽度重新排版。全屏程序按一个宽度书写、按它移动光标并擦除到边缘，同样的字节换个宽度就会在该换行的地方不换、之后每次重绘都偏一行或一列，于是推过来的窗格看起来像另一个界面——列错位，窄屏结束处还留一条程序自己的底色。现在窗格采用机器上报的 shell 尺寸（`Options.ResizeByConn`，来源是会话列表与 attach 回复）并绘制那块屏幕：窗格比 shell 窄时显示左侧部分，与机器自己窗口显示全屏的关系一致；本窗口驱动时仍采用本窗格尺寸，在接管的瞬间同步。控制器改尺寸会广播给该机器的其他客户端，无需点击即可跟随；接回控制权的窗口会重新确认自己的尺寸，于是刚「释放」的那一端又跟着机器的尺寸排版，而不是继续按自己驱动时的宽度绘制（那正是释放后立刻花屏的原因）。
+- **The column's top bar has one button, and a refresh turns while it waits.** The window no longer draws a new-terminal button beside the sidebar toggle: a column of machines gives each of them its own "+", and a second one at the top only asked which machine was meant. A group's refresh now turns from the click until that machine's list lands (and stops after a few seconds if the machine never answers), so a click that was taken no longer looks like one that did nothing.
+  — 侧栏顶栏只留一个按钮：不再画「新建终端」——机器各有自己的「+」，顶上那个还得先猜是哪台机器。机器组的刷新图标在点击后转圈，直到该机器的会话列表回来（机器一直不回则在几秒后停下），点下去有反应，不再像没点中。
+
+
 ## 0.6.0
 
 **Desktop & relay: close means close, a diagnostic log, and logs on the relay — 桌面端与中继：关闭即关闭、诊断日志与中继日志页**
