@@ -34,6 +34,11 @@ type splitNode struct {
 	// the divider between the panes drags.
 	pct float32
 
+	// box is the branch's own room, bound where the branch draws, so that a
+	// drag of its divider turns pixels into a share of the room it divides
+	// rather than of the divider's 8-pixel width.
+	box ui.Handle
+
 	a, b *splitNode
 }
 
@@ -289,7 +294,8 @@ func (w *window) splitView(c *ui.Context, pal *uitokens.Palette, n *splitNode) {
 	if !n.side {
 		box = ui.Column(c)
 	}
-	box.Fill().MinWidth(0).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+	box = box.Fill().MinWidth(0).MinHeight(0).AlignItems(ui.Stretch).Bind(&n.box)
+	box.Children(func() {
 		first := ui.Column(c).Grow(pct).Basis(0).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 		first.Children(func() {
 			w.splitView(c, pal, n.a)
@@ -307,9 +313,9 @@ func (w *window) splitView(c *ui.Context, pal *uitokens.Palette, n *splitNode) {
 func (w *window) splitGap(c *ui.Context, pal *uitokens.Palette, n *splitNode, pct float32) {
 	d := ui.Box(c).Shrink(0)
 	if n.side {
-		d.Width(uitokens.PaneGap).Cursor(ui.CursorResizeEW)
+		d.Width(uitokens.PaneGap).Cursor(ui.CursorResizeColumn)
 	} else {
-		d.Height(uitokens.PaneGap).Cursor(ui.CursorResizeNS)
+		d.Height(uitokens.PaneGap).Cursor(ui.CursorResizeRow)
 	}
 	hovered := d.Hovered() || d.Pressed()
 	if hovered {
@@ -323,7 +329,10 @@ func (w *window) splitGap(c *ui.Context, pal *uitokens.Palette, n *splitNode, pc
 		})
 	}
 	if dx, dy, ok := d.Dragged(); ok {
-		b := d.Bounds()
+		// The share is of the branch's room, not of the gap: a pixel of travel
+		// is one pixel of the panes, or the divider would jump to its limit as
+		// soon as the pointer moved.
+		b := n.box.Bounds(c)
 		size, delta := b.W, dx
 		if !n.side {
 			size, delta = b.H, dy

@@ -342,3 +342,34 @@ func splitLeaves(n *splitNode) []*splitNode {
 	}
 	return append(splitLeaves(n.a), splitLeaves(n.b)...)
 }
+
+// The divider turns pointer travel into a share of the room the panes divide,
+// not of its own 8-pixel width: a press and a 100-pixel drag across a 900-pixel
+// body moves the split from 50% to about 61%, rather than slamming it to 88%.
+func TestDraggingTheDividerMovesItByTheRoomItDivides(t *testing.T) {
+	w := previewWindow(t, themeLight, true)
+	w.split = &splitNode{
+		side: true, pct: splitHalf,
+		a: &splitNode{tab: w.tabs[1]}, b: &splitNode{tab: &tab{
+			id: "s2", machine: machineLocal, title: "two", ordinal: 2,
+			term: fedTerminal(t, previewScreen()), alive: true,
+		}},
+	}
+	w.focus = w.split.a
+	tt := ui.NewTester(func(c *ui.Context) {
+		applyTheme(c, themeLight)
+		w.body(c, paletteFor(c))
+	}, 900, 600)
+	tt.Frame()
+
+	// The gap sits at the middle of the body's 900 DIPs, 8 wide.
+	before := w.split.pct
+	tt.Press(450, 300)
+	tt.Move(550, 300)
+	tt.Frame()
+	tt.Release(550, 300)
+	tt.Frame()
+	if got := w.split.pct; got < before+9 || got > before+13 {
+		t.Fatalf("pct after a 100px drag = %v, want about 61", got)
+	}
+}
