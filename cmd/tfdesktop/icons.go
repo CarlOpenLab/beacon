@@ -43,6 +43,8 @@ var (
 	iconSidebar = lucide(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>`)
 	// iconChevron turns a group's arrow, and marks a row that opens something.
 	iconChevron = lucide(`<path d="m9 18 6-6-6-6"/>`)
+	// iconUpDown marks a pop-up button: the two ways its menu opens.
+	iconUpDown = lucide(`<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>`)
 	// iconSearch opens the command palette.
 	iconSearch = lucide(`<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>`)
 	// iconSplitRight and iconSplitDown split the pane on screen, as their

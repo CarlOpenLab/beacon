@@ -134,6 +134,50 @@ func TestSettingsApplyWritesTheStore(t *testing.T) {
 	}
 }
 
+// The language is a segmented control of the platform's look, and a click
+// applies the language at once: no 应用 to look for.
+func TestTheLanguageSegmentedControlAppliesOnAClick(t *testing.T) {
+	sw, store := newTestSettingsWindow(t)
+	sw.pane = paneTerminal
+	tt := ui.NewTester(sw.view, 760, 600)
+	tt.Frame()
+
+	if err := tt.Click(locales.SettingsLangEn()); err != nil {
+		t.Fatalf("click English: %v", err)
+	}
+	tt.Frame()
+	if got := store.Get().Language; got != "en" {
+		t.Errorf("stored Language = %q, want en", got)
+	}
+}
+
+// The size is a pop-up of the platform's sizes, not a number field with its
+// own two buttons: the value shows on the button, and the menu below it chooses.
+func TestTheFontSizePopupChoosesASize(t *testing.T) {
+	sw, store := newTestSettingsWindow(t)
+	sw.pane = paneTerminal
+	tt := ui.NewTester(sw.view, 760, 600)
+	tt.Frame()
+
+	if err := tt.Click(formatSize(settings.DefaultFontSize) + " pt"); err != nil {
+		t.Fatalf("open the size menu: %v", err)
+	}
+	tt.Frame()
+	if !tt.HasText("16 pt") {
+		t.Fatalf("the size menu has no 16 pt: texts = %v", tt.Texts())
+	}
+	if err := tt.Click("16 pt"); err != nil {
+		t.Fatalf("choose 16 pt: %v", err)
+	}
+	tt.Frame()
+	if sw.size != 16 {
+		t.Errorf("size = %v, want 16", sw.size)
+	}
+	if got := store.Get().FontSize; got != 16 {
+		t.Errorf("stored FontSize = %v, want 16", got)
+	}
+}
+
 // The remote pane's fields have to be real text inputs, not in-place editable
 // labels: clicking them and typing must reach the draft. This guards a
 // regression where they were drawn with EditableText, so the pane showed a

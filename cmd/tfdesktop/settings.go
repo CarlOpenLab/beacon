@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -492,6 +494,106 @@ func settingRow(c *ui.Context, pal *uitokens.Palette, label, detail string, cont
 	})
 }
 
+// segmentedChoice is a segmented control as the platform draws one: a soft
+// track, the choice a lighter fill raised a hair, thin separators between the
+// others, and labels of one weight. It is intrinsic: a Form stretches its
+// children, and a track stretched across the card is not a control.
+func segmentedChoice(c *ui.Context, pal *uitokens.Palette, key string, value *int, labels []string) ui.SegmentedParts {
+	track, thumb := ui.RGBA(0, 0, 0, 0.06), ui.Hex("#ffffff")
+	if pal.Dark {
+		track, thumb = ui.RGBA(255, 255, 255, 0.07), ui.RGBA(255, 255, 255, 0.2)
+	}
+	seg := ui.SegmentedBase(c.Key(key), value, len(labels))
+	seg.Track.Height(24).Padding(2).Radius(7).Background(track).
+		AlignItems(ui.Center).Children(func() {
+		for n, label := range labels {
+			if n > 0 {
+				// A separator, where neither segment beside it is chosen.
+				sep := ui.Box(c).Width(1).Height(12).Shrink(0)
+				if n != *value && n-1 != *value {
+					sep.Background(pal.Text.Alpha(0.14))
+				}
+			}
+			s := seg.Segment(n).FillHeight().Padding(0, 12).Radius(5).Center()
+			if n == *value {
+				s.Background(thumb)
+				if pal.Dark {
+					s.Shadow(0, 1, 1, 0, ui.RGBA(0, 0, 0, 0.25))
+				} else {
+					s.Shadow(0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.16)).Shadow(0, 0, 0, 0.5, ui.RGBA(0, 0, 0, 0.04))
+				}
+			}
+			s.Children(func() {
+				ui.Text(c, label).FontSize(12.5).SingleLine().TextColor(pal.Text)
+			})
+		}
+	})
+	return seg
+}
+
+// fontSizePopup chooses the terminal's size as a pop-up button, the way the
+// platform's Settings does: the value on a pill, a disc with the two ways the
+// menu opens, and the sizes in a menu below it.
+func (s *settingsWindow) fontSizePopup(c *ui.Context, pal *uitokens.Palette) {
+	sizes := []float64{10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28}
+	if !slices.Contains(sizes, s.size) {
+		sizes = append(sizes, s.size)
+		slices.Sort(sizes)
+	}
+	sel := ui.SelectBase(c.Key("font-size"), &s.size)
+	trig := sel.Trigger
+	trig.Height(28).Padding(0, 3, 0, 10).Gap(6).Radius(14).AlignItems(ui.Center).AlignSelf(ui.End).Cursor(ui.CursorDefault)
+	tint := pal.Text.Alpha(0.065)
+	if pal.Dark {
+		tint = ui.RGBA(255, 255, 255, 0.09)
+	}
+	open := sel.Open()
+	hover := trig.Hovered() || open
+	bg, disc := ui.Transparent, tint
+	switch {
+	case open || trig.Pressed():
+		bg, disc = tint.Mix(pal.Text, 0.06), ui.Transparent
+	case hover:
+		bg, disc = tint, ui.Transparent
+	}
+	anim := ui.Animation{Duration: 120 * time.Millisecond}
+	trig.Background(trig.AnimateColor("bg", bg, anim))
+	trig.Children(func() {
+		ui.Text(c, formatSize(s.size)+" pt").FontSize(13).TextColor(pal.Text).SingleLine()
+		d := ui.Box(c).Size(22, 22).Radius(11).Center().Shrink(0)
+		d.Background(d.AnimateColor("bg", disc, anim)).Children(func() {
+			ui.Icon(c, iconUpDown).Size(14, 14).TextColor(pal.Text.Alpha(0.85))
+		})
+	})
+	sel.Popup(func(panel ui.Element) {
+		floating(panel.Padding(5).Radius(13).Background(pal.Popover), pal)
+		ui.Column(c).Gap(0).Children(func() {
+			for _, size := range sizes {
+				item := sel.Item(size)
+				item.Height(24).Padding(0, 12, 0, 6).Gap(5).Radius(7).AlignItems(ui.Center)
+				fg := pal.Text
+				if item.Highlighted() {
+					item.Background(pal.Accent)
+					fg = ui.Hex("#ffffff")
+				}
+				item.TextColor(fg).Children(func() {
+					mark := ui.Icon(c, iconCheck).Size(12, 12).Shrink(0)
+					if size != s.size {
+						mark.Opacity(0)
+					}
+					ui.Text(c, formatSize(size)+" pt").FontSize(13).SingleLine()
+				})
+			}
+		})
+	})
+	if trig.Changed() {
+		s.commit()
+	}
+}
+
+// formatSize writes a point size the way the pop-up shows it: 13, not 13.0.
+func formatSize(v float64) string { return strconv.FormatFloat(v, 'f', -1, 32) }
+
 // appearancePane is the window's own appearance: light, dark or the system's,
 // and the wash the cards sit on.
 func (s *settingsWindow) appearancePane(c *ui.Context) {
@@ -511,23 +613,7 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 		settingRow(c, pal, locales.SettingsTheme(), "", func() {
 			labels := []string{locales.ThemeSystem(), locales.ThemeLight(), locales.ThemeDark()}
 			choice := themeIndex(mode)
-			seg := ui.SegmentedBase(c.Key("theme"), &choice, len(labels))
-			seg.Track.Height(24).Padding(2).Radius(7).Background(pal.Chip).AlignItems(ui.Center).Children(func() {
-				for i, label := range labels {
-					segm := seg.Segment(i).FillHeight().Padding(0, 12).Radius(5).Center()
-					if i == choice {
-						segm.Background(pal.Control)
-						if pal.Dark {
-							segm.Shadow(0, 1, 1, 0, ui.RGBA(0, 0, 0, 0.25))
-						} else {
-							segm.Shadow(0, 0.5, 1.5, 0, ui.RGBA(0, 0, 0, 0.16))
-						}
-					}
-					segm.Children(func() {
-						ui.Text(c, label).FontSize(12.5).SingleLine().TextColor(pal.Text)
-					})
-				}
-			})
+			seg := segmentedChoice(c, pal, "theme", &choice, labels)
 			seg.Track.OnChange(func() {
 				if s.desk != nil {
 					s.desk.setTheme(themeChoices[choice].id)
@@ -770,26 +856,26 @@ func (s *settingsWindow) notificationsPage(c *ui.Context) {
 
 func (s *settingsWindow) terminalPane(c *ui.Context) {
 	t := c.Theme()
+	pal := paletteFor(c)
 	ui.Form(c, func() {
 		ui.Field(c, locales.SettingsFont(), func() {
 			// Suggestions only, and no commit on change: this field takes free text,
 			// so committing per keystroke would rewrite the settings and rebuild
 			// the relay link on every character. Text fields save on 应用.
-			ui.Autocomplete(c, &s.family, s.familyChoices()).Fill()
+			ui.Autocomplete(c, &s.family, s.familyChoices()).Width(260).AlignSelf(ui.End)
 		})
 		ui.Field(c, locales.SettingsFontSize(), func() {
-			// A stepper stretched across the window reads as a text field; a
-			// number is a short thing and gets a short box.
-			ui.NumberInput(c, &s.size, 8, 32, 1).Width(110).AlignSelf(ui.Start).
-				OnChange(func() { s.commit() })
+			s.fontSizePopup(c, pal)
 		})
 		// The language applies on the click, like the switches: a person who
 		// picks another language wants to see it, not to look for 应用.
 		lang := languageIndex(s.language)
 		ui.Field(c, locales.SettingsLanguage(), func() {
-			seg := ui.Segmented(c, &lang,
-				locales.SettingsLangSystem(), locales.SettingsLangZh(), locales.SettingsLangEn())
-			seg.OnChange(func() {
+			seg := segmentedChoice(c, pal, "language", &lang, []string{
+				locales.SettingsLangSystem(), locales.SettingsLangZh(), locales.SettingsLangEn(),
+			})
+			seg.Track.AlignSelf(ui.End)
+			seg.Track.OnChange(func() {
 				s.language = languageChoices[lang].tag
 				s.commit()
 			})

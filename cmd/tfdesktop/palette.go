@@ -57,10 +57,20 @@ func chromeTheme(base *ui.Theme, dark bool) *ui.Theme {
 	pal := uitokens.For(dark)
 
 	t.Background = pal.Sidebar
-	t.Surface = pal.Control
-	t.SurfaceHover = pal.ControlHover
-	t.SurfacePressed = pal.ControlHover.Mix(pal.Text, 0.06)
-	t.Border = ui.Transparent
+	// Fields take the platform's surface: white on a light card with a hairline
+	// around it, and a wash a little lighter than a dark card. Buttons drawn with
+	// chromeButton keep pal.Control; the generated controls read these.
+	if dark {
+		t.Surface = ui.RGBA(255, 255, 255, 0.06)
+		t.SurfaceHover = ui.RGBA(255, 255, 255, 0.09)
+		t.SurfacePressed = ui.RGBA(255, 255, 255, 0.12)
+		t.Border = ui.RGBA(255, 255, 255, 0.13)
+	} else {
+		t.Surface = ui.Hex("#ffffff")
+		t.SurfaceHover = ui.Hex("#f7f7f9")
+		t.SurfacePressed = ui.Hex("#eeeef1")
+		t.Border = ui.RGBA(0, 0, 0, 0.13)
+	}
 	t.Text = pal.Text
 	t.TextMuted = pal.TextMuted
 	t.Accent = pal.Accent
@@ -76,7 +86,7 @@ func chromeTheme(base *ui.Theme, dark bool) *ui.Theme {
 	t.InverseText = pal.Sidebar
 	t.Scrollbar = pal.KbdBorder
 	t.ScrollbarWidth = 8
-	t.Radius = radius
+	t.Radius = 7
 	t.Spacing = spacing
 	t.FontSize = fontSize
 	return &t
