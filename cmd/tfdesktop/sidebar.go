@@ -126,8 +126,6 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 			w.sidebarFooter(c, pal)
 		})
 	})
-	// Times on the rows move on without anything else changing.
-	c.After(20 * time.Second)
 }
 
 // sidebarPeek draws the top bar's buttons over the cards while the column is
@@ -244,14 +242,13 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		chev.Rotate(chev.AnimateTo("turn", 90*float32(b2f(!collapsed)), ui.Snappy))
 		chev.Opacity(chev.Animate("shown", float32(b2f(hovered || collapsed)), 120e6))
 		ui.Spacer(c)
+		// Ask this machine for its session list again. It stays on the group at
+		// rest: a refresh is the answer to a list that looks stale, and a button
+		// that only appears under the pointer is not there when it is needed.
+		if iconButton(c, iconRefresh, locales.SessionRefreshMachine(), 20).Clicked() {
+			w.refreshSessions(m.ID)
+		}
 		if hovered {
-			// The row's own controls, at its right: ask this machine for its
-			// session list again, then open a shell there. The refresh is left
-			// of the new terminal, where the eye looks first for the row's more
-			// frequent action.
-			if iconButton(c, iconRefresh, locales.SessionRefreshMachine(), 20).Clicked() {
-				w.refreshSessions(m.ID)
-			}
 			if iconButton(c, iconPlus, locales.SessionNewOnMachine(), 20).Clicked() {
 				w.newTabOn(m.ID)
 			}
@@ -262,6 +259,13 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	}
 	for _, e := range entries {
 		w.sessionRow(c, pal, e)
+		// The first pane is the tab's own row; the others hang under it.
+		for i, pane := range e.panes {
+			if i == 0 {
+				continue
+			}
+			w.paneRow(c, pal, pane, i == len(e.panes)-1)
+		}
 	}
 	if len(entries) == 0 {
 		note := locales.SidebarMachineEmpty()

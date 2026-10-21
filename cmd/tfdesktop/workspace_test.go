@@ -23,10 +23,10 @@ func splitWindow(t *testing.T) *window {
 	return w
 }
 
-// A split is one session with two panes, as the window draws it: the sidebar lists the
-// workspace once, not once per shell behind the divider. ⌘D that quietly added a
-// second row was the strip the sidebar replaced.
-func TestASplitIsOneRowInTheSidebar(t *testing.T) {
+// A split is one tab with two panes, as the window draws it: the sidebar lists
+// the workspace once, and the panes under it as a tree, so a person can see that
+// the one tab holds two terminals and can go straight to either of them.
+func TestASplitIsOneTabWithItsPanesUnderIt(t *testing.T) {
 	w := splitWindow(t)
 	entries := w.entriesFor(machineLocal)
 	if len(entries) != 1 {
@@ -39,13 +39,25 @@ func TestASplitIsOneRowInTheSidebar(t *testing.T) {
 	if row.meta != locales.WorkspacePanes(2) {
 		t.Errorf("the workspace row says %q, want %q", row.meta, locales.WorkspacePanes(2))
 	}
+	if len(row.panes) != 2 {
+		t.Fatalf("the workspace lists %d panes, want two", len(row.panes))
+	}
 
 	nav := drawNav(t, w)
-	if _, ok := nav.Find("two"); ok {
-		t.Fatalf("the second pane has a row of its own: %v", nav.Texts())
+	if !nav.HasText("one") || !nav.HasText("two") {
+		t.Fatalf("the workspace and its panes are not listed: %v", nav.Texts())
 	}
-	if !nav.HasText("one") {
-		t.Fatalf("the workspace is not listed: %v", nav.Texts())
+	// The pane rows are the way to a specific terminal: clicking the second
+	// puts it on screen without walking the split with ⌘].
+	if err := nav.Click("two"); err != nil {
+		t.Fatalf("click the second pane: %v", err)
+	}
+	if w.focus.tab != w.tabs[2] {
+		t.Fatalf("clicking the pane row left the focus on %v", w.focus.tab.name())
+	}
+	row = w.entriesFor(machineLocal)[0]
+	if row.panes[0].active || !row.panes[1].active {
+		t.Fatalf("active panes = %v/%v, want only the second", row.panes[0].active, row.panes[1].active)
 	}
 }
 

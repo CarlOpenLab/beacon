@@ -6,6 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
@@ -49,6 +50,11 @@ func TestAMachineGroupRefreshesItsSessions(t *testing.T) {
 	w.fleet = newTestFleet(t)
 
 	tt := drawNav(t, w)
+	// The refresh stays on the group at rest: it is the answer to a list that
+	// looks stale, not a hover's extra.
+	if !tt.HasText(locales.SessionRefreshMachine()) {
+		t.Fatalf("the group has no refresh button at rest; texts = %v", tt.Texts())
+	}
 	name := w.machineName(machineLocal)
 	header, ok := tt.Find(name)
 	if !ok {
@@ -56,10 +62,6 @@ func TestAMachineGroupRefreshesItsSessions(t *testing.T) {
 	}
 	tt.Move(header.X+4, header.Y+4)
 	tt.Frame()
-
-	if !tt.HasText(locales.SessionRefreshMachine()) {
-		t.Fatalf("the group has no refresh button; texts = %v", tt.Texts())
-	}
 	refresh, ok := tt.Find(locales.SessionRefreshMachine())
 	if !ok {
 		t.Fatalf("the refresh button is not on screen; texts = %v", tt.Texts())
@@ -76,5 +78,43 @@ func TestAMachineGroupRefreshesItsSessions(t *testing.T) {
 	}
 	if w.notice != locales.AppRefreshedLocal() {
 		t.Errorf("notice = %q, want this machine's sessions refreshed", w.notice)
+	}
+	if w.collapsed[machineLocal] {
+		t.Error("clicking refresh folded the machine's group")
+	}
+}
+
+// A tab's row keeps its close and its state at rest, and carries no clock:
+// the time since a state began is a fact for the tooltip, not a column of the
+// sidebar. The state is a dot or the working ring, never a checkmark.
+func TestATabRowKeepsItsCloseAndStateWithoutAClock(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.tabs[1].alive = true
+	w.live = []protocol.Summary{{
+		SessionID: "s1", Title: "one", Alive: true, Status: "waiting",
+		Since: time.Now().Add(-5 * time.Minute).UnixMilli(),
+	}}
+
+	nav := drawNav(t, w)
+	if !nav.HasText("needs you") {
+		t.Fatalf("a waiting tab has no needs-you mark: %v", nav.Texts())
+	}
+	if _, ok := nav.Find("5m"); ok {
+		t.Errorf("the tab row still shows its age: %v", nav.Texts())
+	}
+	if _, ok := nav.Find(locales.TabCloseNamed("one")); !ok {
+		t.Errorf("the tab row has no close at rest: %v", nav.Texts())
+	}
+
+	// Finished, unseen: a green dot (the done mark). Seen: nothing, not a check.
+	w.live[0].Status, w.live[0].Unread = "idle", true
+	nav = drawNav(t, w)
+	if !nav.HasText("done") {
+		t.Fatalf("a finished, unseen tab has no done mark: %v", nav.Texts())
+	}
+	w.live[0].Unread = false
+	nav = drawNav(t, w)
+	if nav.HasText("done") || nav.HasText("needs you") {
+		t.Errorf("a tab at rest still wears a state mark: %v", nav.Texts())
 	}
 }

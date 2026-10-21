@@ -69,6 +69,9 @@ type sessionEntry struct {
 	// close stops watching the shell: it closes the tab this row is about and
 	// nothing else. Empty for a row that has no tab of this window's.
 	close func()
+	// panes are the terminals behind a split's one row, in the order the body
+	// draws them. Empty for an ordinary session.
+	panes []sessionEntry
 
 	// What the shell is doing, as the daemon last said: the five states, whether
 	// the user has looked at it since, what the program said about it, and when
@@ -184,6 +187,35 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 		}
 	}
 	entry.status, entry.unread, entry.progress, entry.since = w.aggregateStatus(leaves)
+	entry.active = false
+	for _, tb := range leaves {
+		if tb == w.activeTab() {
+			entry.active = true
+		}
+	}
+	if len(leaves) > 1 {
+		entry.panes = make([]sessionEntry, 0, len(leaves))
+		for _, tb := range leaves {
+			pane := sessionEntry{
+				machine: machine,
+				session: tb.id,
+				label:   tb.name(),
+				meta:    tb.size(),
+				holder:  tb.holder(),
+				active:  tb == w.activeTab(),
+				alive:   tb.alive,
+				pick: func() {
+					if n := w.leafOf(tb); n != nil {
+						w.focusSplit(n)
+					}
+				},
+			}
+			if sum, ok := w.summaryOf(machine, tb.id); ok {
+				pane = pane.withStatus(sum)
+			}
+			entry.panes = append(entry.panes, pane)
+		}
+	}
 	return entry
 }
 
@@ -372,7 +404,10 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		row.Border(1, ui.Transparent)
 	}
 	hovered := row.Hovered()
-	selected := e.active
+	// A split's top row is its first pane's row and the tab's own: it is chosen
+	// when that pane is on screen, and the panes after it are the rows under it.
+	firstPane := len(e.panes) == 0 || e.panes[0].active
+	selected := e.active && firstPane
 	bg := ui.Transparent
 	switch {
 	case selected:
@@ -417,20 +452,19 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
 			badgeChip(c, badge, color)
 		}
-		if when := ago(e.since, c.Now()); when != "" && e.status != "" {
-			ui.Text(c, when).FontSize(12.5).TextColor(pal.TextFaint).FontFeatures("tnum").Shrink(0)
-		}
-		// A shell that ended has one thing left to do with it, so its row keeps
-		// the way out on screen; a running one offers it on the hover, where the
-		// row stays quiet.
-		if e.close != nil && (!e.alive || hovered) {
-			if iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Clicked() {
-				e.close()
-				return
-			}
+		// The state, then the way out: both stay on the row at rest, so a tab's
+		// close is where the eye already is rather than a hover away. A pane in a
+		// split draws its own row under this one and has no close of its own.
+		if e.close != nil {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+				statusGlyph(c, pal, e.status, e.unread, e.progress, 14)
+				if iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Clicked() {
+					e.close()
+				}
+			})
 			return
 		}
-		statusGlyph(c, pal, e.status, e.unread, e.progress, 15)
+		statusGlyph(c, pal, e.status, e.unread, e.progress, 14)
 	})
 	if row.Clicked() {
 		e.pick()
@@ -439,6 +473,60 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 	// renames what it lists.
 	if row.DoubleClicked() {
 		w.beginRename(e.machine, e.session, e.label)
+	}
+}
+
+// paneRow is one terminal of a split, under the workspace's row: the branch of
+// the tree on the left, the panes' state beside it, and the name. It is a row
+// of its own so that a person can go straight to a pane rather than land on the
+// workspace and press ⌘] until the right one is in front. The last pane's branch
+// stops at its middle, so the tree ends where its rows do.
+func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, last bool) {
+	row := ui.Row(c).Height(30).FillWidth().Padding(0, 8, 0, 10).Gap(8).
+		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
+		Label(e.label).Tooltip(w.sessionTooltip(e))
+	if pal.Dark {
+		row.Border(1, ui.Transparent)
+	}
+	hovered := row.Hovered()
+	selected := e.active
+	bg := ui.Transparent
+	switch {
+	case selected:
+		bg = pal.RowSelected
+	case hovered:
+		bg = pal.RowHover
+	}
+	row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 110e6}))
+	if selected {
+		chosen(row, pal)
+	}
+	row.Children(func() {
+		tree := ui.Box(c).Width(18).FillHeight().Shrink(0)
+		tree.Draw(func(p *ui.Painter, r ui.Rect) {
+			mid := r.Y + r.H/2
+			bottom := r.Y + r.H
+			if last {
+				bottom = mid
+			}
+			line := pal.Text.Alpha(0.14)
+			p.Line(r.X+9, r.Y, r.X+9, bottom, 1, line)
+			p.Line(r.X+9, mid, r.X+r.W-1, mid, 1, line)
+		})
+		statusGlyph(c, pal, e.status, e.unread, e.progress, 12)
+		name := ui.Text(c, e.label).FontSize(13).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		if e.unread {
+			name.FontWeight(650)
+		}
+		if !e.alive {
+			name.TextColor(pal.TextMuted)
+		}
+		if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
+			badgeChip(c, badge, color)
+		}
+	})
+	if row.Clicked() {
+		e.pick()
 	}
 }
 
