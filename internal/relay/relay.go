@@ -75,7 +75,10 @@ type Config struct {
 	AuthMaxFailures int
 	AuthWindow      time.Duration
 	AuthCooldown    time.Duration
-	Log             *log.Logger
+	// LogStore keeps the diagnostic tails machines push. Nil means a fresh
+	// in-memory store, which is what a relay that never shows the panel wants.
+	LogStore *LogStore
+	Log      *log.Logger
 }
 
 // Relay routes streams between members and clients.
@@ -87,6 +90,7 @@ type Relay struct {
 	// relay runs. Everything else in cfg is read-only after New.
 	reg   *Registry
 	token *TokenStore
+	logs  *LogStore
 
 	mu         sync.Mutex
 	members    map[string]*member
@@ -119,6 +123,9 @@ func New(cfg Config) (*Relay, error) {
 	if cfg.Log == nil {
 		cfg.Log = log.Default()
 	}
+	if cfg.LogStore == nil {
+		cfg.LogStore = NewLogStore()
+	}
 	// Defaults matter here: a relay reachable from the internet with no limiter
 	// at all is the one configuration that must not be reachable by accident.
 	if cfg.AuthMaxFailures == 0 {
@@ -136,6 +143,7 @@ func New(cfg Config) (*Relay, error) {
 		lim:     newAuthLimiter(cfg.AuthMaxFailures, cfg.AuthWindow, cfg.AuthCooldown, cfg.TrustProxy),
 		reg:     cfg.Registry,
 		token:   cfg.Token,
+		logs:    cfg.LogStore,
 		members: map[string]*member{},
 		roster:  map[*clientConn]struct{}{},
 	}, nil
@@ -146,6 +154,9 @@ func (r *Relay) Devices() *Registry { return r.reg }
 
 // ClientToken exposes the live token store, for the admin page to rotate.
 func (r *Relay) ClientToken() *TokenStore { return r.token }
+
+// Logs exposes the diagnostic tails machines have pushed, for the admin page.
+func (r *Relay) Logs() *LogStore { return r.logs }
 
 // Roster returns the current machine list as clients see it.
 func (r *Relay) Roster() []tunnel.Machine { return r.snapshot() }
@@ -309,6 +320,49 @@ func (r *Relay) ControlToken(w http.ResponseWriter, rq *http.Request) {
 		"expiresAt": expiresAt.UTC().Format(time.RFC3339),
 		"device":    id,
 	})
+}
+
+// ServeLog accepts one machine's diagnostic tail. It is a plain POST beside the
+// member tunnel, authenticated with the same device credential: the relay never
+// parses a tunnel frame, so a log that needs reading must arrive as its own
+// request rather than as traffic it would have to understand.
+//
+// Reports are full tails and replace the previous one. The relay bounds the
+// body and keeps only the newest lines; a machine cannot fill its disk through
+// this, and a panel reading it cannot make the relay hold an unbounded amount.
+func (r *Relay) ServeLog(w http.ResponseWriter, rq *http.Request) {
+	if rq.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	ip := clientIP(rq, r.cfg.TrustProxy)
+	if allowed, wait := r.lim.allow(ip); !allowed {
+		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+		http.Error(w, "too many failed attempts", http.StatusTooManyRequests)
+		return
+	}
+	id, ok := r.agentAuthOK(rq)
+	if !ok {
+		r.lim.fail(ip)
+		r.log.Printf("relay: refused a log report from %s: not an enrolled machine", ip)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	r.lim.ok(ip)
+
+	rq.Body = http.MaxBytesReader(w, rq.Body, 2<<20)
+	var report LogReport
+	if err := json.NewDecoder(rq.Body).Decode(&report); err != nil {
+		http.Error(w, "bad log report", http.StatusBadRequest)
+		return
+	}
+	entry := r.logs.Put(id, report)
+	r.log.Printf("relay: log report from %s: %d line(s), level=%s", id, len(entry.Lines), entry.Level)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "lines": len(entry.Lines)})
 }
 
 // headerToken reads a client credential from an Authorization header. Usable by

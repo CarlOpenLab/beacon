@@ -446,10 +446,10 @@ func (w *window) cardActions(c *ui.Context, pal *uitokens.Palette, tb *tab) {
 	if iconButton(c, iconSplitDown, locales.ActionSplitDown(), 26).Clicked() {
 		w.splitFocused(false)
 	}
-	if w.split != nil && w.split.count() > 1 {
-		if iconButton(c, iconClose, locales.TabCloseTab(), 26).Clicked() {
-			w.closeSplitPane()
-		}
+	// The × closes the tab and ends the shell behind it, the way a terminal's
+	// tab close does. In a split the pane leaves the layout with it.
+	if iconButton(c, iconClose, locales.TabCloseTab(), 26).Clicked() {
+		w.closeTab(tb)
 	}
 }
 

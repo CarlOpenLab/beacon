@@ -61,6 +61,18 @@ func appMenu(w *window) *mygo.Menu {
 					}
 				},
 			},
+			// The log, one item from the menu bar: a person reporting a blank
+			// pane should not have to be told a path first.
+			{
+				Label: locales.MenuDiagnostics(),
+				Click: func(*mygo.MenuItem, *mygo.Window) {
+					if w.win != nil {
+						w.win.Update(func() { w.openSettingsAt(paneDiagnostics) })
+					} else {
+						w.openSettingsAt(paneDiagnostics)
+					}
+				},
+			},
 			mygo.Separator(),
 			{Role: mygo.RoleQuit},
 		}},

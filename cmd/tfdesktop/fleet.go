@@ -12,6 +12,7 @@ import (
 
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/daemon"
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/relayclient"
@@ -216,6 +217,7 @@ func (f *fleet) SetRelay(relayURL, deviceID, secret, caFile string, enabled bool
 		RootCAs:  roots,
 		Hub:      f.hub,
 		Log:      f.log,
+		Diag:     diag.Default(),
 		OnState:  f.noteRelayState,
 	})
 	if err != nil {

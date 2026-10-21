@@ -48,7 +48,7 @@ var appActions = []action{
 	{"pane.up", locales.ActionPaneUp, "cmd+alt+up", func(w *window) { w.focusDirection("up") }},
 	{"pane.down", locales.ActionPaneDown, "cmd+alt+down", func(w *window) { w.focusDirection("down") }},
 
-	{"pane.close", locales.TabCloseTab, "cmd+w", func(w *window) { w.closeSplitPane() }},
+	{"pane.close", locales.TabCloseTab, "cmd+w", func(w *window) { w.closeTabOnScreen() }},
 	{"session.refresh", locales.SessionRefresh, "f5", func(w *window) { w.refreshAll() }},
 
 	{"palette.open", locales.ActionPalette, "cmd+p", func(w *window) { w.openPalette() }},

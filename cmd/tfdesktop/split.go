@@ -17,7 +17,6 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
-	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
 // workspace is one tab's layout of terminals: its split tree, the pane that had
@@ -177,21 +176,17 @@ func (w *window) insertSplit(on *tab, leaf *splitNode, side bool) {
 	ws.split, ws.focus, ws.zoomed = w.split, w.focus, false
 }
 
-// closeSplitPane closes the pane on screen: the shell keeps running and its tab
-// stays in the strip, exactly as closing a tab leaves a shell running. With one
-// pane there is no split to close, and ⌘W closes the tab instead.
-func (w *window) closeSplitPane() {
-	if w.split != nil && w.focus.leaf() {
-		tb := w.focus.tab
-		w.collapseLeaf(w.focus, true)
-		w.syncSplit()
-		if tb != nil {
-			w.setNotice(locales.AppSplitClosed(tb.name()))
-		}
+// closeTabOnScreen closes the tab that has the keyboard: ⌘W and the card's ×
+// both do it, whether the tab is a lone pane or one of a split. Closing is
+// ending: the tab leaves the strip, its pane leaves the layout, and the shell
+// behind it is ended on its machine.
+func (w *window) closeTabOnScreen() {
+	if w.split != nil && w.focus != nil && w.focus.leaf() {
+		w.closeTab(w.focus.tab)
 		return
 	}
 	if tb := w.activeTab(); tb != nil {
-		w.removeTab(tb)
+		w.closeTab(tb)
 	}
 }
 
@@ -355,8 +350,9 @@ func (w *window) leafOf(tb *tab) *splitNode {
 }
 
 // detachTab takes a tab out of its workspace's layout, whether that workspace is
-// the one on screen or one put away. The tab itself is left to its caller: a
-// closed pane's shell keeps running, and a closed tab is gone either way.
+// the one on screen or one put away. The tab itself is left to its caller: this
+// is the layout edit, not the close. closeTab ends the session first; the
+// cleanup paths call removeTab when there is nothing left to end.
 func (w *window) detachTab(tb *tab) {
 	if tb == nil || tb.ws == nil {
 		return

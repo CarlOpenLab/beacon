@@ -6,15 +6,19 @@ import (
 	"context"
 	"crypto/x509"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
 	"github.com/CarlOpenLab/term-fleet/internal/agent"
 	"github.com/CarlOpenLab/term-fleet/internal/daemon"
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
+	"github.com/CarlOpenLab/term-fleet/internal/settings"
 )
 
 func main() {
@@ -37,7 +41,34 @@ func main() {
 		"PEM file with the certificate (or CA) that signed the relay's TLS certificate; use it when the relay is not behind a public CA")
 	allowControl := flag.Bool("allow-control", true,
 		"let other clients (a browser, a phone, another machine) drive the shells here; -allow-control=false leaves them read-only")
+	logLevel := flag.String("log-level", "info",
+		"diagnostic log level: error, warn, info or debug; debug records every attach and replay")
+	logDir := flag.String("log-dir", "",
+		"where diagnostic logs are written (default: <settings dir>/logs)")
 	flag.Parse()
+
+	// This machine's daemon is the one a blank pane is usually blamed on, and
+	// it is often started by init/launchd/Windows service with no console at
+	// all. The file is therefore the only place its side of the story can be
+	// read, so it comes up before the hub exists.
+	level, err := diag.ParseLevel(*logLevel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tfd: -log-level: %v\n", err)
+		os.Exit(2)
+	}
+	dir := *logDir
+	if dir == "" {
+		dir = filepath.Join(settings.Dir(), "logs")
+	}
+	logger, logErr := diag.Install(dir, "tfd", level)
+	if logErr != nil {
+		log.SetFlags(0)
+		log.Printf("tfd: diagnostics are off: %v", logErr)
+	} else {
+		defer func() { _ = logger.Close() }()
+		diag.Infof("app", "start version=%s %s/%s go=%s log=%s level=%s",
+			diag.BuildVersion(), runtime.GOOS, runtime.GOARCH, runtime.Version(), logger.Path(), level)
+	}
 
 	srv, err := daemon.New(daemon.Options{
 		Addr:           *addr,
@@ -82,6 +113,7 @@ func main() {
 			MachineName: *machineName,
 			RootCAs:     roots,
 			Hub:         srv.Hub(),
+			Diag:        diag.Default(),
 		})
 		if err != nil {
 			log.Fatalf("tfd: %v", err)

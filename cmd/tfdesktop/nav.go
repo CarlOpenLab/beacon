@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
@@ -66,8 +67,8 @@ type sessionEntry struct {
 	// end kills the process behind this shell, for every client. It is the row's
 	// own action, separate from picking the row and from closing the tab.
 	end func()
-	// close stops watching the shell: it closes the tab this row is about and
-	// nothing else. Empty for a row that has no tab of this window's.
+	// close closes the tab this row is about and ends the session behind it.
+	// Empty for a row that has no tab of this window's; such a row uses end.
 	close func()
 	// dir is the directory a pane stands in, shown under the workspace's row
 	// when the pane's name repeats. Empty for rows that do not draw it.
@@ -196,7 +197,7 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 		},
 		close: func() {
 			for _, tb := range leaves {
-				w.removeTab(tb)
+				w.closeTab(tb)
 			}
 		},
 	}
@@ -284,6 +285,14 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 	if machine == machineLocal {
 		out := make([]sessionEntry, 0, len(w.order))
 		seen := map[*workspace]bool{}
+		// The shells the panel has a row for, so the session roster below can
+		// add the ones this window has no tab for without listing any twice.
+		listed := make(map[string]bool, len(w.order))
+		for _, key := range w.order {
+			if tb := w.tabs[key]; tb != nil && tb.machine == machineLocal && tb.id != "" {
+				listed[tb.id] = true
+			}
+		}
 		// A split built by hand (a test, or a frame before the workspace is
 		// adopted) still reads as one row: its panes are grouped even though no
 		// tab carries the workspace yet.
@@ -334,12 +343,44 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 				alive:   tab.alive,
 				pick:    func() { w.selectTab(tab) },
 				end:     func() { w.kill(tab) },
-				close:   func() { w.removeTab(tab) },
+				close:   func() { w.closeTab(tab) },
 			}
 			if sum, ok := w.summaryOf(machineLocal, tab.id); ok {
 				entry = entry.withStatus(sum)
 			}
 			out = append(out, entry)
+		}
+		// The session roster is the machine's, not this window's tab strip: a
+		// shell whose tab was closed is still running, and a panel that hid it
+		// would say this machine has two shells while every other client —
+		// Windows looking at this Mac, a phone — lists all seven. The row opens
+		// a tab when picked, so the roster is the same on every client and the
+		// count stops depending on which machine is asking.
+		for _, s := range w.live {
+			if !s.Alive || listed[s.SessionID] {
+				continue
+			}
+			summary := s
+			name := summary.Title
+			if name == "" {
+				name = filepath.Base(summary.Cwd)
+			}
+			if name == "" || name == "." || name == "/" {
+				name = programName(summary.Shell)
+			}
+			if name == "" {
+				name = locales.TabById(summary.SessionID)
+			}
+			out = append(out, sessionEntry{
+				machine: machineLocal,
+				session: summary.SessionID,
+				label:   name,
+				meta:    fmt.Sprintf("%dx%d", summary.Cols, summary.Rows),
+				holder:  summary.Controller,
+				alive:   true,
+				pick:    func() { w.openOrSelect(machineLocal, summary.SessionID) },
+				end:     func() { w.killSessionOn(machineLocal, summary.SessionID) },
+			}.withStatus(summary))
 		}
 		return out
 	}
@@ -383,7 +424,7 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 		tab := w.tabOf(machine, summary.SessionID)
 		var close func()
 		if tab != nil {
-			close = func() { w.removeTab(tab) }
+			close = func() { w.closeTab(tab) }
 		}
 		// Who holds it, from the freshest word the window has: a tab's lease
 		// frames arrive as the lease moves, while the machine's list is a
@@ -424,8 +465,8 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 
 // sessionRow is one shell in its machine's group, drawn the way the sidebar draws
 // a session: the state on the left, the name, then the quiet facts — and the ×
-// that stops watching it, only while the pointer is on the row, because a row
-// that wears every control it has says nothing with any of them.
+// that closes it, only while the pointer is on the row, because a row that wears
+// every control it has says nothing with any of them.
 func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry) {
 	row := ui.Row(c).Height(uitokens.RowH).FillWidth().Padding(0, 8, 0, 10).Gap(8).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
@@ -459,7 +500,10 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 			e.close()
 		}
 		m.EditItems()
-		if e.alive && e.end != nil {
+		// A row with a tab is closed by the item above, which now ends the
+		// session too; 结束 is left for a shell this window has no tab for, where
+		// there is no close to carry the act.
+		if e.close == nil && e.alive && e.end != nil {
 			if m.Item(locales.TabEndProcess()).Chosen() {
 				e.end()
 			}
@@ -788,7 +832,35 @@ func (w *window) openOrSelect(machine, sessionID string) {
 		return
 	}
 	if machine == machineLocal {
-		// A shell of this machine's always has a tab: the session list mounts one.
+		// A shell of this machine's can be listed before it has a tab: its tab was
+		// closed while the shell kept running. Picking the row opens one again,
+		// which is what makes the local roster read like the remote one.
+		for _, s := range w.live {
+			if s.SessionID != sessionID || !s.Alive {
+				continue
+			}
+			if err := w.mount(s); err != nil {
+				w.setNotice(err.Error())
+				return
+			}
+			if tb := w.tabOf(machineLocal, sessionID); tb != nil {
+				w.selectTab(tb)
+			}
+			return
+		}
+		return
+	}
+	// A session row outlives its machine: the list the panel draws is the last
+	// one the machine pushed, and it stays on screen while the machine is gone.
+	// Opening a tab for one cannot paint anything — there is no stream to attach
+	// over — and the white pane that follows reads as a broken app rather than as
+	// a machine that is simply not there. The roster is the authority on
+	// presence, so it answers this before a tab exists to be blank.
+	if !w.machineOnline(machine) {
+		w.linkNote = locales.AppMachineOffline(w.machineName(machine))
+		w.setNotice(w.linkNote)
+		w.invalidate()
+		diag.Infof("term", "session not opened: machine offline machine=%s session=%s", machine, sessionID)
 		return
 	}
 	if tb := w.openTab(machine, sessionID); tb != nil {
@@ -861,7 +933,6 @@ func (w *window) ownMachine(m tunnel.Machine) bool {
 	_, device := w.fleet.RelayIdentity()
 	return device != "" && m.ID == device
 }
-
 
 // localEntry is this machine as the panel lists it: the same shape as a roster
 // entry, so one row draws both and nothing about the first row is special.
@@ -962,7 +1033,38 @@ func (w *window) localMachine() (name, meta string) {
 		return host, locales.MachinePlatformUnknown()
 	}
 	h := w.fleet.Host()
-	return host, h.Platform + "/" + h.Arch + " · " + locales.MachineSessionsCount(len(w.order))
+	return host, h.Platform + "/" + h.Arch + " · " + locales.MachineSessionsCount(w.localSessionCount())
+}
+
+// localSessionCount is the number the machine row shows. It is the live session
+// roster, not the tab strip: the panel under it lists every running shell, and a
+// count of open tabs above a list of seven sessions is the disagreement this
+// window used to have with every other client.
+func (w *window) localSessionCount() int {
+	seen := make(map[string]bool, len(w.live))
+	n := 0
+	for _, s := range w.live {
+		if s.Alive {
+			n++
+			seen[s.SessionID] = true
+		}
+	}
+	// A tab created a moment ago is alive before the next roster broadcast
+	// names it; counting only the roster would make the number dip for a frame.
+	for _, key := range w.order {
+		tb := w.tabs[key]
+		if tb == nil || tb.machine != machineLocal || tb.id == "" || !tb.alive || seen[tb.id] {
+			continue
+		}
+		n++
+		seen[tb.id] = true
+	}
+	if n == 0 {
+		// A window whose only tab is still waiting for its session id has no
+		// roster entry to count, but it does have one shell to show.
+		return len(w.order)
+	}
+	return n
 }
 
 // hostName is what this machine calls itself.

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 )
 
@@ -62,6 +63,10 @@ func (c *client) send(m protocol.Msg) {
 	case <-c.done:
 	case c.out <- m:
 	default:
+		// A queue that fills is how a viewer is lost under a busy shell, and it
+		// is invisible to both ends: the hub drops the client, and the viewer
+		// only sees its frames stop. Named here with the frame that did not fit.
+		diag.Warnf("hub", "client dropped: queue full client=%s frame=%s session=%s", c.id, m.T, m.SessionID)
 		go c.close("slow consumer")
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 )
 
@@ -47,6 +48,11 @@ type Handlers interface {
 // session the window watches on that machine: the protocol multiplexes by
 // session id, exactly as it does over a WebSocket.
 type link struct {
+	// name is what the log calls this link's machine: "local" for this window's
+	// own hub, and the roster id for another machine. It is set by the owner
+	// right after the link is made, and read by the lines below.
+	name string
+
 	// send puts one frame on the wire. It is set when the link opens and
 	// cleared when it goes away, so a session typed into during a gap is
 	// refused here rather than half-sent. The window's thread sets it and the
@@ -70,10 +76,26 @@ type link struct {
 	// not named yet: a create is in flight, and its answer adopts the oldest.
 	pending []*session
 	closed  bool
+
+	// dropped counts frames that named a session this link does not route, by
+	// "type/session". A frame for a session nobody watches is the one event a
+	// blank pane is explained by, and it is silent by nature: the frame is
+	// well-formed, the hub sent it, and nothing on screen changes. Counting it
+	// lets the log say it once and then summarise, rather than flood the file
+	// with the output of a shell being replayed into nowhere.
+	dropped map[string]int
 }
 
 func newLink() *link {
-	return &link{sessions: map[string]*session{}}
+	return &link{sessions: map[string]*session{}, dropped: map[string]int{}}
+}
+
+// label is the machine this link speaks to, for a log line.
+func (l *link) label() string {
+	if l.name == "" {
+		return "?"
+	}
+	return l.name
 }
 
 // dead reports whether this link has ended. A tab watching a session on a dead
@@ -83,6 +105,15 @@ func (l *link) dead() bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.closed
+}
+
+// online is whether this link has a wire to write to. For this machine's own
+// link that is the whole answer; a relay link can have a wire before the relay
+// has routed the stream, which is why the relay's own lines name the stream.
+func (l *link) online() bool {
+	l.sendMu.Lock()
+	defer l.sendMu.Unlock()
+	return l.send != nil
 }
 
 // session is the window's view of one shell on the far side of a link: what it
@@ -111,10 +142,16 @@ func newSession(id string, l *link, h Handlers) *session {
 // ---- frames out ----------------------------------------------------------
 
 func (l *link) attach(id string, cursor int64) {
+	// The one line a blank pane is read against: the window asked for this
+	// session at this cursor. What follows it — an attached frame, the replay
+	// bytes, or a dropped-frame warning — says which side of the wire went
+	// quiet.
+	diag.Infof("link", "attach sent machine=%s session=%s cursor=%d", l.label(), id, cursor)
 	l.sendMsg(protocol.Msg{T: protocol.CTAttach, SessionID: id, Cursor: cursor})
 }
 
 func (l *link) detach(id string) {
+	diag.Infof("link", "detach sent machine=%s session=%s", l.label(), id)
 	l.sendMsg(protocol.Msg{T: protocol.CTDetach, SessionID: id})
 }
 
@@ -188,6 +225,11 @@ func (l *link) sendMsg(m protocol.Msg) {
 	send := l.send
 	l.sendMu.Unlock()
 	if send == nil {
+		// A frame with nowhere to go: the link is between connections, and the
+		// window just decided something. Nothing waits for it here — the tab
+		// will attach again on open — so the line says a decision was lost
+		// rather than that anything is still coming.
+		diag.Debugf("link", "frame not sent: link down machine=%s type=%s session=%s", l.label(), m.T, m.SessionID)
 		return
 	}
 	send(m)
@@ -223,27 +265,60 @@ func (l *link) dispatch(m protocol.Msg) {
 	}
 	s := l.session(m.SessionID)
 	if s == nil {
+		// The hub is talking about a session this link has nobody for. It is
+		// the silent half of a blank pane: the replay was sent, and it landed
+		// here with no terminal behind it. Counted rather than logged per frame
+		// — a busy shell would otherwise write its whole output into the log.
+		l.droppedFrame(m)
 		return
 	}
 	switch m.T {
 	case protocol.STAttached:
 		if m.Session != nil {
+			diag.Debugf("link", "attached machine=%s session=%s cursor=%d truncated=%t alive=%t",
+				l.label(), m.SessionID, m.Cursor, m.Truncated, m.Session.Alive)
 			s.handlers.Attached(*m.Session, m.Cursor, m.Truncated)
+		} else {
+			diag.Warnf("link", "attached frame without a session machine=%s session=%s", l.label(), m.SessionID)
 		}
 	case protocol.STOutput:
 		s.handlers.Output(m.Data, m.Resync)
 	case protocol.STRole:
 		if m.Role != "" {
+			diag.Debugf("link", "role machine=%s session=%s role=%s epoch=%d", l.label(), m.SessionID, m.Role, m.Epoch)
 			s.setRole(m.Role, m.Controller, m.Epoch)
 			s.handlers.Role(m.Role, m.Controller, m.Epoch)
 		}
 	case protocol.STExit:
+		diag.Infof("link", "exit machine=%s session=%s code=%d", l.label(), m.SessionID, m.ExitCode)
 		s.end()
 		s.handlers.Exit(m.ExitCode)
 	case protocol.STClosed:
 		s.handlers.Closed()
 	case protocol.STError:
+		diag.Warnf("link", "error frame machine=%s session=%s code=%s message=%q", l.label(), m.SessionID, m.Code, m.Message)
 		s.handlers.Failed(m.Code, m.Message)
+	}
+}
+
+// droppedFrame records a frame the link could not route, and says so the first
+// time and then every hundredth: enough to prove the frames were arriving and
+// that nothing was listening, without one line per byte of a replay.
+func (l *link) droppedFrame(m protocol.Msg) {
+	if m.SessionID == "" {
+		return
+	}
+	key := m.T + "/" + m.SessionID
+	l.mu.Lock()
+	if l.dropped == nil {
+		l.dropped = map[string]int{}
+	}
+	l.dropped[key]++
+	n := l.dropped[key]
+	l.mu.Unlock()
+	if n == 1 || n%100 == 0 {
+		diag.Warnf("link", "frame dropped: no session registered machine=%s type=%s session=%s count=%d",
+			l.label(), m.T, m.SessionID, n)
 	}
 }
 
@@ -259,8 +334,14 @@ func (l *link) adopt(id string) {
 	}
 	l.mu.Unlock()
 	if s == nil || id == "" {
+		// A created frame nobody asked for: the tab that would have watched
+		// this shell is not here, and the shell is now a session this link
+		// cannot route frames for. Worth a warning, because the window will
+		// show nothing for it and nothing else will say so.
+		diag.Warnf("link", "created frame with no waiting session machine=%s session=%s", l.label(), id)
 		return
 	}
+	diag.Infof("link", "created machine=%s session=%s", l.label(), id)
 	s.bind(id)
 	if s.handlers != nil {
 		s.handlers.Created(id)
@@ -275,7 +356,14 @@ func (l *link) session(id string) *session {
 }
 
 // watch registers a session with the link, so frames for it have somewhere to
-// go. A second watch of the same id keeps the first.
+// go.
+//
+// A watch of an id that is already registered replaces the old one. That is the
+// whole point: a tab's session object can still be on its way out when the same
+// shell is watched again. Keeping the first registration routed the next tab's
+// attach replay into the closed tab's terminal conn — which is exactly the pane
+// that stayed white while its shell ran on, untouched by a click that looked
+// like it had done nothing.
 func (l *link) watch(s *session) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -283,16 +371,28 @@ func (l *link) watch(s *session) {
 		l.pending = append(l.pending, s)
 		return
 	}
-	if _, ok := l.sessions[s.id]; !ok {
-		l.sessions[s.id] = s
+	if old, ok := l.sessions[s.id]; ok && old != s {
+		diag.Infof("link", "session re-registered machine=%s session=%s", l.label(), s.id)
 	}
+	l.sessions[s.id] = s
 }
 
-// unwatch stops routing frames for a session to it.
-func (l *link) unwatch(id string) {
+// unwatchSession stops routing frames for a session to it, but only while that
+// session is still the one registered: a closed tab must not take away the
+// registration its replacement just made for the same id.
+func (l *link) unwatchSession(s *session) {
+	if s == nil {
+		return
+	}
+	id := s.sessionID()
+	if id == "" {
+		return
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	delete(l.sessions, id)
+	if l.sessions[id] == s {
+		delete(l.sessions, id)
+	}
 }
 
 // close ends the link. Every session on it is told, as a dropped connection
@@ -311,6 +411,7 @@ func (l *link) close(reason string) {
 	l.sessions = map[string]*session{}
 	l.mu.Unlock()
 
+	diag.Infof("link", "closed machine=%s reason=%q sessions=%d", l.label(), reason, len(sessions))
 	l.setSend(nil)
 	if l.onGone != nil {
 		l.onGone(reason)
@@ -340,6 +441,11 @@ func (s *session) sessionID() string {
 
 // bind gives the session its id, once the hub has named it. Until then the
 // window has asked for a shell and not yet been told which one it got.
+//
+// A bind of an id another session already holds takes the id over, for the same
+// reason watch does: the id names the shell, and the session the window is
+// watching it with is the newest one. Keeping the older registration sent the
+// hub's replay to a terminal that no longer exists.
 func (s *session) bind(id string) {
 	s.mu.Lock()
 	s.id = id
@@ -349,9 +455,10 @@ func (s *session) bind(id string) {
 	}
 	l := s.link
 	l.mu.Lock()
-	if _, ok := l.sessions[id]; !ok {
-		l.sessions[id] = s
+	if old, ok := l.sessions[id]; ok && old != s {
+		diag.Infof("link", "session bound over an older one machine=%s session=%s", l.label(), id)
 	}
+	l.sessions[id] = s
 	l.mu.Unlock()
 }
 

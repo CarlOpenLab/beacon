@@ -175,6 +175,7 @@ func runServe(args []string) {
 	mux.HandleFunc("/relay/client", r.ServeClient)
 	mux.HandleFunc("/relay/machines", r.Machines)
 	mux.HandleFunc("/relay/control-token", r.ControlToken)
+	mux.HandleFunc("/relay/log", r.ServeLog)
 	// The relay serves the same client bundle a daemon does, and tells it which
 	// transport to use. Without this a phone could not reach a fleet at all: the
 	// relay is the only address that is reachable from outside the LAN.

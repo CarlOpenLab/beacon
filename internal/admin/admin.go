@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -99,6 +100,10 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+b+"/api/devices/revoke", a.handleRevoke)
 	mux.HandleFunc("GET "+b+"/api/token", a.handleToken)
 	mux.HandleFunc("POST "+b+"/api/token/rotate", a.handleRotate)
+	mux.HandleFunc("GET "+b+"/api/logs", a.handleLogs)
+	mux.HandleFunc("GET "+b+"/api/logs/view", a.handleLogView)
+	mux.HandleFunc("GET "+b+"/api/logs/download", a.handleLogDownload)
+	mux.HandleFunc("POST "+b+"/api/logs/clear", a.handleLogClear)
 	mux.HandleFunc("GET "+b+"/ca.pem", a.handleCA)
 }
 
@@ -322,6 +327,144 @@ func (a *Admin) handleRevoke(w http.ResponseWriter, r *http.Request) {
 	a.opts.Log.Printf("admin: revoked %s (removed=%v)", body.ID, removed)
 	a.opts.Relay.RefreshRoster()
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": removed})
+}
+
+// ── machine logs ────────────────────────────────────────────────────────────
+
+type logView struct {
+	ID         string `json:"id"`
+	Name       string `json:"name,omitempty"`
+	Online     bool   `json:"online"`
+	Version    string `json:"version,omitempty"`
+	Platform   string `json:"platform,omitempty"`
+	Arch       string `json:"arch,omitempty"`
+	Level      string `json:"level,omitempty"`
+	Lines      int    `json:"lines"`
+	Bytes      int    `json:"bytes"`
+	ReceivedAt string `json:"receivedAt,omitempty"`
+	UpdatedAt  string `json:"updatedAt,omitempty"`
+}
+
+// handleLogs lists the tails machines have pushed. It is metadata only: the
+// lines are fetched one machine at a time, so a dashboard with ten machines
+// does not download ten logs on every refresh.
+func (a *Admin) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if !a.guard(w, r) {
+		return
+	}
+	names := map[string]string{}
+	online := map[string]bool{}
+	for _, m := range a.opts.Relay.Roster() {
+		names[m.ID] = m.Name
+		online[m.ID] = m.Online
+	}
+	// Every enrolled machine gets a row, even before it reports: a machine
+	// missing from the list reads as a machine with no logs, which is the
+	// question the operator came to answer.
+	byID := map[string]relay.LogSummary{}
+	for _, item := range a.opts.Relay.Logs().List() {
+		byID[item.ID] = item
+	}
+	for _, e := range a.opts.Relay.Devices().Entries() {
+		if _, ok := byID[e.ID]; !ok {
+			byID[e.ID] = relay.LogSummary{ID: e.ID}
+		}
+	}
+	ids := make([]string, 0, len(byID))
+	for id := range byID {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]logView, 0, len(ids))
+	for _, id := range ids {
+		item := byID[id]
+		name := names[id]
+		if name == "" {
+			name = id
+		}
+		v := logView{
+			ID:       item.ID,
+			Name:     name,
+			Online:   online[item.ID],
+			Version:  item.Version,
+			Platform: item.Platform,
+			Arch:     item.Arch,
+			Level:    item.Level,
+			Lines:    item.Lines,
+			Bytes:    item.Bytes,
+		}
+		if !item.ReceivedAt.IsZero() {
+			v.ReceivedAt = item.ReceivedAt.UTC().Format(time.RFC3339)
+		}
+		if !item.UpdatedAt.IsZero() {
+			v.UpdatedAt = item.UpdatedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, v)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"logs": out})
+}
+
+// handleLogView returns one machine's lines as JSON, which is what the panel's
+// viewer reads. The whole tail is small by construction (the relay caps it).
+func (a *Admin) handleLogView(w http.ResponseWriter, r *http.Request) {
+	if !a.guard(w, r) {
+		return
+	}
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		a.fail(w, http.StatusBadRequest, "which machine? pass ?id=")
+		return
+	}
+	entry, ok := a.opts.Relay.Logs().Get(id)
+	if !ok {
+		a.fail(w, http.StatusNotFound, "this machine has not sent a log yet")
+		return
+	}
+	writeJSON(w, http.StatusOK, entry)
+}
+
+// handleLogDownload serves the same tail as a plain log file, for the person who
+// wants to search it in an editor or attach it to a bug report.
+func (a *Admin) handleLogDownload(w http.ResponseWriter, r *http.Request) {
+	if !a.guard(w, r) {
+		return
+	}
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		a.fail(w, http.StatusBadRequest, "which machine? pass ?id=")
+		return
+	}
+	entry, ok := a.opts.Relay.Logs().Get(id)
+	if !ok {
+		a.fail(w, http.StatusNotFound, "this machine has not sent a log yet")
+		return
+	}
+	name := strings.NewReplacer("/", "_", "\\", "_", " ", "_").Replace(id)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="term-fleet-`+name+`.log"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = io.WriteString(w, entry.Text())
+}
+
+// handleLogClear forgets a machine's report. It does not touch the machine's
+// own file; the next upload brings a fresh tail.
+func (a *Admin) handleLogClear(w http.ResponseWriter, r *http.Request) {
+	if !a.guard(w, r) {
+		return
+	}
+	var body struct {
+		ID string `json:"id"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	id := strings.TrimSpace(body.ID)
+	if id == "" {
+		a.fail(w, http.StatusBadRequest, "which machine? pass an id")
+		return
+	}
+	cleared := a.opts.Relay.Logs().Clear(id)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cleared": cleared})
 }
 
 // tokenView is the panel's picture of the client credential: the value itself

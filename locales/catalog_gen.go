@@ -176,20 +176,6 @@ func (msgs Messages) AppServiceStartFailed(reason string) string {
 	return Catalog.Format(msgs.locale, "app_service_start_failed", map[string]any{"reason": reason})
 }
 
-// AppSplitClosed says "已关闭分栏：{name} 仍在后台运行"
-// in the language the app shows.
-//
-// The status bar, after closing a split pane.
-func AppSplitClosed(name string) string { return In(i18n.Locale()).AppSplitClosed(name) }
-
-// AppSplitClosed says "已关闭分栏：{name} 仍在后台运行"
-// in the language of msgs.
-//
-// The status bar, after closing a split pane.
-func (msgs Messages) AppSplitClosed(name string) string {
-	return Catalog.Format(msgs.locale, "app_split_closed", map[string]any{"name": name})
-}
-
 // AppReleasedLease says "已释放控制权：已转为只读观察，{name} 在后台继续运行"
 // in the language the app shows.
 //
@@ -458,13 +444,13 @@ func (msgs Messages) TabClose() string {
 	return Catalog.Format(msgs.locale, "tab_close", nil)
 }
 
-// TabCloseTip says "关闭标签页（仅停止观看，不结束进程）"
+// TabCloseTip says "关闭标签页（结束该会话的进程）"
 // in the language the app shows.
 //
 // The tab's close button, saying what it does not do.
 func TabCloseTip() string { return In(i18n.Locale()).TabCloseTip() }
 
-// TabCloseTip says "关闭标签页（仅停止观看，不结束进程）"
+// TabCloseTip says "关闭标签页（结束该会话的进程）"
 // in the language of msgs.
 //
 // The tab's close button, saying what it does not do.
@@ -472,13 +458,13 @@ func (msgs Messages) TabCloseTip() string {
 	return Catalog.Format(msgs.locale, "tab_close_tip", nil)
 }
 
-// TabCloseNamed says "关闭 {name}"
+// TabCloseNamed says "关闭 {name}（结束会话）"
 // in the language the app shows.
 //
 // The session row's close button, naming the shell.
 func TabCloseNamed(name string) string { return In(i18n.Locale()).TabCloseNamed(name) }
 
-// TabCloseNamed says "关闭 {name}"
+// TabCloseNamed says "关闭 {name}（结束会话）"
 // in the language of msgs.
 //
 // The session row's close button, naming the shell.
@@ -486,13 +472,13 @@ func (msgs Messages) TabCloseNamed(name string) string {
 	return Catalog.Format(msgs.locale, "tab_close_named", map[string]any{"name": name})
 }
 
-// TabEndProcess says "结束进程…"
+// TabEndProcess says "结束会话"
 // in the language the app shows.
 //
 // The session row's menu item that ends a shell.
 func TabEndProcess() string { return In(i18n.Locale()).TabEndProcess() }
 
-// TabEndProcess says "结束进程…"
+// TabEndProcess says "结束会话"
 // in the language of msgs.
 //
 // The session row's menu item that ends a shell.
@@ -3930,4 +3916,200 @@ func WindowClose() string { return In(i18n.Locale()).WindowClose() }
 // The app-drawn window controls (Windows and Linux).
 func (msgs Messages) WindowClose() string {
 	return Catalog.Format(msgs.locale, "window_close", nil)
+}
+
+// SettingsPaneDiagnostics says "诊断"
+// in the language the app shows.
+func SettingsPaneDiagnostics() string { return In(i18n.Locale()).SettingsPaneDiagnostics() }
+
+// SettingsPaneDiagnostics says "诊断"
+// in the language of msgs.
+func (msgs Messages) SettingsPaneDiagnostics() string {
+	return Catalog.Format(msgs.locale, "settings_pane_diagnostics", nil)
+}
+
+// SettingsDiagFile says "日志文件"
+// in the language the app shows.
+func SettingsDiagFile() string { return In(i18n.Locale()).SettingsDiagFile() }
+
+// SettingsDiagFile says "日志文件"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagFile() string {
+	return Catalog.Format(msgs.locale, "settings_diag_file", nil)
+}
+
+// SettingsDiagNote says "…"
+// in the language the app shows.
+func SettingsDiagNote() string { return In(i18n.Locale()).SettingsDiagNote() }
+
+// SettingsDiagNote says "…"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagNote() string {
+	return Catalog.Format(msgs.locale, "settings_diag_note", nil)
+}
+
+// SettingsDiagLevel says "记录级别"
+// in the language the app shows.
+func SettingsDiagLevel() string { return In(i18n.Locale()).SettingsDiagLevel() }
+
+// SettingsDiagLevel says "记录级别"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagLevel() string {
+	return Catalog.Format(msgs.locale, "settings_diag_level", nil)
+}
+
+// SettingsDiagLevelRegular says "常规"
+// in the language the app shows.
+func SettingsDiagLevelRegular() string { return In(i18n.Locale()).SettingsDiagLevelRegular() }
+
+// SettingsDiagLevelRegular says "常规"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagLevelRegular() string {
+	return Catalog.Format(msgs.locale, "settings_diag_level_regular", nil)
+}
+
+// SettingsDiagLevelDebug says "详细"
+// in the language the app shows.
+func SettingsDiagLevelDebug() string { return In(i18n.Locale()).SettingsDiagLevelDebug() }
+
+// SettingsDiagLevelDebug says "详细"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagLevelDebug() string {
+	return Catalog.Format(msgs.locale, "settings_diag_level_debug", nil)
+}
+
+// SettingsDiagLevelNote says "详细会记录附着、重放与每一帧的路由；输出只按 256 KB 汇总，日志不会随 shell …"
+// in the language the app shows.
+func SettingsDiagLevelNote() string { return In(i18n.Locale()).SettingsDiagLevelNote() }
+
+// SettingsDiagLevelNote says "详细会记录附着、重放与每一帧的路由；输出只按 256 KB 汇总，日志不会随 shell …"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagLevelNote() string {
+	return Catalog.Format(msgs.locale, "settings_diag_level_note", nil)
+}
+
+// SettingsDiagNoFile says "日志还没有打开（启动时的错误见控制台）"
+// in the language the app shows.
+func SettingsDiagNoFile() string { return In(i18n.Locale()).SettingsDiagNoFile() }
+
+// SettingsDiagNoFile says "日志还没有打开（启动时的错误见控制台）"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagNoFile() string {
+	return Catalog.Format(msgs.locale, "settings_diag_no_file", nil)
+}
+
+// SettingsDiagCopy says "复制路径"
+// in the language the app shows.
+func SettingsDiagCopy() string { return In(i18n.Locale()).SettingsDiagCopy() }
+
+// SettingsDiagCopy says "复制路径"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagCopy() string {
+	return Catalog.Format(msgs.locale, "settings_diag_copy", nil)
+}
+
+// SettingsDiagCopied says "已复制日志路径"
+// in the language the app shows.
+func SettingsDiagCopied() string { return In(i18n.Locale()).SettingsDiagCopied() }
+
+// SettingsDiagCopied says "已复制日志路径"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagCopied() string {
+	return Catalog.Format(msgs.locale, "settings_diag_copied", nil)
+}
+
+// SettingsDiagOpen says "打开所在文件夹"
+// in the language the app shows.
+func SettingsDiagOpen() string { return In(i18n.Locale()).SettingsDiagOpen() }
+
+// SettingsDiagOpen says "打开所在文件夹"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagOpen() string {
+	return Catalog.Format(msgs.locale, "settings_diag_open", nil)
+}
+
+// SettingsDiagOpenFailed says "打不开文件夹：{reason}"
+// in the language the app shows.
+func SettingsDiagOpenFailed(reason string) string {
+	return In(i18n.Locale()).SettingsDiagOpenFailed(reason)
+}
+
+// SettingsDiagOpenFailed says "打不开文件夹：{reason}"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagOpenFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "settings_diag_open_failed", map[string]any{"reason": reason})
+}
+
+// SettingsDiagSave says "保存一份…"
+// in the language the app shows.
+func SettingsDiagSave() string { return In(i18n.Locale()).SettingsDiagSave() }
+
+// SettingsDiagSave says "保存一份…"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagSave() string {
+	return Catalog.Format(msgs.locale, "settings_diag_save", nil)
+}
+
+// SettingsDiagSaveTitle says "保存诊断日志"
+// in the language the app shows.
+func SettingsDiagSaveTitle() string { return In(i18n.Locale()).SettingsDiagSaveTitle() }
+
+// SettingsDiagSaveTitle says "保存诊断日志"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagSaveTitle() string {
+	return Catalog.Format(msgs.locale, "settings_diag_save_title", nil)
+}
+
+// SettingsDiagSaved says "已保存到 {path}"
+// in the language the app shows.
+func SettingsDiagSaved(path string) string { return In(i18n.Locale()).SettingsDiagSaved(path) }
+
+// SettingsDiagSaved says "已保存到 {path}"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagSaved(path string) string {
+	return Catalog.Format(msgs.locale, "settings_diag_saved", map[string]any{"path": path})
+}
+
+// SettingsDiagSaveFailed says "保存失败：{reason}"
+// in the language the app shows.
+func SettingsDiagSaveFailed(reason string) string {
+	return In(i18n.Locale()).SettingsDiagSaveFailed(reason)
+}
+
+// SettingsDiagSaveFailed says "保存失败：{reason}"
+// in the language of msgs.
+func (msgs Messages) SettingsDiagSaveFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "settings_diag_save_failed", map[string]any{"reason": reason})
+}
+
+// MenuDiagnostics says "诊断日志…"
+// in the language the app shows.
+func MenuDiagnostics() string { return In(i18n.Locale()).MenuDiagnostics() }
+
+// MenuDiagnostics says "诊断日志…"
+// in the language of msgs.
+func (msgs Messages) MenuDiagnostics() string {
+	return Catalog.Format(msgs.locale, "menu_diagnostics", nil)
+}
+
+// AppMachineOffline says "{name} 当前离线：它上面还列着上次的会话，连上后再打开"
+// in the language the app shows.
+func AppMachineOffline(name string) string { return In(i18n.Locale()).AppMachineOffline(name) }
+
+// AppMachineOffline says "{name} 当前离线：它上面还列着上次的会话，连上后再打开"
+// in the language of msgs.
+func (msgs Messages) AppMachineOffline(name string) string {
+	return Catalog.Format(msgs.locale, "app_machine_offline", map[string]any{"name": name})
+}
+
+// AppTerminalUnavailable says "终端视图没有创建成功（{reason}），详见 设置 → 诊断 的日志"
+// in the language the app shows.
+func AppTerminalUnavailable(reason string) string {
+	return In(i18n.Locale()).AppTerminalUnavailable(reason)
+}
+
+// AppTerminalUnavailable says "终端视图没有创建成功（{reason}），详见 设置 → 诊断 的日志"
+// in the language of msgs.
+func (msgs Messages) AppTerminalUnavailable(reason string) string {
+	return Catalog.Format(msgs.locale, "app_terminal_unavailable", map[string]any{"reason": reason})
 }

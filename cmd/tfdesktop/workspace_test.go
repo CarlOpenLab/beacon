@@ -140,20 +140,25 @@ func TestSwitchingTabsLeavesTheWorkspaceRowInPlace(t *testing.T) {
 	}
 }
 
-// Closing the workspace's row stops watching every shell in it, and closing one
-// pane leaves the other on screen with its own row once again.
-func TestClosingOnePaneGivesTheOtherItsRowBack(t *testing.T) {
+// Closing the tab in one pane closes that tab: the split collapses to the
+// sibling, which becomes the body.
+func TestClosingTheFocusedPaneClosesItsTab(t *testing.T) {
 	w := splitWindow(t)
-	w.closeSplitPane() // stops watching the focused pane, "two"
-	// The split is down to one pane, so the body is one pane again — and both
-	// shells are still running, so both are rows: the one closed was not ended,
-	// only taken out of the split.
+	// A split the window built through ⌘D carries a workspace; the fake tree
+	// here has to as well, or removeTab cannot find the leaf it is taking out.
+	ws := &workspace{split: w.split, focus: w.focus}
+	w.ws = ws
+	w.tabs[1].ws, w.tabs[2].ws = ws, ws
+	w.closeTabOnScreen() // closes the focused pane's tab, "two"
 	if w.split != nil {
 		t.Fatal("closing one pane of two left the split up")
 	}
+	if len(w.order) != 1 || w.tabs[w.order[0]] != w.tabs[1] {
+		t.Fatalf("the window holds %v, want the first pane alone", w.order)
+	}
 	entries := w.entriesFor(machineLocal)
-	if len(entries) != 2 {
-		t.Fatalf("after closing a pane there are %d rows, want the two shells still running", len(entries))
+	if len(entries) != 1 {
+		t.Fatalf("after closing a pane there are %d rows, want the one tab that is left", len(entries))
 	}
 	if w.activeTab() != w.tabs[1] {
 		t.Fatalf("the focus did not move to the pane that is left")

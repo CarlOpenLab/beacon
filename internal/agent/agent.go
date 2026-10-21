@@ -28,6 +28,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
@@ -73,6 +74,17 @@ type Config struct {
 	// Backoff tuning. Tests set these small; production uses the defaults.
 	MinBackoff time.Duration
 	MaxBackoff time.Duration
+
+	// Diag, when set, is the diagnostic log this machine pushes to the relay
+	// beside the tunnel. The admin panel reads the newest tail, which is the one
+	// piece of a bug report a person on another machine cannot get any other
+	// way: the daemon often runs with no console at all.
+	Diag *diag.Logger
+	// LogURL overrides the address the log is posted to. Empty derives it from
+	// URL (the /agent endpoint's sibling /log), which is what production uses.
+	LogURL string
+	// LogInterval is how often the tail is pushed. Zero means every 30s.
+	LogInterval time.Duration
 }
 
 // State is how the link to the relay is doing, in the terms a person needs in
@@ -96,6 +108,9 @@ func (c Config) withDefaults() Config {
 	}
 	if c.MaxBackoff <= 0 {
 		c.MaxBackoff = 30 * time.Second
+	}
+	if c.LogInterval <= 0 {
+		c.LogInterval = 30 * time.Second
 	}
 	if c.MachineName == "" {
 		if h, err := os.Hostname(); err == nil {
@@ -155,6 +170,9 @@ func New(cfg Config) (*Agent, error) {
 // per-session ring still holds it, and a client re-attaching with its cursor
 // gets only the gap).
 func (a *Agent) Run(ctx context.Context) error {
+	if a.cfg.Diag != nil {
+		go a.reportLogs(ctx)
+	}
 	backoff := a.cfg.MinBackoff
 	for {
 		start := time.Now()
@@ -301,6 +319,10 @@ type session struct {
 
 	mu      sync.Mutex
 	streams map[uint32]*streamTransport
+	// blocked counts frames that found the out queue full, so the warning below
+	// can be said once and then summarised instead of one line per frame of a
+	// busy shell.
+	blocked int
 }
 
 func (s *session) send(f tunnel.Frame) bool {
@@ -310,7 +332,21 @@ func (s *session) send(f tunnel.Frame) bool {
 	case s.out <- f:
 		return true
 	default:
+		s.noteBlocked(f)
 		return false
+	}
+}
+
+// noteBlocked says that the queue a machine shares between its viewers is full.
+// It is the line that explains a remote viewer whose replay was late or lost:
+// the machine was producing faster than the relay could take it.
+func (s *session) noteBlocked(f tunnel.Frame) {
+	s.mu.Lock()
+	s.blocked++
+	n := s.blocked
+	s.mu.Unlock()
+	if n == 1 || n%100 == 0 {
+		diag.Warnf("relay", "agent queue full: frame dropped type=%s stream=%d count=%d", f.T, f.Stream, n)
 	}
 }
 
@@ -320,6 +356,20 @@ func (s *session) send(f tunnel.Frame) bool {
 // reads as a dead client — which killed the viewer mid-replay and left its tab
 // a blank pane with a live shell behind it.
 func (s *session) sendCtx(ctx context.Context, f tunnel.Frame) error {
+	// The fast path: room was there, so the frame is on its way and nothing is
+	// worth saying.
+	select {
+	case <-s.done:
+		return errors.New("relay link unavailable")
+	case s.out <- f:
+		return nil
+	default:
+	}
+	// Backpressure: the queue is full and this frame waits for room rather than
+	// being answered with an error the hub would read as a dead client. Saying
+	// so once per hundred waits separates "the link is slow" from "the viewer
+	// never attached", which look identical from the far side.
+	s.noteBlocked(f)
 	select {
 	case <-s.done:
 		return errors.New("relay link unavailable")

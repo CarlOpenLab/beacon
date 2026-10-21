@@ -765,3 +765,81 @@ func TestPasswordHashingRoundTrips(t *testing.T) {
 		t.Fatal("hashing the same password twice produced the same record; the salt is fixed")
 	}
 }
+
+// The panel reads the tails machines pushed, one machine at a time, and can
+// download the same lines as the file a person attaches to a bug report.
+func TestMachineLogsThroughThePanel(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+
+	dev := p.call(t, "POST", "/admin/api/devices", map[string]string{"name": "mac mini"}, nil)
+	id, _ := dev.body["id"].(string)
+	if id == "" {
+		t.Fatalf("enroll = %v", dev.body)
+	}
+	p.relay.Logs().Put(id, relay.LogReport{
+		Version: "v0.5.5", Platform: "darwin", Arch: "arm64", Level: "DEBUG",
+		Lines: []string{"2026-10-21T10:14:02.123+08:00  INFO term  attach sent", "2026-10-21T10:14:03.000+08:00 ERROR term  blank pane"},
+	})
+
+	list := p.call(t, "GET", "/admin/api/logs", nil, nil)
+	if list.status != http.StatusOK {
+		t.Fatalf("logs list = %d %s", list.status, list.raw)
+	}
+	logs, _ := list.body["logs"].([]any)
+	if len(logs) != 1 {
+		t.Fatalf("logs = %v, want one machine", list.body)
+	}
+	row, _ := logs[0].(map[string]any)
+	if row["id"] != id || row["name"] != "mac mini" || row["level"] != "DEBUG" {
+		t.Fatalf("row = %v", row)
+	}
+	if lines, _ := row["lines"].(float64); lines != 2 {
+		t.Fatalf("line count = %v, want 2", row["lines"])
+	}
+
+	view := p.call(t, "GET", "/admin/api/logs/view?id="+id, nil, nil)
+	if view.status != http.StatusOK {
+		t.Fatalf("log view = %d %s", view.status, view.raw)
+	}
+	body, _ := view.body["lines"].([]any)
+	if len(body) != 2 || !strings.Contains(body[1].(string), "blank pane") {
+		t.Fatalf("view lines = %v", body)
+	}
+
+	dl := p.call(t, "GET", "/admin/api/logs/download?id="+id, nil, nil)
+	if dl.status != http.StatusOK {
+		t.Fatalf("download = %d", dl.status)
+	}
+	if !strings.Contains(dl.raw, "blank pane") || !strings.Contains(dl.header.Get("Content-Disposition"), "attachment") {
+		t.Fatalf("download = %q, headers = %v", dl.raw, dl.header)
+	}
+
+	clear := p.call(t, "POST", "/admin/api/logs/clear", map[string]string{"id": id}, nil)
+	if clear.status != http.StatusOK {
+		t.Fatalf("clear = %d %s", clear.status, clear.raw)
+	}
+	if _, ok := p.relay.Logs().Get(id); ok {
+		t.Fatal("the log survived the panel's Forget")
+	}
+}
+
+// Logs are as sensitive as the machines they come from: an anonymous visitor
+// must not be able to read or clear them.
+func TestMachineLogsNeedASignedInSession(t *testing.T) {
+	p := newPanel(t)
+	p.setup(t)
+	dev := p.call(t, "POST", "/admin/api/devices", map[string]string{"name": "mac"}, nil)
+	id, _ := dev.body["id"].(string)
+	p.relay.Logs().Put(id, relay.LogReport{Lines: []string{"secret path"}})
+
+	fresh := &panel{ts: p.ts, client: newClient(t), relay: p.relay, admin: p.admin, dir: p.dir}
+	for _, path := range []string{"/admin/api/logs", "/admin/api/logs/view?id=" + id, "/admin/api/logs/download?id=" + id} {
+		if got := fresh.call(t, "GET", path, nil, nil); got.status != http.StatusUnauthorized {
+			t.Errorf("anonymous GET %s = %d, want 401", path, got.status)
+		}
+	}
+	if got := fresh.call(t, "POST", "/admin/api/logs/clear", map[string]string{"id": id}, nil); got.status != http.StatusUnauthorized {
+		t.Errorf("anonymous clear = %d, want 401", got.status)
+	}
+}

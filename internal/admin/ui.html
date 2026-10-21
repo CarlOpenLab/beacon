@@ -6,231 +6,520 @@
 <title>term-fleet relay</title>
 <style>
   :root {
-    --bg: #0d1117;
-    --panel: #161b22;
-    --panel-2: #1c2430;
-    --line: #2b3643;
-    --ink: #e6edf3;
-    --dim: #8b98a5;
-    --accent: #4cb782;
-    --accent-dim: #245c40;
-    --warn: #e3b341;
-    --danger: #f0776c;
+    color-scheme: light;
+    --sidebar: #eceef4;
+    --card: #ffffff;
+    --popover: #ffffff;
+    --text: #1d1d1f;
+    --text-muted: #6e6e78;
+    --text-faint: #a3a3ad;
+    --chip: rgba(0, 0, 0, 0.045);
+    --divider: rgba(0, 0, 0, 0.06);
+    --row-divider: rgba(0, 0, 0, 0.07);
+    --accent: #3b6cf6;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(59, 108, 246, 0.12);
+    --danger: #d93a35;
+    --danger-soft: rgba(217, 58, 53, 0.10);
+    --warn: #c27b0f;
+    --warn-soft: rgba(194, 123, 15, 0.12);
+    --success: #1f8a4c;
+    --success-soft: rgba(31, 138, 76, 0.12);
+    --wash-a: #ebe0f3;
+    --wash-b: #f3e7f1;
+    --wash-c: #f6efcf;
+    --wash-glow: rgba(247, 220, 241, 0.75);
+    --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.07), 0 1px 6px rgba(0, 0, 0, 0.035);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.07), 0 16px 40px rgba(20, 20, 40, 0.10);
+    --radius-card: 14px;
+    --radius-row: 10px;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   }
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --sidebar: #141418;
+    --card: #232328;
+    --popover: #232327;
+    --text: #ececf0;
+    --text-muted: #a9a9b4;
+    --text-faint: #83838f;
+    --chip: rgba(255, 255, 255, 0.07);
+    --divider: rgba(255, 255, 255, 0.07);
+    --row-divider: rgba(255, 255, 255, 0.07);
+    --accent: #6b93ff;
+    --accent-ink: #0d1730;
+    --accent-soft: rgba(107, 147, 255, 0.16);
+    --danger: #ff6961;
+    --danger-soft: rgba(255, 105, 97, 0.14);
+    --warn: #f0a33a;
+    --warn-soft: rgba(240, 163, 58, 0.14);
+    --success: #5fd39a;
+    --success-soft: rgba(95, 211, 154, 0.14);
+    --wash-a: #17141f;
+    --wash-b: #191620;
+    --wash-c: #1b1916;
+    --wash-glow: rgba(120, 70, 120, 0.22);
+    --shadow-raised: inset 0 0 0 1px rgba(236, 236, 240, 0.10), 0 1px 1px rgba(0, 0, 0, 0.2), 0 2px 2px -1px rgba(0, 0, 0, 0.2), 0 4px 6px -3px rgba(0, 0, 0, 0.24);
+    --shadow-card: inset 0 0 0 1px rgba(236, 236, 240, 0.10), 0 1px 1px rgba(0, 0, 0, 0.2), 0 2px 2px -1px rgba(0, 0, 0, 0.2), 0 18px 48px rgba(0, 0, 0, 0.42);
+  }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]) {
+      color-scheme: dark;
+      --sidebar: #141418;
+      --card: #232328;
+      --popover: #232327;
+      --text: #ececf0;
+      --text-muted: #a9a9b4;
+      --text-faint: #83838f;
+      --chip: rgba(255, 255, 255, 0.07);
+      --divider: rgba(255, 255, 255, 0.07);
+      --row-divider: rgba(255, 255, 255, 0.07);
+      --accent: #6b93ff;
+      --accent-ink: #0d1730;
+      --accent-soft: rgba(107, 147, 255, 0.16);
+      --danger: #ff6961;
+      --danger-soft: rgba(255, 105, 97, 0.14);
+      --warn: #f0a33a;
+      --warn-soft: rgba(240, 163, 58, 0.14);
+      --success: #5fd39a;
+      --success-soft: rgba(95, 211, 154, 0.14);
+      --wash-a: #17141f;
+      --wash-b: #191620;
+      --wash-c: #1b1916;
+      --wash-glow: rgba(120, 70, 120, 0.22);
+      --shadow-raised: inset 0 0 0 1px rgba(236, 236, 240, 0.10), 0 1px 1px rgba(0, 0, 0, 0.2), 0 2px 2px -1px rgba(0, 0, 0, 0.2), 0 4px 6px -3px rgba(0, 0, 0, 0.24);
+      --shadow-card: inset 0 0 0 1px rgba(236, 236, 240, 0.10), 0 1px 1px rgba(0, 0, 0, 0.2), 0 2px 2px -1px rgba(0, 0, 0, 0.2), 0 18px 48px rgba(0, 0, 0, 0.42);
+    }
+  }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
   body {
     margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(1100px 760px at 88% -12%, var(--wash-glow), transparent 62%),
+      linear-gradient(180deg, var(--wash-a), var(--wash-b) 58%, var(--wash-c));
+    overflow: hidden;
   }
-  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px 80px; }
-  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
-  h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
-  h1 .dot { color: var(--accent); }
-  .host { color: var(--dim); font-family: var(--mono); font-size: 13px; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  code, pre, .mono { font-family: var(--mono); }
+  a { color: var(--accent); }
+
+  /* ── shared chrome ─────────────────────────────────────────────────────── */
+  .brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+    color: var(--accent-ink); background: var(--accent); flex: 0 0 auto;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  }
+  .brand-mark svg { width: 15px; height: 15px; }
+  .brand-name { font-size: 14px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; }
+  .brand-name span { color: var(--text-faint); font-weight: 500; }
+  .host { color: var(--text-muted); font-family: var(--mono); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .spacer { flex: 1; }
+  .icon-btn {
+    width: 28px; height: 28px; border-radius: 8px; border: 0; background: transparent;
+    display: grid; place-items: center; color: var(--text-muted); flex: 0 0 auto;
+  }
+  .icon-btn:hover { background: var(--chip); color: var(--text); }
+  .icon-btn svg { width: 15px; height: 15px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px;
+    border-radius: 999px; font-size: 11.5px; font-weight: 600; color: var(--text-muted);
+    background: var(--chip); white-space: nowrap;
+  }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: currentColor; opacity: 0.8; }
+  .pill.on { color: var(--success); background: var(--success-soft); }
+  .pill.off { color: var(--text-faint); }
+
+  /* ── auth: a single floating card on the wash ─────────────────────────── */
+  .auth { height: 100%; display: flex; flex-direction: column; padding: 18px 22px 20px; overflow: auto; }
+  .auth-top { display: flex; align-items: center; gap: 12px; }
+  .auth-stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 34px 0 26px; }
+  .auth-card {
+    width: min(430px, 100%); background: var(--card); border-radius: var(--radius-card);
+    padding: 30px 30px 26px; box-shadow: var(--shadow-card);
+    isolation: isolate; transform: translateZ(0);
+  }
+  .auth-card h1 { margin: 0 0 6px; font-size: 20px; font-weight: 680; letter-spacing: -0.02em; }
+  .auth-card > p { margin: 0 0 20px; color: var(--text-muted); font-size: 13px; }
+  .auth-foot { display: flex; justify-content: space-between; gap: 14px; color: var(--text-faint); font-size: 11.5px; }
+  .auth-foot .mono { color: var(--text-muted); }
+
+  /* ── dashboard shell: 212px rail + floating card, 8px gap ─────────────── */
+  .shell { height: 100%; display: grid; grid-template-columns: 212px minmax(0, 1fr); gap: 8px; padding: 8px; }
+  .rail {
+    display: flex; flex-direction: column; min-height: 0; padding: 12px 10px;
+    border-radius: var(--radius-card); background: var(--sidebar);
+    background: color-mix(in srgb, var(--sidebar) 78%, transparent);
+  }
+  .rail-head { padding: 4px 6px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 9px; width: 100%; height: 32px; padding: 0 9px;
+    border: 0; border-radius: 8px; background: transparent; color: var(--text-muted);
+    font-size: 13px; font-weight: 550; text-align: left;
+  }
+  .nav-item svg { width: 15px; height: 15px; flex: 0 0 auto; opacity: 0.85; }
+  .nav-item:hover { background: var(--chip); color: var(--text); }
+  .nav-item.is-on { background: var(--card); color: var(--text); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 0.5px 2px rgba(0, 0, 0, 0.05); }
+  html[data-theme="dark"] .nav-item.is-on { box-shadow: var(--shadow-raised); }
+  .rail-foot { margin-top: auto; padding: 10px 6px 2px; display: flex; flex-direction: column; gap: 8px; }
+  .who { color: var(--text-faint); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rail-foot .icon-btn { align-self: flex-end; }
+
+  .workspace { min-width: 0; min-height: 0; display: flex; }
   .card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 16px;
+    flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column;
+    background: var(--card); border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+    overflow: hidden; isolation: isolate; transform: translateZ(0);
   }
-  .card h2 { font-size: 14px; margin: 0 0 4px; }
-  .card p.hint { color: var(--dim); font-size: 13px; margin: 0 0 16px; }
-  label { display: block; font-size: 13px; color: var(--dim); margin: 12px 0 6px; }
+  .card-head {
+    height: 64px; flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+    padding: 0 24px; border-bottom: 1px solid var(--divider);
+    border-top-left-radius: var(--radius-card); border-top-right-radius: var(--radius-card);
+    background: var(--card);
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    backdrop-filter: blur(16px);
+  }
+  .card-title { min-width: 0; }
+  .card-title h1 { margin: 0; font-size: 16px; font-weight: 660; letter-spacing: -0.015em; }
+  .card-title p { margin: 2px 0 0; color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-body { flex: 1; min-height: 0; overflow: auto; padding: 22px 24px 34px; }
+  .page { max-width: 760px; margin: 0 auto; }
+  .section-head { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+  .section-head h2 { margin: 0; font-size: 13px; font-weight: 650; }
+  .section-head .hint { margin: 0; }
+  .stack { display: flex; flex-direction: column; }
+
+  .hint { color: var(--text-muted); font-size: 12.5px; line-height: 1.45; margin: 0 0 12px; }
+  .hint.tight { margin: 0; }
+  .note { color: var(--warn); background: var(--warn-soft); border-radius: 8px; padding: 9px 11px; font-size: 12.5px; margin-top: 10px; }
+  .err { color: var(--danger); font-size: 12.5px; margin-top: 10px; min-height: 17px; }
+  .field { margin: 0 0 16px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; color: var(--text-muted); font-size: 12px; font-weight: 550; margin: 0 0 6px; }
   input, select {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    color: var(--ink);
-    padding: 9px 11px;
-    font: inherit;
+    width: 100%; height: 34px; padding: 0 11px; border-radius: 8px;
+    border: 1px solid var(--divider); background: var(--card); color: var(--text);
+    outline: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
   }
-  input:focus, select:focus { outline: none; border-color: var(--accent-dim); }
-  input.mono { font-family: var(--mono); font-size: 13px; }
-  button {
-    background: var(--accent);
-    color: #06210f;
-    border: 0;
-    border-radius: 7px;
-    padding: 9px 15px;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
+  html[data-theme="dark"] input, html[data-theme="dark"] select, html:not([data-theme="light"]) input { box-shadow: none; }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  input.mono { font-family: var(--mono); font-size: 12.5px; }
+  .control-row { display: flex; gap: 8px; align-items: center; }
+  .control-row > input, .control-row > select { flex: 1; min-width: 0; }
+  .actions { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 16px; }
+  button.btn, button.ghost, button.danger, a.ghost {
+    height: 32px; padding: 0 13px; border-radius: 8px; border: 1px solid transparent;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap;
   }
-  button:hover { filter: brightness(1.08); }
-  button.ghost {
-    background: transparent;
-    color: var(--ink);
-    border: 1px solid var(--line);
-    font-weight: 500;
-  }
-  button.ghost:hover { border-color: var(--dim); filter: none; }
-  button.danger { background: transparent; color: var(--danger); border: 1px solid var(--line); font-weight: 500; }
-  button.danger:hover { border-color: var(--danger); filter: none; }
-  button:disabled { opacity: .45; cursor: not-allowed; }
-  .row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
-  .row > .grow { flex: 1; min-width: 180px; }
-  .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); font-size: 14px; }
-  th { color: var(--dim); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
-  td.mono { font-family: var(--mono); font-size: 13px; }
-  .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); }
-  .pill.on { color: var(--accent); border-color: var(--accent-dim); }
-  .empty { color: var(--dim); font-size: 14px; padding: 12px 0; }
+  button.btn { background: var(--accent); color: var(--accent-ink); }
+  button.btn:hover { filter: brightness(1.05); }
+  button.ghost, a.ghost { background: var(--chip); color: var(--text); border-color: transparent; font-weight: 550; }
+  button.ghost:hover, a.ghost:hover { background: var(--chip); background: color-mix(in srgb, var(--chip) 65%, var(--text) 8%); }
+  button.danger { background: transparent; color: var(--danger); border-color: var(--divider); font-weight: 550; }
+  button.danger:hover { background: var(--danger-soft); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+  button:disabled, a.ghost[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+  .wide { width: 100%; }
+
+  .list { background: var(--chip); border-radius: 12px; padding: 4px 0; overflow: hidden; }
+  .row-item { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 8px 14px; border-bottom: 1px solid var(--row-divider); }
+  .row-item:last-child { border-bottom: 0; }
+  .row-item .grow { flex: 1; min-width: 0; }
+  .row-title { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-sub { color: var(--text-muted); font-family: var(--mono); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-end { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .empty { color: var(--text-faint); font-size: 13px; padding: 15px 14px; }
   .secret {
-    font-family: var(--mono);
-    font-size: 13px;
-    background: var(--panel-2);
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    padding: 10px 12px;
-    word-break: break-all;
-    margin-top: 8px;
-  }
-  .note {
-    font-size: 13px;
-    color: var(--warn);
-    margin-top: 10px;
-  }
-  .err { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 18px; }
-  code, pre {
-    font-family: var(--mono);
-    font-size: 12.5px;
+    font-family: var(--mono); font-size: 12.5px; background: var(--chip); border-radius: 9px;
+    padding: 10px 12px; word-break: break-all; margin-top: 8px; color: var(--text);
   }
   pre {
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    padding: 12px;
-    overflow-x: auto;
-    margin: 8px 0 0;
-    color: var(--dim);
+    background: var(--chip);
+    background: color-mix(in srgb, var(--sidebar) 68%, var(--card));
+    border: 1px solid var(--divider); border-radius: 10px; padding: 13px 14px;
+    margin: 10px 0 0; overflow: auto; color: var(--text-muted);
+    font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
   }
-  .muted { color: var(--dim); }
-  a { color: var(--accent); }
+  .divider { height: 1px; background: var(--divider); margin: 22px 0; }
+
+  /* ── logs: a list and a terminal-like viewer ──────────────────────────── */
+  .log-layout { display: grid; grid-template-columns: minmax(190px, 0.8fr) minmax(0, 1.7fr); gap: 12px; align-items: start; min-height: 420px; }
+  .log-list { background: var(--chip); border-radius: 12px; padding: 4px 0; overflow: auto; max-height: 560px; align-self: start; }
+  .log-row {
+    width: 100%; border: 0; background: transparent; text-align: left; display: flex; flex-direction: column;
+    gap: 2px; padding: 9px 12px; border-bottom: 1px solid var(--row-divider); color: var(--text);
+  }
+  .log-row:last-child { border-bottom: 0; }
+  .log-row:hover { background: var(--chip); background: color-mix(in srgb, var(--chip) 50%, var(--text) 5%); }
+  .log-row.is-on { background: var(--card); box-shadow: 0 0 0 0.5px var(--divider); }
+  .log-row:disabled { cursor: default; opacity: 0.62; }
+  .log-row:disabled:hover { background: transparent; }
+  .log-row .row-title { display: flex; align-items: center; gap: 7px; }
+  .log-row .row-meta { color: var(--text-faint); font-size: 11px; }
+  .log-viewer { min-width: 0; display: flex; flex-direction: column; background: var(--chip); border-radius: 12px; overflow: hidden; }
+  .log-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--row-divider); }
+  .log-head .grow { flex: 1; min-width: 0; }
+  .log-head .name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .log-head .meta { color: var(--text-faint); font-size: 11px; }
+  .log-body { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; }
+  #log-view {
+    margin: 0; padding: 0; border: 0; background: transparent; border-radius: 0;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.6; color: var(--text-muted);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .log-empty { display: grid; place-items: center; height: 100%; min-height: 220px; color: var(--text-faint); font-size: 13px; text-align: center; padding: 20px; }
+
+  @media (max-width: 760px) {
+    body { overflow: auto; }
+    .shell { grid-template-columns: 1fr; height: auto; min-height: 100%; }
+    .rail { border-radius: 12px; padding: 10px; }
+    .rail-head { padding-bottom: 10px; flex-direction: row; align-items: center; }
+    .rail-head .host { display: none; }
+    .nav { flex-direction: row; overflow-x: auto; }
+    .nav-item { width: auto; white-space: nowrap; }
+    .rail-foot { flex-direction: row; align-items: center; padding: 8px 4px 0; }
+    .rail-foot .who { flex: 1; }
+    .rail-foot .icon-btn { align-self: center; }
+    .rail-foot .wide { width: auto; }
+    .workspace { min-height: 70vh; }
+    .card-head { padding: 0 16px; }
+    .card-body { padding: 18px 16px 28px; }
+    .log-layout { grid-template-columns: 1fr; }
+    .log-list { max-height: 220px; }
+    .log-viewer { min-height: 340px; }
+    .auth { padding: 14px; }
+    .auth-card { padding: 24px 22px; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>term-fleet <span class="dot">●</span> relay</h1>
-    <span class="host" id="host"></span>
+
+<!-- first run / sign in: one card on the wash -->
+<div id="auth" class="auth" hidden>
+  <div class="auth-top">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+      </span>
+      <span class="brand-name">term-fleet <span>relay</span></span>
+    </div>
     <span class="spacer"></span>
-    <span class="host" id="who"></span>
-  </header>
+    <button class="icon-btn" id="theme-auth" type="button" title="Toggle appearance" aria-label="Toggle appearance">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+  </div>
 
-  <!-- first run -->
-  <section id="setup" hidden>
-    <div class="card">
-      <h2>Set up the relay</h2>
-      <p class="hint">One admin account guards this panel. It hands out shell credentials, so keep it to yourself.</p>
-      <label for="s-user">Admin name</label>
-      <input id="s-user" autocomplete="username" placeholder="carl">
-      <label for="s-pass">Password</label>
-      <input id="s-pass" type="password" autocomplete="new-password" placeholder="at least 8 characters">
-      <label for="s-pass2">Repeat password</label>
-      <input id="s-pass2" type="password" autocomplete="new-password">
-      <div class="actions"><button id="s-go">Create and sign in</button></div>
+  <main class="auth-stage">
+    <section id="setup" class="auth-card" hidden>
+      <h1>Set up the relay</h1>
+      <p>One admin account guards this panel. It hands out shell credentials, so keep it to yourself.</p>
+      <div class="field">
+        <label for="s-user">Admin name</label>
+        <input id="s-user" autocomplete="username" placeholder="carl">
+      </div>
+      <div class="field">
+        <label for="s-pass">Password</label>
+        <input id="s-pass" type="password" autocomplete="new-password" placeholder="at least 8 characters">
+      </div>
+      <div class="field">
+        <label for="s-pass2">Repeat password</label>
+        <input id="s-pass2" type="password" autocomplete="new-password">
+      </div>
+      <div class="actions"><button class="btn" id="s-go" type="button">Create and sign in</button></div>
       <div class="err" id="s-err"></div>
-    </div>
-  </section>
+    </section>
 
-  <!-- login -->
-  <section id="login" hidden>
-    <div class="card">
-      <h2>Sign in</h2>
-      <p class="hint">This relay is already set up.</p>
-      <label for="l-user">Admin name</label>
-      <input id="l-user" autocomplete="username">
-      <label for="l-pass">Password</label>
-      <input id="l-pass" type="password" autocomplete="current-password">
-      <div class="actions"><button id="l-go">Sign in</button></div>
+    <section id="login" class="auth-card" hidden>
+      <h1>Welcome back</h1>
+      <p>This relay is already set up. Sign in to manage its machines and access.</p>
+      <div class="field">
+        <label for="l-user">Admin name</label>
+        <input id="l-user" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="l-pass">Password</label>
+        <input id="l-pass" type="password" autocomplete="current-password">
+      </div>
+      <div class="actions"><button class="btn" id="l-go" type="button">Sign in</button></div>
       <div class="err" id="l-err"></div>
-    </div>
-  </section>
+    </section>
+  </main>
 
-  <!-- dashboard -->
-  <section id="app" hidden>
-    <div class="card">
-      <h2>Machines</h2>
-      <p class="hint">Each machine here runs <code>tfd</code>. Its credentials are what let it dial in.</p>
-      <div id="devices"></div>
-      <div class="row" style="margin-top:16px">
-        <div class="grow">
-          <label for="d-name">Add a machine</label>
-          <input id="d-name" placeholder="mac-mini, work-laptop, …">
-        </div>
-        <button id="d-go">Generate credentials</button>
-      </div>
-      <div id="d-out"></div>
-      <div class="err" id="d-err"></div>
-    </div>
+  <footer class="auth-foot">
+    <span class="mono" id="auth-host"></span>
+    <span>Admin panel</span>
+  </footer>
+</div>
 
-    <div class="card">
-      <h2>Browser &amp; phone access</h2>
-      <p class="hint">This is the token you paste into <span class="mono">/termfleet/</span> to view the fleet. Everyone who views shares it.</p>
-      <div class="row">
-        <div class="grow">
-          <input id="t-val" class="mono" readonly type="password">
-        </div>
-        <button class="ghost" id="t-show">Reveal</button>
-        <button class="ghost" id="t-copy">Copy</button>
+<!-- the dashboard -->
+<div id="app" class="shell" hidden>
+  <aside class="rail">
+    <div class="rail-head">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></svg>
+        </span>
+        <span class="brand-name">term-fleet <span>relay</span></span>
       </div>
-      <div class="hint" id="t-expiry"></div>
-      <div class="row">
-        <div class="grow">
-          <label for="t-ttl">Lifetime of the next token</label>
-          <select id="t-ttl">
-            <option value="">24 hours</option>
-            <option value="1h">1 hour</option>
-            <option value="6h">6 hours</option>
-            <option value="24h">24 hours</option>
-            <option value="7d">7 days</option>
-            <option value="30d">30 days</option>
-            <option value="never">Never expires</option>
-          </select>
-        </div>
-        <button class="danger" id="t-rotate">Generate new token</button>
-      </div>
-      <div class="note" id="t-note" hidden>Generating a new token signs everyone out. Open viewers must paste the new one.</div>
-      <div class="err" id="t-err"></div>
+      <div class="host" id="host"></div>
     </div>
 
-    <div class="card">
-      <h2>Connect a machine</h2>
-      <p class="hint">Run this on the machine you just added. The CA file is what lets it trust this relay's TLS.</p>
-      <div class="row">
-        <div class="grow">
-          <label for="c-url">Relay address</label>
-          <input id="c-url" class="mono" readonly>
-        </div>
-        <button class="ghost" id="c-copy">Copy</button>
-        <button class="ghost" id="c-ca">Download CA</button>
-      </div>
-      <pre id="c-cmd"></pre>
-    </div>
+    <nav class="nav" aria-label="Relay sections">
+      <button class="nav-item is-on" data-page="machines" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+        <span>Machines</span>
+      </button>
+      <button class="nav-item" data-page="access" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="4"/><path d="m11 11 9 9M17 17l2-2M14 14l2-2"/></svg>
+        <span>Access</span>
+      </button>
+      <button class="nav-item" data-page="connect" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>
+        <span>Connect</span>
+      </button>
+      <button class="nav-item" data-page="logs" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16M4 12h16M4 19h10"/></svg>
+        <span>Logs</span>
+      </button>
+      <button class="nav-item" data-page="account" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+        <span>Account</span>
+      </button>
+    </nav>
 
-    <div class="card">
-      <h2>Account</h2>
-      <p class="hint">Signed in as <span id="a-user" class="mono"></span>.</p>
-      <label for="p-old">Current password</label>
-      <input id="p-old" type="password" autocomplete="current-password">
-      <label for="p-new">New password</label>
-      <input id="p-new" type="password" autocomplete="new-password">
-      <div class="actions">
-        <button id="p-go">Change password</button>
-        <button class="ghost" id="out">Sign out</button>
-      </div>
-      <div class="err" id="p-err"></div>
+    <div class="rail-foot">
+      <div class="who" id="who"></div>
+      <button class="ghost wide" id="out" type="button">Sign out</button>
+      <button class="icon-btn" id="theme-app" type="button" title="Toggle appearance" aria-label="Toggle appearance">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
     </div>
-  </section>
+  </aside>
+
+  <main class="workspace">
+    <div class="card">
+      <header class="card-head">
+        <div class="card-title">
+          <h1 id="page-title">Machines</h1>
+          <p id="page-sub">Machines enrolled with this relay.</p>
+        </div>
+      </header>
+
+      <div class="card-body">
+        <section class="page" id="page-machines">
+          <div class="section-head"><h2>Enrolled machines</h2></div>
+          <p class="hint">Each machine here runs <code>tfd</code>. Its credentials are what let it dial in.</p>
+          <div id="devices" class="list"></div>
+          <div class="divider"></div>
+          <div class="field">
+            <label for="d-name">Add a machine</label>
+            <div class="control-row">
+              <input id="d-name" placeholder="mac-mini, work-laptop, …">
+              <button class="btn" id="d-go" type="button">Generate credentials</button>
+            </div>
+          </div>
+          <div id="d-out"></div>
+          <div class="err" id="d-err"></div>
+        </section>
+
+        <section class="page" id="page-access" hidden>
+          <div class="section-head"><h2>Client token</h2></div>
+          <p class="hint">This is the token you paste into <span class="mono">/termfleet/</span> to view the fleet. Everyone who views shares it.</p>
+          <div class="field">
+            <div class="control-row">
+              <input id="t-val" class="mono" readonly type="password">
+              <button class="ghost" id="t-show" type="button">Reveal</button>
+              <button class="ghost" id="t-copy" type="button">Copy</button>
+            </div>
+            <div class="hint" id="t-expiry" style="margin-top:8px"></div>
+          </div>
+          <div class="divider"></div>
+          <div class="field">
+            <label for="t-ttl">Lifetime of the next token</label>
+            <div class="control-row">
+              <select id="t-ttl">
+                <option value="">24 hours</option>
+                <option value="1h">1 hour</option>
+                <option value="6h">6 hours</option>
+                <option value="24h">24 hours</option>
+                <option value="7d">7 days</option>
+                <option value="30d">30 days</option>
+                <option value="never">Never expires</option>
+              </select>
+              <button class="danger" id="t-rotate" type="button">Generate new token</button>
+            </div>
+            <div class="note" id="t-note" hidden>Generating a new token signs everyone out. Open viewers must paste the new one.</div>
+            <div class="err" id="t-err"></div>
+          </div>
+        </section>
+
+        <section class="page" id="page-connect" hidden>
+          <div class="section-head"><h2>Connect a machine</h2></div>
+          <p class="hint">Run this on the machine you just added. The CA file is what lets it trust this relay's TLS.</p>
+          <div class="field">
+            <label for="c-url">Relay address</label>
+            <div class="control-row">
+              <input id="c-url" class="mono" readonly>
+              <button class="ghost" id="c-copy" type="button">Copy</button>
+              <button class="ghost" id="c-ca" type="button">Download CA</button>
+            </div>
+          </div>
+          <pre id="c-cmd"></pre>
+        </section>
+
+        <section class="page" id="page-logs" hidden>
+          <div class="section-head">
+            <h2>Machine logs</h2>
+            <span class="spacer"></span>
+            <button class="ghost" id="logs-refresh" type="button">Refresh</button>
+          </div>
+          <p class="hint">Each machine pushes the tail of its diagnostic log every 30 seconds. The newest report is kept here, so a problem can be read without opening a terminal on that machine.</p>
+          <div class="log-layout">
+            <div id="logs-list" class="log-list"><div class="empty" id="logs-empty">No machine has sent a log yet.</div></div>
+            <div class="log-viewer">
+              <div class="log-head">
+                <div class="grow">
+                  <div class="name" id="log-name">Select a machine</div>
+                  <div class="meta" id="log-meta"></div>
+                </div>
+                <a class="ghost" id="log-download" aria-disabled="true" href="#">Download</a>
+                <button class="danger" id="log-clear" type="button" disabled>Forget</button>
+              </div>
+              <div class="log-body">
+                <div class="log-empty" id="log-empty">The log of a machine appears here once it has reported.</div>
+                <pre id="log-view" hidden></pre>
+              </div>
+            </div>
+          </div>
+          <div class="err" id="logs-err"></div>
+        </section>
+
+        <section class="page" id="page-account" hidden>
+          <div class="section-head"><h2>Account</h2></div>
+          <p class="hint">Signed in as <span id="a-user" class="mono"></span>.</p>
+          <div class="field">
+            <label for="p-old">Current password</label>
+            <input id="p-old" type="password" autocomplete="current-password">
+          </div>
+          <div class="field">
+            <label for="p-new">New password</label>
+            <input id="p-new" type="password" autocomplete="new-password">
+          </div>
+          <div class="actions">
+            <button class="btn" id="p-go" type="button">Change password</button>
+          </div>
+          <div class="err" id="p-err"></div>
+        </section>
+      </div>
+    </div>
+  </main>
 </div>
 
 <script>
@@ -239,6 +528,22 @@
   // prefix (a proxy in front) without knowing what that prefix is.
   var BASE = location.pathname.replace(/\/+$/, "") + "/";
   var $ = function (id) { return document.getElementById(id); };
+  var state = {
+    relayUrl: "",
+    ca: false,
+    username: "",
+    page: "machines",
+    logs: [],
+    logID: "",
+    hideTimer: 0
+  };
+  var PAGES = {
+    machines: ["Machines", "Machines enrolled with this relay."],
+    access: ["Access", "The client token browsers and phones present."],
+    connect: ["Connect", "What to run on a machine you just enrolled."],
+    logs: ["Logs", "Diagnostic tails pushed by the machines."],
+    account: ["Account", "The one admin account that guards this panel."]
+  };
 
   function api(path, opts) {
     opts = opts || {};
@@ -251,16 +556,23 @@
       });
     });
   }
-  function show(id) {
-    ["setup", "login", "app"].forEach(function (s) { $(s).hidden = (s !== id); });
-  }
   function text(el, s) { el.textContent = s == null ? "" : s; }
+
+  function show(id) {
+    var auth = id === "setup" || id === "login";
+    $("auth").hidden = !auth;
+    $("app").hidden = id !== "app";
+    $("setup").hidden = id !== "setup";
+    $("login").hidden = id !== "login";
+    if (id === "app") { go(state.page); }
+  }
 
   function copy(value, btn) {
     var label = btn.textContent;
     function done(ok) {
       btn.textContent = ok ? "Copied" : "Copy failed";
-      setTimeout(function () { btn.textContent = label; }, 1400);
+      clearTimeout(state.hideTimer);
+      state.hideTimer = setTimeout(function () { btn.textContent = label; }, 1400);
     }
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(value).then(function () { done(true); }, function () { done(false); });
@@ -274,7 +586,94 @@
     }
   }
 
-  var state = { relayUrl: "", ca: false };
+  // ── appearance ──────────────────────────────────────────────────────────
+  function applyTheme(theme) {
+    if (theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+    }
+    try {
+      if (theme) localStorage.setItem("tf-admin-theme", theme);
+      else localStorage.removeItem("tf-admin-theme");
+    } catch (e) { /* private mode: the choice lasts this page only */ }
+  }
+  function toggleTheme() {
+    var now = document.documentElement.getAttribute("data-theme");
+    if (!now) {
+      var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      applyTheme(dark ? "light" : "dark");
+    } else {
+      applyTheme(now === "dark" ? "light" : "dark");
+    }
+  }
+  try {
+    var saved = localStorage.getItem("tf-admin-theme");
+    if (saved) applyTheme(saved);
+  } catch (e) { /* no storage: follow the system */ }
+  $("theme-auth").onclick = toggleTheme;
+  $("theme-app").onclick = toggleTheme;
+
+  // ── section navigation ──────────────────────────────────────────────────
+  var navItems = [];
+  function go(page) {
+    if (!PAGES[page]) page = "machines";
+    state.page = page;
+    var meta = PAGES[page];
+    text($("page-title"), meta[0]);
+    text($("page-sub"), meta[1]);
+    for (var i = 0; i < navItems.length; i++) {
+      var item = navItems[i];
+      item.classList.toggle("is-on", item.getAttribute("data-page") === page);
+      var target = $("page-" + item.getAttribute("data-page"));
+      target.hidden = item.getAttribute("data-page") !== page;
+    }
+    if (page === "logs") { loadLogs(); }
+  }
+  (function () {
+    var nodes = document.querySelectorAll(".nav-item");
+    for (var i = 0; i < nodes.length; i++) {
+      (function (item) {
+        navItems.push(item);
+        item.onclick = function () { go(item.getAttribute("data-page")); };
+      })(nodes[i]);
+    }
+  })();
+
+  // ── machines ────────────────────────────────────────────────────────────
+  function deviceRow(d) {
+    var row = document.createElement("div");
+    row.className = "row-item";
+    var dot = document.createElement("span");
+    dot.className = "pill " + (d.online ? "on" : "off");
+    dot.textContent = d.online ? "online" : "offline";
+    var grow = document.createElement("div");
+    grow.className = "grow";
+    var title = document.createElement("div");
+    title.className = "row-title";
+    title.textContent = d.name || "unnamed machine";
+    var sub = document.createElement("div");
+    sub.className = "row-sub";
+    sub.textContent = d.id + (d.addedAt ? "  ·  added " + String(d.addedAt).slice(0, 10) : "");
+    grow.appendChild(title);
+    grow.appendChild(sub);
+    var end = document.createElement("div");
+    end.className = "row-end";
+    var rm = document.createElement("button");
+    rm.className = "danger";
+    rm.type = "button";
+    rm.textContent = "Revoke";
+    rm.onclick = function () {
+      if (!confirm("Revoke " + (d.name || d.id) + "? It loses access immediately.")) return;
+      api("devices/revoke", { method: "POST", body: JSON.stringify({ id: d.id }) })
+        .then(refresh).catch(function (e) { text($("d-err"), e.message); });
+    };
+    end.appendChild(rm);
+    row.appendChild(dot);
+    row.appendChild(grow);
+    row.appendChild(end);
+    return row;
+  }
 
   function renderDevices(devices) {
     var box = $("devices");
@@ -286,44 +685,14 @@
       box.appendChild(p);
       return;
     }
-    var table = document.createElement("table");
-    var head = document.createElement("tr");
-    ["Name", "Machine id", "Status", "Added", ""].forEach(function (h) {
-      var th = document.createElement("th"); th.textContent = h; head.appendChild(th);
-    });
-    table.appendChild(head);
-    devices.forEach(function (d) {
-      var tr = document.createElement("tr");
-      var name = document.createElement("td"); name.textContent = d.name || "—";
-      var id = document.createElement("td"); id.className = "mono"; id.textContent = d.id;
-      var st = document.createElement("td");
-      var pill = document.createElement("span");
-      pill.className = "pill" + (d.online ? " on" : "");
-      pill.textContent = d.online ? "online" : "offline";
-      st.appendChild(pill);
-      var added = document.createElement("td");
-      added.className = "muted";
-      added.textContent = d.addedAt ? d.addedAt.slice(0, 10) : "—";
-      var act = document.createElement("td");
-      var rm = document.createElement("button");
-      rm.className = "danger"; rm.textContent = "Revoke";
-      rm.onclick = function () {
-        if (!confirm("Revoke " + (d.name || d.id) + "? It loses access immediately.")) return;
-        api("devices/revoke", { method: "POST", body: JSON.stringify({ id: d.id }) })
-          .then(refresh).catch(function (e) { text($("d-err"), e.message); });
-      };
-      act.appendChild(rm);
-      [name, id, st, added, act].forEach(function (c) { tr.appendChild(c); });
-      table.appendChild(tr);
-    });
-    box.appendChild(table);
+    devices.forEach(function (d) { box.appendChild(deviceRow(d)); });
   }
 
   function refresh() {
     return api("devices").then(function (body) { renderDevices(body.devices || []); });
   }
 
-  // token lifetime, in the words an operator would use
+  // ── token ───────────────────────────────────────────────────────────────
   function humanDur(secs) {
     if (secs <= 0) return "0m";
     var m = Math.floor(secs / 60), h = Math.floor(m / 60), d = Math.floor(h / 24);
@@ -346,9 +715,150 @@
       (b.defaultTTLSeconds > 0 ? humanDur(b.defaultTTLSeconds) : "Never expires") + " (default)";
   }
 
+  // ── logs ────────────────────────────────────────────────────────────────
+  function relTime(iso) {
+    if (!iso) return "";
+    var then = new Date(iso).getTime();
+    if (!Number.isFinite(then)) return "";
+    var d = Math.max(0, Date.now() - then);
+    if (d < 60e3) return "just now";
+    if (d < 3600e3) return Math.floor(d / 60e3) + "m ago";
+    if (d < 86400e3) return Math.floor(d / 3600e3) + "h ago";
+    return new Date(iso).toLocaleString();
+  }
+  function humanBytes(n) {
+    if (!n) return "0 B";
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+    return (n / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function logRow(item) {
+    var row = document.createElement("button");
+    row.type = "button";
+    row.className = "log-row" + (item.id === state.logID ? " is-on" : "");
+    var title = document.createElement("span");
+    title.className = "row-title";
+    var name = document.createElement("span");
+    name.textContent = item.name || item.id;
+    title.appendChild(name);
+    if (!item.online) {
+      var off = document.createElement("span");
+      off.className = "pill off";
+      off.style.height = "18px";
+      off.textContent = "offline";
+      title.appendChild(off);
+    }
+    var meta = document.createElement("span");
+    meta.className = "row-meta";
+    meta.textContent = (item.lines || 0) + " lines · " + humanBytes(item.bytes || 0) +
+      (item.updatedAt ? " · " + relTime(item.updatedAt) : " · never reported");
+    row.appendChild(title);
+    row.appendChild(meta);
+    if (!(item.lines || 0)) {
+      row.disabled = true;
+      row.title = "This machine has not pushed a report yet.";
+    } else {
+      row.onclick = function () { loadLog(item.id); };
+    }
+    return row;
+  }
+
+  function renderLogs() {
+    var box = $("logs-list");
+    box.textContent = "";
+    if (!state.logs.length) {
+      var empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No machine has sent a log yet.";
+      box.appendChild(empty);
+      return;
+    }
+    state.logs.forEach(function (item) { box.appendChild(logRow(item)); });
+  }
+
+  function loadLogs() {
+    return api("logs").then(function (body) {
+      state.logs = body.logs || [];
+      renderLogs();
+      if (!state.logs.length) {
+        state.logID = "";
+        showLogEmpty("The log of a machine appears here once it has reported.");
+        return;
+      }
+      var still = state.logs.some(function (x) { return x.id === state.logID; });
+      if (!still) {
+        var reported = null;
+        for (var i = 0; i < state.logs.length; i++) {
+          if ((state.logs[i].lines || 0) > 0) { reported = state.logs[i]; break; }
+        }
+        state.logID = reported ? reported.id : "";
+      }
+      renderLogs();
+      if (state.logID) return loadLog(state.logID);
+      showLogEmpty("Select a machine with a report to read its log.");
+    }).catch(function (e) { text($("logs-err"), e.message); });
+  }
+
+  function showLogEmpty(message) {
+    text($("log-name"), "Select a machine");
+    text($("log-meta"), "");
+    $("log-view").hidden = true;
+    text($("log-view"), "");
+    text($("log-empty"), message);
+    $("log-empty").hidden = false;
+    $("log-download").setAttribute("aria-disabled", "true");
+    $("log-download").removeAttribute("href");
+    $("log-clear").disabled = true;
+  }
+
+  function loadLog(id) {
+    state.logID = id;
+    text($("logs-err"), "");
+    renderLogs();
+    return api("logs/view?id=" + encodeURIComponent(id)).then(function (entry) {
+      var item = null;
+      for (var i = 0; i < state.logs.length; i++) {
+        if (state.logs[i].id === id) { item = state.logs[i]; break; }
+      }
+      text($("log-name"), (item && item.name) || id);
+      var bits = [];
+      if (item) {
+        if (item.version) bits.push(item.version);
+        if (item.platform) bits.push(item.platform + "/" + (item.arch || "?"));
+        if (item.level) bits.push(item.level);
+        bits.push((item.lines || 0) + " lines");
+        bits.push(humanBytes(item.bytes || 0));
+        if (item.updatedAt) bits.push("updated " + relTime(item.updatedAt));
+      }
+      text($("log-meta"), bits.join(" · "));
+      $("log-empty").hidden = true;
+      $("log-view").hidden = false;
+      text($("log-view"), (entry.lines || []).join("\n"));
+      var dl = $("log-download");
+      dl.removeAttribute("aria-disabled");
+      dl.href = BASE + "api/logs/download?id=" + encodeURIComponent(id);
+      $("log-clear").disabled = false;
+    }).catch(function (e) {
+      text($("logs-err"), e.message);
+      showLogEmpty(e.message);
+    });
+  }
+
+  $("logs-refresh").onclick = function () { loadLogs(); };
+  $("log-clear").onclick = function () {
+    if (!state.logID) return;
+    if (!confirm("Forget the log this panel holds for that machine? The machine keeps its own file.")) return;
+    api("logs/clear", { method: "POST", body: JSON.stringify({ id: state.logID }) })
+      .then(function () { state.logID = ""; return loadLogs(); })
+      .catch(function (e) { text($("logs-err"), e.message); });
+  };
+
+  // ── dashboard ───────────────────────────────────────────────────────────
   function loadDashboard(st) {
     state.relayUrl = st.relayUrl || "";
     state.ca = !!st.ca;
+    state.username = st.username || "";
     text($("who"), st.username ? ("signed in as " + st.username) : "");
     text($("a-user"), st.username || "");
     $("c-url").value = state.relayUrl;
@@ -371,14 +881,18 @@
   function start() {
     api("state").then(function (st) {
       text($("host"), st.host || "");
+      text($("auth-host"), st.host || "");
       if (!st.configured) { show("setup"); return; }
       if (!st.authenticated) { show("login"); return; }
       show("app");
       loadDashboard(st);
-    }).catch(function (e) { text($("host"), e.message); });
+    }).catch(function (e) {
+      text($("host"), e.message);
+      text($("auth-host"), e.message);
+    });
   }
 
-  // setup
+  // ── setup ───────────────────────────────────────────────────────────────
   $("s-go").onclick = function () {
     text($("s-err"), "");
     var u = $("s-user").value.trim(), p = $("s-pass").value, p2 = $("s-pass2").value;
@@ -387,7 +901,7 @@
       .then(start).catch(function (e) { text($("s-err"), e.message); });
   };
 
-  // login
+  // ── login ───────────────────────────────────────────────────────────────
   function login() {
     text($("l-err"), "");
     api("login", { method: "POST", body: JSON.stringify({ username: $("l-user").value.trim(), password: $("l-pass").value }) })
@@ -396,7 +910,7 @@
   $("l-go").onclick = login;
   $("l-pass").onkeydown = function (e) { if (e.key === "Enter") login(); };
 
-  // enroll
+  // ── enroll ──────────────────────────────────────────────────────────────
   $("d-go").onclick = function () {
     text($("d-err"), "");
     var name = $("d-name").value.trim();
@@ -406,7 +920,6 @@
       var out = $("d-out");
       out.textContent = "";
       var wrapEl = document.createElement("div");
-
       var label = document.createElement("div");
       label.className = "note";
       label.textContent = "Shown once. Paste it into the machine now; it cannot be read back.";
@@ -417,10 +930,9 @@
       secLine.className = "secret";
       secLine.textContent = "device-secret " + b.secret;
       var btn = document.createElement("button");
-      btn.className = "ghost"; btn.style.marginTop = "10px";
+      btn.className = "ghost"; btn.type = "button"; btn.style.marginTop = "10px";
       btn.textContent = "Copy both";
       btn.onclick = function () { copy("device-id " + b.id + "\ndevice-secret " + b.secret, btn); };
-
       wrapEl.appendChild(label);
       wrapEl.appendChild(idLine);
       wrapEl.appendChild(secLine);
@@ -430,7 +942,7 @@
     }).catch(function (e) { text($("d-err"), e.message); });
   };
 
-  // token
+  // ── token actions ───────────────────────────────────────────────────────
   $("t-show").onclick = function () {
     var f = $("t-val");
     var reveal = f.type === "password";
@@ -449,11 +961,11 @@
       }).catch(function (e) { text($("t-err"), e.message); });
   };
 
-  // connect
+  // ── connect ─────────────────────────────────────────────────────────────
   $("c-copy").onclick = function () { copy($("c-url").value, this); };
   $("c-ca").onclick = function () { window.location.href = BASE + "ca.pem"; };
 
-  // account
+  // ── account ─────────────────────────────────────────────────────────────
   $("p-go").onclick = function () {
     text($("p-err"), "");
     api("password", { method: "POST", body: JSON.stringify({ current: $("p-old").value, next: $("p-new").value }) })
@@ -465,6 +977,12 @@
   $("out").onclick = function () {
     api("logout", { method: "POST", body: "{}" }).then(start).catch(start);
   };
+
+  // Keep the log list warm while it is the page on screen: a machine that has
+  // just pushed a report should appear without the operator hunting for refresh.
+  setInterval(function () {
+    if (!$("app").hidden && state.page === "logs") { loadLogs(); }
+  }, 20000);
 
   start();
 })();

@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
@@ -82,11 +83,11 @@ type window struct {
 	tabs     map[int]*tab
 	selected int
 
-	// split is the body's tree of panes when the shells on screen are split,
-	// and nil when the body is the one pane the strip selects — the ordinary
-	// case, and the one every path below keeps when there is no split. focus is
-	// the leaf of that tree the window acts on; it is a leaf whenever split is
-	// not nil. See split.go.
+	// split is the active workspace's tree of panes, and nil when the body is
+	// the one pane the strip selects — the ordinary case, and the one every path
+	// below keeps when there is no split. focus is the leaf of that tree the
+	// window acts on; it is a leaf whenever split is not nil. ws is the workspace
+	// those pointers belong to. See split.go.
 	split *splitNode
 	focus *splitNode
 	ws    *workspace
@@ -476,10 +477,29 @@ func (w *window) noLinkReason(machine string) string {
 	return locales.AppNoClientToken()
 }
 
+// machineOnline is whether the roster says this machine answers right now.
+// This machine always does: its hub is in this process.
+//
+// It is what stops a session row left over from a machine that has gone from
+// opening a tab nothing can ever paint. The panel draws the last session list a
+// machine pushed, and that list stays after the machine leaves; a click on it is
+// a reasonable thing to do, so the answer has to be a sentence rather than a
+// white pane.
+func (w *window) machineOnline(machine string) bool {
+	if machine == "" || machine == machineLocal {
+		return true
+	}
+	m, ok := w.machineByID(machine)
+	return ok && m.Online
+}
+
 // linkFor is the link that speaks to a machine: this machine's own, or another
 // machine's through the relay.
 func (w *window) linkFor(machine string) *link {
 	if machine == machineLocal || machine == "" {
+		if w.local == nil {
+			return nil
+		}
 		return w.local.link
 	}
 	if l := w.remote[machine]; l != nil {
@@ -531,23 +551,20 @@ func (w *window) linkGone(reason string) {
 // followLease is what the window does about the shell on screen, and about the
 // ones that are not.
 //
-// A window drives what it is showing. Opening a tab on another machine takes
-// that shell's lease (see openTab), and this keeps the rule true as the screen
-// moves: a shell on another machine that leaves the screen is let go, so 切到本机
-// does not leave the far machine behind 正在被控制 with a keyboard that no longer
-// works — the hub hands a lease nobody holds to the machine the shell runs on,
-// which is how that machine's window gets its keyboard back — and the shell that
-// comes on screen is taken, so coming back to it drives it again without a click.
+// A window drives what it is showing, but the lease is not switched by looking:
+// the hub gives an unheld shell to the first client that attaches, so opening an
+// unheld tab on another machine makes this window its controller. It stays the
+// controller when the tab leaves the screen — release is manual (释放) or the
+// idle deadline's job, not a side effect of ⌘⇧] — which is why a far machine's
+// desktop can be left read-only until somebody hands the keyboard back.
 //
-// A shell of this machine's that nobody holds is claimed from here too: a holder
-// that lapsed, or a client that let go, must not leave this machine's own shell
-// mute. What it never takes is a shell of this machine's from another client that
-// holds it — that is 拿回控制权 in the pane, and it ends their session with this
-// machine's shell, so it stays a person's click. Another machine's shell it does
-// take, because reaching that machine is the consent, and the machine's own
-// window keeps the way back there. The taking happens on the way in rather than
-// every frame: two windows looking at the same shell would otherwise take it from
-// each other for as long as both looked.
+// What this function still does is claim a shell of this machine's that nobody
+// holds: a holder that lapsed, or a client that let go, must not leave this
+// machine's own shell mute. What it never takes is a shell of this machine's
+// from another client that holds it — that is 拿回控制权 in the pane, and it
+// ends that client's session with this machine's shell, so it stays a person's
+// click. The taking happens on the way in rather than every frame, so two
+// windows looking at the same shell cannot take it from each other forever.
 func (w *window) followLease() {
 	on := w.activeTab()
 
@@ -943,6 +960,16 @@ func (w *window) startLocalTab() *tab {
 // empty cwd and shell mean the far machine's own defaults, which is what a
 // person sitting at it would get.
 func (w *window) startTabOn(machine string) *tab {
+	// A shell asked for on a machine that is not there would be a tab with
+	// nothing in it and a create frame queued for a stream that never routes.
+	// The roster already knows; say so instead of opening the tab.
+	if !w.machineOnline(machine) {
+		w.linkNote = locales.AppMachineOffline(w.machineName(machine))
+		w.setNotice(w.linkNote)
+		w.invalidate()
+		diag.Infof("term", "shell not created: machine offline machine=%s", machine)
+		return nil
+	}
 	// Read before the tab is opened, for the same reason as the local one: the
 	// shell to follow is the one on screen until the new tab takes its place.
 	from, dir := w.followOn(machine)
@@ -1150,6 +1177,7 @@ func (w *window) mount(s protocol.Summary) error {
 func (w *window) openTab(machine, sessionID string) *tab {
 	l := w.linkTo(machine)
 	if l == nil {
+		diag.Warnf("term", "no link to open a tab on machine=%s session=%s: %s", machine, sessionID, w.noLinkReason(machine))
 		log.Printf("tfdesktop: no link to %s: %s", machine, w.noLinkReason(machine))
 		return nil
 	}
@@ -1174,6 +1202,10 @@ func (w *window) openTab(machine, sessionID string) *tab {
 	if machine != "" {
 		w.machineSel = machine
 	}
+	// The line a blank pane is reported against, opened and closed in one file:
+	// a tab on this machine, this session, at this size. Everything after it —
+	// attach sent, attached, first bytes, or a dropped frame — belongs to it.
+	diag.Infof("term", "tab open machine=%s session=%s wired=%t", machine, sessionID, l.online())
 	w.watchTab(tb, l, machine, sessionID)
 	return tb
 }
@@ -1209,6 +1241,7 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 	}
 	sess := newSession(sessionID, l, nil)
 	conn := newTermConn(sess)
+	conn.machine = machine
 	sess.handlers = tabHandlers{w: w, sess: sess, conn: conn}
 	term, err := terminal.New(terminal.Options{
 		Conn:    conn,
@@ -1222,7 +1255,13 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 		DarkTheme: terminalTheme(true),
 	})
 	if err != nil {
+		// The pane would be a white rectangle with no shell in it and no
+		// explanation, which is the exact failure this app must not produce
+		// silently. The log names it and the window says it once; the tab stays,
+		// because the engine may come up late and the attach is still valid.
+		diag.Errorf("term", "terminal view failed machine=%s session=%s: %v", machine, sessionID, err)
 		log.Printf("tfdesktop: terminal: %v", err)
+		w.setNotice(locales.AppTerminalUnavailable(err.Error()))
 	}
 	tb.term, tb.conn, tb.sess = term, conn, sess
 	tb.machine = machine
@@ -1231,12 +1270,28 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 
 	if sessionID != "" {
 		sess.bind(sessionID)
+		diag.Infof("term", "terminal ready machine=%s session=%s view=%t size=%s",
+			machine, sessionID, term != nil, tabSize(term))
 		l.attach(sessionID, 0)
 	} else {
 		// The hub's answer names this session; until it arrives the link holds
 		// the tab's place.
 		l.watch(sess)
 	}
+}
+
+// tabSize is a terminal view's own size for a log line, or "unlaid" before the
+// first frame has given it one. A view that is 0x0 when its replay arrives
+// draws nothing and then never repaints, so the number matters.
+func tabSize(term *terminal.Terminal) string {
+	if term == nil {
+		return "none"
+	}
+	cols, rows := term.Size()
+	if cols <= 0 || rows <= 0 {
+		return "unlaid"
+	}
+	return fmt.Sprintf("%dx%d", cols, rows)
 }
 
 // reattachMachineTabs gives the tabs watching machine a link again after the
@@ -1262,17 +1317,35 @@ func (w *window) reattachMachineTabs(machine string, l *link) {
 		if tb.sess == nil || tb.sess.link == l || !tb.sess.link.dead() {
 			continue
 		}
-		log.Printf("tfdesktop: re-attaching %s on %s after its link ended", tb.id, machine)
+		diag.Infof("term", "re-attach machine=%s session=%s reason=link ended", machine, tb.id)
 		w.watchTab(tb, l, machine, tb.id)
 	}
 }
 
-// removeTab takes a tab away. The shell is left alone: ending it is the hub's
-// job, so closing a tab here never takes the shell away from a browser still
-// attached to it. Nothing is sent — the hub forgets a watcher when its session
-// goes away, and a detach here would broadcast a session list that still holds
-// a shell that is on its way out, which the next frame would answer by opening
-// a tab for it.
+// closeTab is what every user-facing close does: the view goes and the session
+// is ended. A terminal tab and the shell behind it are one thing to the person
+// closing it, and a close that only stopped watching left a shell running that
+// they could not see — the one behaviour that made this client feel unlike a
+// terminal. Ending needs the lease, so kill claims it first, as 结束 always did.
+//
+// A tab whose shell has already ended, or one still waiting for its session id,
+// has nothing to end: it is only the view that goes.
+func (w *window) closeTab(tb *tab) {
+	if tb == nil {
+		return
+	}
+	if tb.id != "" && tb.alive {
+		w.kill(tb)
+	}
+	w.removeTab(tb)
+}
+
+// removeTab takes a tab away without touching its shell. It is the cleanup path
+// — a machine that went away, a session the hub no longer lists, a tab that was
+// already closed — not the user's close: closeTab ends the session first.
+// Nothing is sent here; the hub forgets a watcher when its session goes away,
+// and a detach would broadcast a session list that still holds a shell that is
+// on its way out.
 func (w *window) removeTab(tb *tab) {
 	key := -1
 	for k, t := range w.tabs {
@@ -1837,15 +1910,23 @@ func programName(path string) string {
 	return base
 }
 
-// close releases the terminal and detaches the view. The shell is left alone:
-// ending it is the hub's job, so that closing a tab here never takes the shell
-// away from a browser still attached to it.
+// close releases the terminal and detaches the view. It does not end the
+// session: the user-facing closeTab sends the end first, and the cleanup paths
+// (a lost machine, a session the roster dropped) need the view gone without
+// touching a shell somebody else may still be watching.
 func (t *tab) close() {
 	if t.term != nil {
 		_ = t.term.Close()
 	}
 	if t.conn != nil {
 		_ = t.conn.Close()
+	}
+	// The link keeps a session object per id, and a closed tab's must not stay
+	// there: the next tab on the same shell would register itself behind a
+	// closed conn, and the replay would be written to a terminal nobody draws.
+	// See (*link).watch, which takes over the id for the same reason.
+	if t.sess != nil {
+		t.sess.link.unwatchSession(t.sess)
 	}
 }
 
@@ -1901,5 +1982,16 @@ func (w *window) openSettings() {
 		w.settingsContent = newSettingsWindow(w, w.store, w.fleet)
 	}
 	w.settingsOpen = true
+	w.invalidate()
+}
+
+// openSettingsAt opens the settings window on a page. The menu's 诊断日志… uses
+// it, so the log is one item away rather than a page a person has to remember is
+// there.
+func (w *window) openSettingsAt(pane int) {
+	w.openSettings()
+	if w.settingsContent != nil {
+		w.settingsContent.pane = pane
+	}
 	w.invalidate()
 }

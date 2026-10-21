@@ -22,6 +22,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/session"
 )
@@ -470,6 +471,8 @@ func (h *Hub) handleCreate(c *client, m protocol.Msg) {
 		c.fail(protocol.ErrBadRequest, err.Error(), id)
 		return
 	}
+	diag.Infof("hub", "create session=%s client=%s cols=%d rows=%d shell=%q cwd=%q from=%s",
+		s.ID, c.id, m.Cols, m.Rows, m.Shell, m.Cwd, m.From)
 	c.send(protocol.Msg{T: protocol.STCreated, SessionID: s.ID})
 	h.attach(c, s, 0)
 }
@@ -477,6 +480,7 @@ func (h *Hub) handleCreate(c *client, m protocol.Msg) {
 func (h *Hub) handleAttach(c *client, id string, cursor int64) {
 	s, ok := h.mgr.Get(id)
 	if !ok {
+		diag.Warnf("hub", "attach refused: no session session=%s client=%s cursor=%d", id, c.id, cursor)
 		c.fail(protocol.ErrNoSession, "no live session named "+id, id)
 		return
 	}
@@ -523,6 +527,12 @@ func (h *Hub) attach(c *client, s *session.Session, cursor int64) {
 	data, from, truncated := s.Ring().ReadFrom(cursor)
 	next := from + int64(len(data))
 	c.setCursor(s.ID, next)
+	// The serving side of a blank pane: this is the hub saying it sent the
+	// replay, and how much of it. A viewer that reports no bytes and a hub that
+	// reports sending them is a loss in between — the relay's queue, the wire,
+	// or the client's routing — rather than an empty ring.
+	diag.Infof("hub", "attach session=%s client=%s owner=%t cursor=%d replay_from=%d bytes=%d truncated=%t cursor_after=%d",
+		s.ID, c.id, c.owner, cursor, from, len(data), truncated, next)
 
 	sum := h.summaryLocked(s)
 	c.send(protocol.Msg{
@@ -572,6 +582,7 @@ func (h *Hub) handleDetach(c *client, id string) {
 		w.removeViewer(c)
 	}
 	h.mu.Unlock()
+	diag.Infof("hub", "detach session=%s client=%s released_lease=%t", id, c.id, freed)
 	// The session itself is untouched: that is the whole point of detach.
 	if freed {
 		h.broadcastRole(id)

@@ -13,6 +13,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 )
 
@@ -20,19 +21,38 @@ import (
 type termConn struct {
 	sess *session
 
-	mu       sync.Mutex
-	pending  []byte
-	closed   bool
-	once     sync.Once
-	done     chan struct{}
+	// machine is the roster id this session's shell runs on, for the log lines
+	// below: a session id is counted per machine ("s1" on every one of them), so
+	// the log needs both to name a pane.
+	machine string
+
+	mu         sync.Mutex
+	pending    []byte
+	closed     bool
+	once       sync.Once
+	done       chan struct{}
 	lastCols   int
 	lastRows   int
 	syncedCols int
 	syncedRows int
+
+	// fed and read are the two ends of this conn's life: what the link gave the
+	// terminal, and what the terminal took. A blank pane whose conn says
+	// fed>0, read=0 is a view that is not draining; one that says fed=0 is a
+	// replay that never arrived — the two answers this log exists to separate.
+	fed      int64
+	read     int64
+	logged   int64 // fed at the last summary line, so the next one waits a while
+	noReader int64 // frames fed after Close, counted for the warning above
 }
 
 func newTermConn(s *session) *termConn {
 	return &termConn{sess: s, done: make(chan struct{})}
+}
+
+// label names this conn's shell for a log line.
+func (c *termConn) label() (string, string) {
+	return c.machine, c.sess.sessionID()
 }
 
 // Read hands the terminal the session's output, blocking until there is some.
@@ -44,7 +64,13 @@ func (c *termConn) Read(p []byte) (int, error) {
 		if len(c.pending) > 0 {
 			n := copy(p, c.pending)
 			c.pending = c.pending[n:]
+			first := c.read == 0
+			c.read += int64(n)
 			c.mu.Unlock()
+			if first {
+				machine, sessionID := c.label()
+				diag.Debugf("term", "terminal read first machine=%s session=%s bytes=%d", machine, sessionID, n)
+			}
 			return n, nil
 		}
 		if c.closed {
@@ -63,12 +89,42 @@ func (c *termConn) Read(p []byte) (int, error) {
 // feed is what the link's output handler gives the terminal. A resync resets
 // what is waiting, as the terminal's screen is reset.
 func (c *termConn) feed(data []byte, resync bool) {
+	machine, sessionID := c.label()
 	c.mu.Lock()
 	if resync {
 		c.pending = nil
 	}
+	first := c.fed == 0 && len(data) > 0
+	c.fed += int64(len(data))
+	closed := c.closed
+	total := c.fed
+	waiting := len(c.pending) + len(data)
 	c.pending = append(c.pending, data...)
 	c.mu.Unlock()
+
+	if closed && len(data) > 0 {
+		// The replay is being handed to a terminal that has been closed. This is
+		// what a re-registration bug looks like from the data's side: the bytes
+		// are right, the session is live, and nothing will ever draw them. Said
+		// once and then every hundredth frame — the evidence matters, a line per
+		// frame of a replays worth of output does not.
+		c.mu.Lock()
+		c.noReader++
+		n := c.noReader
+		c.mu.Unlock()
+		if n == 1 || n%100 == 0 {
+			diag.Warnf("term", "output fed to a closed conn machine=%s session=%s bytes=%d total=%d count=%d",
+				machine, sessionID, len(data), total, n)
+		}
+	} else if first {
+		diag.Infof("term", "output first machine=%s session=%s bytes=%d resync=%t", machine, sessionID, len(data), resync)
+	} else if resync || total-c.logged >= 256<<10 {
+		c.mu.Lock()
+		c.logged = total
+		c.mu.Unlock()
+		diag.Debugf("term", "output machine=%s session=%s bytes=%d total=%d waiting=%d resync=%t",
+			machine, sessionID, len(data), total, waiting, resync)
+	}
 	c.wake()
 }
 
@@ -146,9 +202,16 @@ func (c *termConn) syncSize(cols, rows int) {
 // for whatever else is attached, exactly as a client disconnecting does.
 func (c *termConn) Close() error {
 	c.once.Do(func() {
+		machine, sessionID := c.label()
 		c.mu.Lock()
 		c.closed = true
+		fed, read, waiting := c.fed, c.read, len(c.pending)
 		c.mu.Unlock()
+		// What this conn was given against what it took: a closed tab that was
+		// fed a replay it never read is the fingerprint of frames still routed
+		// to a pane nobody draws any more.
+		diag.Infof("term", "conn closed machine=%s session=%s fed=%d read=%d pending=%d",
+			machine, sessionID, fed, read, waiting)
 		close(c.done)
 		c.wake()
 	})

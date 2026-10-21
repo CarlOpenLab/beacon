@@ -13,8 +13,11 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
+	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -24,6 +27,7 @@ import (
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/settings"
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
@@ -50,6 +54,10 @@ func main() {
 		"shell to run in new tabs (default: the login shell)")
 	cwd := flag.String("cwd", "",
 		"working directory for new tabs (default: this machine's home directory)")
+	logLevel := flag.String("log-level", "",
+		"diagnostic log level: error, warn, info or debug (default: info, or debug when 设置 → 诊断 asked for it)")
+	logDir := flag.String("log-dir", "",
+		"where diagnostic logs are written (default: <settings dir>/logs)")
 	flag.Parse()
 
 	// Ctrl-C in a terminal, or the signal a service manager sends, shuts the
@@ -59,6 +67,42 @@ func main() {
 
 	store := settings.Open(settings.Dir())
 	saved := store.Get()
+
+	// The diagnostic log comes up before anything that could go wrong: a window
+	// with no visible console is exactly the program that needs a file to say
+	// what happened. Detailed is the default rather than something to turn on
+	// first — a blank pane is not reproducible on demand, and asking someone to
+	// reproduce it again with logging on is asking for a second bug report. The
+	// hot paths summarise themselves (see internal/diag and termConn.feed), so
+	// the file stays small; the flag is there to quieten it when it does not.
+	level := diag.Debug
+	if *logLevel != "" {
+		parsed, err := diag.ParseLevel(*logLevel)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "tfdesktop: -log-level: %v\n", err)
+			os.Exit(2)
+		}
+		level = parsed
+	}
+	logPath := *logDir
+	if logPath == "" {
+		logPath = filepath.Join(store.Dir(), "logs")
+	}
+	logger, logErr := diag.Install(logPath, "tfdesktop", level)
+	if logErr != nil {
+		log.SetFlags(0)
+		log.Printf("tfdesktop: diagnostics are off: %v", logErr)
+	} else {
+		defer func() { _ = logger.Close() }()
+		// The bundle knows the app's version; a `go build` does not, and a log
+		// that starts "version=" answers no question at all.
+		version := mygo.App.Version()
+		if version == "" {
+			version = diag.BuildVersion()
+		}
+		diag.Infof("app", "start version=%s %s/%s go=%s log=%s level=%s",
+			version, runtime.GOOS, runtime.GOARCH, runtime.Version(), logger.Path(), level)
+	}
 
 	// startupErr is why the local service did not come up, if it did not. The
 	// window shows it once, because a service that silently failed leaves a

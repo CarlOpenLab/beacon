@@ -119,11 +119,10 @@ func TestSessionPanelListsTheOpenShellsAndPicksOne(t *testing.T) {
 	}
 }
 
-// The shells' panel holds the two things a shell needs — one more, and an end to
-// this one — as icon buttons beside the panel's title, because that is the panel
-// they act on. They have to work from there, not merely be present: the button
-// speaks to the hub over the window's own link, and the hub's answer comes back
-// as frames.
+// The shells' panel holds the two things a shell needs — one more, and a way
+// out of it — as controls beside the panel's title and on its row. They have to
+// work from there, not merely be present: the close speaks to the hub over the
+// window's own link, and the hub's answer comes back as frames.
 func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t)
@@ -144,54 +143,24 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	if got := waitSessions(f, 1); got != 1 {
 		t.Fatalf("the button left %d shells, want 1", got)
 	}
-
-	// The hub pushed the session list, and the window opened a tab for it — the
-	// same path a shell started from a browser takes.
 	settleTabs(t, w, 1)
 
-	// The row's 结束 is drawn from what the hub said, so the panel is redrawn
-	// before it is looked for: the tester's frame is a snapshot, not a live view.
+	// Closing the tab is ending the session: the row's menu carries the act, and
+	// the shell behind it stops rather than staying alive with no view.
 	tt.Frame()
-
-	// ...and an end to the one on screen. 结束 is its own button, on the row of
-	// the shell it ends — not the × that closes the tab, which used to be wired
-	// to the same act and so killed a process on a machine somewhere every time
-	// somebody meant to stop watching it.
 	if err := tt.RightClick(w.activeTab().name()); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.ChooseMenuItem(locales.TabEndProcess()); err != nil {
+	if err := tt.ChooseMenuItem(locales.TabClose()); err != nil {
 		t.Fatal(err)
 	}
 	if got := waitSessions(f, 0); got != 0 {
-		t.Fatalf("the button left %d shells, want 0", got)
+		t.Fatalf("closing the tab left %d live shells, want 0", got)
 	}
-	// The tab stays: the shell is gone, and the tab is where its last output is
-	// read. Closing it is a separate action, so it settles to one exited tab
-	// rather than to none — and the exit frame is what marks it exited, which is
-	// the mark the panel draws the row from: a tab the window never marked is a
-	// row still offering to end a shell that is already gone.
-	drainFor(t, w, func() bool { return len(w.order) == 1 && !w.tabs[w.order[0]].alive })
-	tt.Frame()
-	if !tt.HasText(locales.StateEnded()) {
-		t.Fatalf("the row of the shell that was just ended does not say so; texts = %v", tt.Texts())
-	}
-	if tt.HasText(locales.TabEndProcess()) {
-		t.Errorf("an ended shell is still offered 结束, which would do nothing; texts = %v", tt.Texts())
-	}
-	// And the row is not a dead end: the way to stop watching a shell that is
-	// already gone is on it, in the place the 结束 was.
-	if _, ok := tt.Find(locales.TabCloseNamed(w.tabs[w.order[0]].name())); !ok {
-		t.Errorf("the ended shell's row offers no way to close the tab; texts = %v", tt.Texts())
-	}
+	settleTabCount(t, w, 0)
 
-	// And the × that shares the panel's title row closes the tab without
-	// touching the process. The new shell is waited for by id rather than by
-	// count: the ended one is gone from the roster, so "1 live session" would be
-	// true before the new one started.
-	//
-	// The panel is redrawn before it is clicked: the tester holds a frame, not a
-	// live view, and a button drawn after the last Frame is not there to click.
+	// The same act from the row's ×: one more shell, then close it from the
+	// control the pointer finds on its row.
 	tt.Frame()
 	if err := tt.Click(locales.ActionNewTerminalTip()); err != nil {
 		t.Fatalf("Click(新建标签页): %v", err)
@@ -199,37 +168,15 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	if got := waitSessions(f, 1); got != 1 {
 		t.Fatalf("the button left %d live shells, want 1", got)
 	}
-	// The newest session in the roster is the one just started: the ended one is
-	// no longer listed at all.
-	list := f.Hub().Sessions()
-	fresh := list[len(list)-1].SessionID
-	// Both tabs are on screen — the one whose shell has ended and the new one,
-	// which is the tab on top and so the tab the panel's × closes.
-	drainFor(t, w, func() bool {
-		return len(w.order) == 2 && w.selected == 1 && w.tabs[w.order[1]].alive
-	})
+	drainFor(t, w, func() bool { return len(w.order) == 1 && w.tabs[w.order[0]].alive })
 	tt.Frame()
-	// The row's × shows on the hover, so the way out a pointer-less test takes
-	// is the row's own menu: the same act, one step further in.
-	if err := tt.RightClick(w.activeTab().name()); err != nil {
-		t.Fatalf("right-click the row: %v", err)
+	if err := tt.Click(locales.TabCloseNamed(w.activeTab().name())); err != nil {
+		t.Fatalf("click the row's close: %v; texts = %v", err, tt.Texts())
 	}
-	if err := tt.ChooseMenuItem(locales.TabClose()); err != nil {
-		t.Fatalf("choose 关闭标签页: %v", err)
+	if got := waitSessions(f, 0); got != 0 {
+		t.Fatalf("the row's close left %d live shells, want 0", got)
 	}
-	if got := liveCount(f); got != 1 {
-		t.Fatalf("closing the tab left %d live shells, want the shell still running", got)
-	}
-	// And the shell really is still running: the roster still holds it.
-	if !hasLiveSession(f, fresh) {
-		t.Fatal("closing the tab ended the shell it was watching")
-	}
-	// The closed tab is gone and the ended one is what is left: it is the tab
-	// whose shell stopped, and the window keeps it.
-	settleTabCount(t, w, 1)
-	if w.tabs[w.order[0]].alive {
-		t.Fatal("the window closed the tab of a running shell and kept the one whose shell had ended")
-	}
+	settleTabCount(t, w, 0)
 }
 
 // A shell that ends keeps its tab — the tab is where its last output is read —
@@ -248,8 +195,11 @@ func TestAnEndedShellsRowOffersTheWayOut(t *testing.T) {
 	if !nav.HasText(locales.StateEnded()) {
 		t.Fatalf("the row does not say the shell has ended; texts = %v", nav.Texts())
 	}
-	if nav.HasText(locales.TabEndProcess()) {
-		t.Errorf("an ended shell is still offered 结束, which would do nothing; texts = %v", nav.Texts())
+	if err := nav.RightClick("gone"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(nav.Menu(), " "), locales.TabEndProcess()) {
+		t.Errorf("an ended shell is still offered 结束, which would do nothing")
 	}
 	if err := nav.Click(locales.TabCloseNamed("gone")); err != nil {
 		t.Fatalf("the row of an ended shell has no way to close it: %v; texts = %v", err, nav.Texts())
@@ -258,26 +208,43 @@ func TestAnEndedShellsRowOffersTheWayOut(t *testing.T) {
 		t.Errorf("the row's 关闭 left %d tabs, want the tab gone", len(w.order))
 	}
 
-	// A shell that is still running keeps its tab until it is closed on purpose:
-	// the same row reads 控制中 and offers 结束, which is the other act.
+	// A live shell with a tab is closed by the same item, which ends it; 结束 is
+	// reserved for a row that has no tab to close.
 	w2, _ := newTestShellWindow(t, "live")
 	w2.fleet = newTestFleet(t)
 	tb2 := w2.tabs[1]
 	tb2.alive = true
 	tb2.setLease(protocol.RoleController, "", 1)
 	nav2 := drawNav(t, w2)
-	// The × a running row offers is a hover's, so a row at rest keeps only the
-	// acts that are always worth offering: its menu holds both, and 结束 is the
-	// one that is not simply "stop watching".
 	if err := nav2.RightClick("live"); err != nil {
 		t.Fatal(err)
 	}
 	menu := strings.Join(nav2.Menu(), " ")
-	if !strings.Contains(menu, locales.TabEndProcess()) {
-		t.Fatalf("the process action is missing from the context menu: %q", menu)
-	}
 	if !strings.Contains(menu, locales.TabClose()) {
-		t.Fatalf("the detach action is missing from the context menu: %q", menu)
+		t.Fatalf("the close action is missing from the context menu: %q", menu)
+	}
+	if strings.Contains(menu, locales.TabEndProcess()) {
+		t.Fatalf("a row with a tab offers both close and end, which now do the same: %q", menu)
+	}
+}
+
+// A live shell this window has no tab for (one started from a browser or a
+// phone) has no close to carry the act, so its row keeps 结束.
+func TestARowWithoutATabOffersEnd(t *testing.T) {
+	w, _ := newTestShellWindow(t)
+	w.fleet = newTestFleet(t)
+	w.live = []protocol.Summary{{SessionID: "s9", Title: "from the browser", Alive: true}}
+
+	nav := drawNav(t, w)
+	if err := nav.RightClick("from the browser"); err != nil {
+		t.Fatal(err)
+	}
+	menu := strings.Join(nav.Menu(), " ")
+	if !strings.Contains(menu, locales.TabEndProcess()) {
+		t.Fatalf("the end action is missing from a row with no tab: %q", menu)
+	}
+	if strings.Contains(menu, locales.TabClose()) {
+		t.Fatalf("a row with no tab offers to close one: %q", menu)
 	}
 }
 
@@ -791,5 +758,39 @@ func TestTheGroupMenuOffersBothRefreshes(t *testing.T) {
 	w.drain()
 	if w.notice != locales.AppRefreshedLocal() {
 		t.Fatalf("notice after session refresh = %q, want '已刷新本机会话'", w.notice)
+	}
+}
+
+// The session panel lists the machine's shells, not this window's tab strip: a
+// shell whose tab was closed keeps running, and it has to appear here too or
+// the same Mac reads as two shells locally and seven from another machine.
+func TestLocalPanelListsLiveSessionsWithoutTabs(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.live = []protocol.Summary{
+		{SessionID: "s1", Title: "one", Alive: true, Cols: 80, Rows: 24},
+		{SessionID: "s2", Title: "detached", Alive: true, Cols: 100, Rows: 30},
+		{SessionID: "s9", Title: "ended", Alive: false},
+	}
+	entries := w.entriesFor(machineLocal)
+	if len(entries) != 2 {
+		t.Fatalf("the panel lists %d rows, want the tab and the live shell: %+v", len(entries), entries)
+	}
+	var detached *sessionEntry
+	for i := range entries {
+		if entries[i].session == "s2" {
+			detached = &entries[i]
+		}
+	}
+	if detached == nil {
+		t.Fatal("the live shell with no tab is missing from the panel")
+	}
+	if detached.label != "detached" || detached.meta != "100x30" {
+		t.Fatalf("detached row = %+v", *detached)
+	}
+	if detached.close != nil {
+		t.Error("a row with no tab offers to close one")
+	}
+	if detached.end == nil {
+		t.Error("a live shell with no tab cannot be ended from its row")
 	}
 }

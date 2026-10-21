@@ -60,15 +60,6 @@
       }
     }
   },
-  "app_split_closed": "已关闭分栏：{name} 仍在后台运行",
-  "@app_split_closed": {
-    "description": "The status bar, after closing a split pane.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
   "app_released_lease": "已释放控制权：已转为只读观察，{name} 在后台继续运行",
   "@app_released_lease": {
     "description": "The status bar, after giving a shell's lease up.",
@@ -188,11 +179,11 @@
   "@tab_close": {
     "description": "The tab's close button and its row's menu item."
   },
-  "tab_close_tip": "关闭标签页（仅停止观看，不结束进程）",
+  "tab_close_tip": "关闭标签页（结束该会话的进程）",
   "@tab_close_tip": {
-    "description": "The tab's close button, saying what it does not do."
+    "description": "The tab's close button, saying that it ends the session."
   },
-  "tab_close_named": "关闭 {name}",
+  "tab_close_named": "关闭 {name}（结束会话）",
   "@tab_close_named": {
     "description": "The session row's close button, naming the shell.",
     "placeholders": {
@@ -201,7 +192,7 @@
       }
     }
   },
-  "tab_end_process": "结束进程…",
+  "tab_end_process": "结束会话",
   "@tab_end_process": {
     "description": "The session row's menu item that ends a shell."
   },
@@ -1363,5 +1354,24 @@
   "window_close": "关闭窗口",
   "@window_close": {
     "description": "The app-drawn window controls (Windows and Linux)."
-  }
+  },
+  "settings_pane_diagnostics": "诊断",
+  "settings_diag_file": "日志文件",
+  "settings_diag_note": "白屏、连不上或会话打不开时，把这份日志发给开发者：它记录了每个终端从附着到收到字节的过程，以及机器与链接当时的状态。",
+  "settings_diag_level": "记录级别",
+  "settings_diag_level_regular": "常规",
+  "settings_diag_level_debug": "详细",
+  "settings_diag_level_note": "详细会记录附着、重放与每一帧的路由；输出只按 256 KB 汇总，日志不会随 shell 的输出无限增长。",
+  "settings_diag_no_file": "日志还没有打开（启动时的错误见控制台）",
+  "settings_diag_copy": "复制路径",
+  "settings_diag_copied": "已复制日志路径",
+  "settings_diag_open": "打开所在文件夹",
+  "settings_diag_open_failed": "打不开文件夹：{reason}",
+  "settings_diag_save": "保存一份…",
+  "settings_diag_save_title": "保存诊断日志",
+  "settings_diag_saved": "已保存到 {path}",
+  "settings_diag_save_failed": "保存失败：{reason}",
+  "menu_diagnostics": "诊断日志…",
+  "app_machine_offline": "{name} 当前离线：它上面还列着上次的会话，连上后再打开",
+  "app_terminal_unavailable": "终端视图没有创建成功（{reason}），详见 设置 → 诊断 的日志"
 }

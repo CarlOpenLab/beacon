@@ -12,6 +12,7 @@ package main
 import (
 	"sync"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/relayclient"
 )
@@ -44,8 +45,10 @@ const maxQueued = 64
 // and carries nothing, exactly as a browser's does.
 func openRelayLink(c *relayclient.Client, machine string) *relayLink {
 	l := &relayLink{link: newLink(), machine: machine}
+	l.name = machine
 	l.stream = c.Open(machine, relayHandlers{l: l})
 	l.setSend(l.write)
+	diag.Infof("relay", "stream opening machine=%s", machine)
 	return l
 }
 
@@ -57,9 +60,17 @@ func (l *relayLink) write(m protocol.Msg) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if len(l.queued) >= maxQueued {
+		// The queue is full, so this frame — possibly the attach that would
+		// paint a pane — is not going anywhere. That used to be a silent no-op;
+		// it is the shape of a blank pane that never recovers while the machine
+		// is reachable, so it is a warning with the frame named.
+		diag.Warnf("relay", "frame refused: stream not routed machine=%s type=%s session=%s queued=%d",
+			l.machine, m.T, m.SessionID, len(l.queued))
 		return false
 	}
 	l.queued = append(l.queued, m)
+	diag.Debugf("relay", "frame queued machine=%s type=%s session=%s queued=%d",
+		l.machine, m.T, m.SessionID, len(l.queued))
 	return true
 }
 
@@ -72,8 +83,12 @@ func (l *relayLink) flush() {
 	queued := l.queued
 	l.queued = nil
 	l.mu.Unlock()
-	for _, m := range queued {
+	if len(queued) > 0 {
+		diag.Infof("relay", "flushing machine=%s frames=%d", l.machine, len(queued))
+	}
+	for i, m := range queued {
 		if !l.stream.Send(m) {
+			diag.Warnf("relay", "flush stopped machine=%s at=%d of=%d", l.machine, i, len(queued))
 			return
 		}
 	}
@@ -81,6 +96,7 @@ func (l *relayLink) flush() {
 
 // close ends the stream. The machine's shells are left alone.
 func (l *relayLink) close() {
+	diag.Infof("relay", "stream closing machine=%s", l.machine)
 	l.dropQueued()
 	l.stream.Close()
 	l.link.close("link closed")
@@ -97,6 +113,7 @@ func (l *relayLink) dropQueued() {
 type relayHandlers struct{ l *relayLink }
 
 func (h relayHandlers) Open() {
+	diag.Infof("relay", "stream open machine=%s", h.l.machine)
 	// The stream is routed: say hello, so the hub sends its session list, and
 	// the panel can show what this machine is running. What the window wrote
 	// while it was waiting goes out behind the hello: a machine's hub is a plain
@@ -115,6 +132,7 @@ func (h relayHandlers) Open() {
 func (h relayHandlers) Frame(m protocol.Msg) { h.l.dispatch(m) }
 
 func (h relayHandlers) Close(reason string) {
+	diag.Infof("relay", "stream closed machine=%s reason=%q", h.l.machine, reason)
 	// The stream is gone, so nothing written for it is still worth holding: the
 	// window removes the link and the panel stops offering the machine.
 	h.l.dropQueued()

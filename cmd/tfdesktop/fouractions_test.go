@@ -1,19 +1,17 @@
 package main
 
-// The four things a client can do to a shell, and the rule that they are four.
+// What a client can do to a shell, and which of those acts are the same.
 //
 //   接管       take the lease from whoever holds it
 //   释放       give the lease up, leaving the shell running
-//   结束       kill the process, for every client
-//   关闭标签   stop watching, leaving the process alone
+//   结束       kill the process, leaving the tab to read its last output
+//   关闭标签   kill the process and close the tab with it
 //
-// They were not always four. The 会话 panel's × was wired to the same act as
-// 结束, so closing a tab killed a process on a machine somewhere — for every
-// client watching it, not only the window that clicked. And 释放 did not exist
-// on either client at all: the frame was in the protocol and nothing sent it.
-//
-// These tests pin the separation down from the side that matters: what the
-// buttons actually do to the shell.
+// 结束 and 关闭标签 share the irreversible half — the process ends for every
+// client — but differ in what happens to the view: 结束 keeps the final screen,
+// 关闭标签 is the terminal's ordinary "close the tab" and takes both. The lease
+// acts are separate from both. These tests pin that separation from the side
+// that matters: what the controls actually do to the shell.
 
 import (
 	"testing"
@@ -143,10 +141,10 @@ func TestTheLeaseButtonsAreOfferedByState(t *testing.T) {
 	}
 }
 
-// The panel's × closes the tab and nothing else. This is the regression that
-// mattered: it used to end the shell, because closing a tab and ending a session
-// were the same button.
-func TestClosingATabDoesNotEndTheShell(t *testing.T) {
+// Closing a tab ends the shell. This is the behaviour a terminal is expected to
+// have: the view and the process behind it go together, and a shell nobody can
+// see does not keep running.
+func TestClosingATabEndsTheShell(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t)
 	w.fleet = f
@@ -160,10 +158,10 @@ func TestClosingATabDoesNotEndTheShell(t *testing.T) {
 	settleTabs(t, w, 1)
 	w.drain()
 
-	w.removeTab(tb)
+	w.closeTab(tb)
 
-	if got := liveCount(f); got != 1 {
-		t.Fatalf("closing the tab left %d live shells, want the shell still running", got)
+	if got := waitSessions(f, 0); got != 0 {
+		t.Fatalf("closing the tab left %d live shells, want the shell ended", got)
 	}
 	if len(w.order) != 0 {
 		t.Fatalf("closing the tab left %d tabs, want none", len(w.order))

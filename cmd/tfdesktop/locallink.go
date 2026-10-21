@@ -11,6 +11,7 @@ package main
 import (
 	"context"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 )
@@ -28,6 +29,10 @@ func openLocalLink(h *hub.Hub) *localLink {
 	go h.ServeLocal(pipe.Local())
 
 	l := &localLink{link: newLink(), pipe: pipe}
+	l.name = machineLocal
+	// The link's own wire is up as soon as the pipe is handed to the hub: there
+	// is no handshake to wait for, unlike a relay stream.
+	diag.Infof("link", "local link open")
 	l.setSend(func(m protocol.Msg) bool {
 		b, err := encode(m)
 		if err != nil {

@@ -103,6 +103,11 @@ const (
 	paneAppearance
 	paneNotifications
 	paneKeyboard
+	// paneDiagnostics is where the log is: the one page that is about this
+	// window rather than the machine it drives. It sits last because it is the
+	// page a person opens to report a problem, not one they visit to set the app
+	// up that day.
+	paneDiagnostics
 )
 
 // termFont turns stored settings into the terminal plugin's font.
@@ -180,9 +185,9 @@ type settingsWindow struct {
 	// recording is the action whose shortcut is being typed, and recordRef is the
 	// handle that takes the keys while it is; keyNotice is the line under the
 	// keyboard page about a conflict or a clear.
-	recording  string
-	recordRef  ui.Handle
-	keyNotice  string
+	recording string
+	recordRef ui.Handle
+	keyNotice string
 
 	// status is the last thing that happened to the draft: saved, or why not.
 	status string
@@ -204,18 +209,18 @@ type settingsWindow struct {
 func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsWindow {
 	cur := store.Get()
 	s := &settingsWindow{
-		desk:     desk,
-		store:    store,
-		fleet:    f,
-		family:   labelForFamily(cur.FontFamily),
-		size:     cur.FontSize,
-		relay:    cur.RelayURL,
-		device:   cur.DeviceID,
-		secret:   cur.DeviceSecret,
-		ca:       cur.RelayCA,
-		relayOn:  cur.RelayOn,
-		server:   !cur.ServerOff,
-		control:  !cur.ControlOff,
+		desk:          desk,
+		store:         store,
+		fleet:         f,
+		family:        labelForFamily(cur.FontFamily),
+		size:          cur.FontSize,
+		relay:         cur.RelayURL,
+		device:        cur.DeviceID,
+		secret:        cur.DeviceSecret,
+		ca:            cur.RelayCA,
+		relayOn:       cur.RelayOn,
+		server:        !cur.ServerOff,
+		control:       !cur.ControlOff,
 		notifyWaiting: !cur.NotifyWaitingOff,
 		notifyDone:    !cur.NotifyDoneOff,
 		notifyError:   !cur.NotifyErrorOff,
@@ -394,6 +399,8 @@ func (s *settingsWindow) view(c *ui.Context) {
 								s.notificationsPage(c)
 							case paneKeyboard:
 								s.keyboardPage(c)
+							case paneDiagnostics:
+								s.diagnosticsPane(c)
 							default:
 								s.updatesPane(c)
 							}
@@ -447,6 +454,7 @@ var settingsPages = []settingsPage{
 	{paneAppearance, locales.SettingsPaneAppearance, iconSun},
 	{paneNotifications, locales.SettingsPaneNotifications, iconBell},
 	{paneKeyboard, locales.SettingsPaneKeyboard, iconKeyboard},
+	{paneDiagnostics, locales.SettingsPaneDiagnostics, iconInfo},
 }
 
 // settingsNav is one page in the window's own list, with the chosen page raised
@@ -666,7 +674,7 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 // shows it.
 func (s *settingsWindow) washTile(c *ui.Context, pal *uitokens.Palette, wsh uitokens.Wash, current string) {
 	selected := current == wsh.ID
-	tile := ui.ButtonBase(c.Key("bg-"+wsh.ID)).Column().Width(104).Gap(8).
+	tile := ui.ButtonBase(c.Key("bg-" + wsh.ID)).Column().Width(104).Gap(8).
 		AlignItems(ui.Stretch).Label(washName(wsh.ID))
 	tile.Children(func() {
 		sw := raised(ui.Box(c).Size(104, 68).Radius(12), pal).Clip()

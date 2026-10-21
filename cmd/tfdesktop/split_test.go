@@ -158,9 +158,9 @@ func TestShiftCmdDSplitsAboveAndBelow(t *testing.T) {
 	}
 }
 
-// ⌘W over a split closes the pane, not the shell: the process keeps running and
-// its tab stays in the strip, the way closing any tab leaves a shell running.
-func TestClosingAPaneLeavesItsShellRunning(t *testing.T) {
+// ⌘W over a split closes the tab, and closing a tab ends its shell: the pane
+// leaves the window and the process stops on its machine.
+func TestClosingATabInASplitEndsItsShell(t *testing.T) {
 	w, f := newSplitWindow(t)
 	openShell(t, w, f, testDir(t))
 
@@ -176,11 +176,11 @@ func TestClosingAPaneLeavesItsShellRunning(t *testing.T) {
 	tt.Frame()
 	drainFor(t, w, func() bool { return w.split == nil })
 
-	if got := liveCount(f); got != 2 {
-		t.Fatalf("closing the pane left %d live shells, want both still running", got)
+	if got := waitSessions(f, 1); got != 1 {
+		t.Fatalf("closing the tab left %d live shells, want the one whose pane is still open", got)
 	}
-	if len(w.order) != 2 {
-		t.Fatalf("closing the pane left %d tabs, want both still in the strip", len(w.order))
+	if len(w.order) != 1 {
+		t.Fatalf("closing the tab left %d tabs, want the one that is still open", len(w.order))
 	}
 }
 

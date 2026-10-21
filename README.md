@@ -267,10 +267,11 @@ machine itself.
 
 The relay serves its own management page at `/admin` (`-admin-path`). Open it
 once and it asks you to create an admin account; after that it is where you add
-a machine, read the credential back, rotate the client token, and download the
-CA certificate for a member to pin. `tfrelay enroll` and `tfrelay list` still
-exist for scripted setup, but day-to-day there is no reason to reach for a
-shell — and `enroll` from the panel takes effect on the next dial, no restart.
+a machine, read the credential back, rotate the client token, download the CA
+certificate for a member to pin, and read the diagnostic tail each machine
+pushes (`Logs`). `tfrelay enroll` and `tfrelay list` still exist for scripted
+setup, but day-to-day there is no reason to reach for a shell — and `enroll`
+from the panel takes effect on the next dial, no restart.
 
 A fresh relay therefore starts with an *empty* registry: the first machine is
 created from the page. It still refuses to start without a client token, still
@@ -294,6 +295,40 @@ invent a fresh identity per try.
 machines, verification, upgrades, revocation, and an honest account of what the
 relay can see (everything — it terminates TLS and carries your keystrokes).
 
+## Diagnostics
+
+Both programs keep a log next to the settings file, and both are silent about it
+until it is needed. The desktop's 设置 → 诊断 page shows the file, copies its
+path, reveals it in the file manager and saves a copy to send; `诊断日志…` in the
+macOS menu opens that page. The file itself is
+`~/Library/Application Support/term-fleet/logs/tfdesktop.log` on macOS,
+`%AppData%\term-fleet\logs\tfdesktop.log` on Windows and
+`~/.config/term-fleet/logs/tfdesktop.log` on Linux; `tfd` writes `tfd.log` in the
+same directory, and `-log-dir` moves either.
+
+The log exists for one failure a terminal app cannot see about itself: a pane
+that stays empty while its shell runs on. It records the path that failure takes
+— each machine's link opening and closing, every attach with the cursor it asked
+from, the replay the serving hub says it sent, the first bytes each terminal was
+given, and any frame that arrived for a session nobody watches. A pane whose
+log says *attach sent* and nothing after it never got a replay; one that says
+*output fed to a closed conn* was being painted into a tab that no longer
+exists.
+
+The desktop records in detail by default — the volume is bounded by summary
+lines rather than per-frame ones, and files rotate at 8 MB, keeping one previous
+file — so a problem can be reproduced once and reported, not reproduced again
+with logging switched on. `-log-level info` quiets it. `tfd` records the shape of
+a run by default; `-log-level debug` adds its per-frame view.
+
+A machine joined to a relay also pushes the newest 2,000 lines of its log to the
+relay every 30 seconds, authenticated with its own device credential. The
+relay's admin panel has a `Logs` page for reading that tail, downloading it as a
+file, or forgetting it; the machine keeps its own file either way. This is the
+one view that does not require anyone to open a terminal on the machine that is
+misbehaving, which matters most when that machine is a headless host started by
+`launchd` or `systemd`.
+
 ## Tests
 
 `ci.yml` runs the Go build, vet and test suite on Linux, macOS and Windows (with
@@ -311,9 +346,10 @@ pnpm run acceptance:all            # all three
 
 `scripts/acceptance.mjs` starts `bin/tfd`, opens two Chrome pages over CDP, and
 asserts the things that only break in a browser: the prompt renders, typing
-reaches the shell, `⌘T` opens a second tab, closing a tab detaches without
-killing the session, a dropped socket reconnects without replaying the screen,
-and a second client attaches read-only, cannot type, and can take control.
+reaches the shell, `⌘T` opens a second tab, closing a browser tab detaches
+without killing the session, a dropped socket reconnects without replaying the
+screen, and a second client attaches read-only, cannot type, and can take
+control.
 
 `scripts/relay-acceptance.mjs` runs the real `tfrelay` and `tfd` binaries,
 enrolls a machine, and drives a shell through the tunnel. It exists for the
@@ -360,7 +396,7 @@ uses nothing but the `GITHUB_TOKEN` GitHub hands it. To exercise the whole flow
 without cutting a tag, dispatch `release` from the Actions tab with an existing
 tag as input.
 
-## Two rules that shape everything
+## Three rules that shape everything
 
 **Attaching is not creating.** A client that disconnects — phone slept, Wi-Fi
 dropped, laptop lid closed — is detached, never closed. The shell keeps
@@ -377,7 +413,40 @@ dropped, so a client can offer to take control. Control is taken with `claim`
 and given back with `release`, and a controller that sits silent for
 `-idle-controller` loses it automatically.
 
-**Closing a tab is not killing a session.** The tab's `×` detaches — the shell
-keeps running and stays in the session list, which is what you want when you
-were only peeking. Ending the process is a separate button, because that one is
-irreversible for every other client looking at it.
+**Closing a tab ends its session.** The desktop tab's `×` and `⌘W` end the
+shell on its machine and remove the view, the way closing a tab in a terminal
+stops the process in it. Ending is irreversible for every other client looking
+at the shell, so the tab's close is a destructive control, not a "stop watching"
+control. The browser client's 关闭面板 is still view-only and says so; its 结束
+button is the one that stops the process.
+
+## What is different from a plain terminal
+
+These are deliberate, and they are the operations most likely to surprise a
+person coming from Terminal.app, iTerm2 or Windows Terminal:
+
+- **The sidebar is the tab strip.** There is no row of tabs across the top. The
+  会话 panel lists every live shell on the selected machine; a shell with no tab
+  gets one when the row is picked. A split is one row with its panes beneath it,
+  not several rows pretending to be tabs.
+- **A session can arrive from somewhere else.** A shell started from a browser,
+  a phone or another machine appears as a tab here through the session list. You
+  did not open it, but it is running on this machine.
+- **A session has one controller, not one per window.** If another client
+  already holds the shell — often the machine's own desktop tab — opening it
+  from elsewhere is read-only, and the banner's 接管 button steals the lease.
+  If nobody holds it, the first client to open it becomes the controller. 释放
+  gives the keyboard back without ending the shell.
+- **A split is a workspace, not a second view.** ⌘D / ⌘⇧D start a new shell
+  beside or below the current one — on the same machine, in the same directory.
+  Switching to another tab puts the whole layout away; picking any of its panes
+  brings the layout back. ⌘⇧↩ zooms the focused pane.
+- **⌘[ / ⌘] move between panes; ⌘⇧[ / ⌘⇧] move between sessions.** This is the
+  opposite of many terminals, where the unshifted pair changes tabs. ⌘1…⌘9 jump
+  to a session by position.
+- **A shell that exits keeps its tab.** 结束 ends the process but leaves the
+  tab, so its last output stays readable; closing that tab is a second act.
+  Closing a running tab ends both the process and the view.
+- **⌘R renames the shell; F5 refreshes the fleet.** Renaming is also on a
+  double-click in the sidebar. This is the shortcut most likely to catch someone
+  who expects ⌘R to reload.
