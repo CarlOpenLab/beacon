@@ -184,9 +184,10 @@ func TestClosingAPaneLeavesItsShellRunning(t *testing.T) {
 	}
 }
 
-// ⌘T with a split open gives the pane on screen a new shell: the split keeps
-// its shape and the shell the pane had stays in the strip, still running.
-func TestNewTabInASplitLandsInThePaneOnScreen(t *testing.T) {
+// ⌘T with a split open gives the window a tab of its own: it does not put the
+// new shell in the pane on screen. The workspace is left as it was, put away,
+// and picking one of its panes brings it back whole.
+func TestNewTabInASplitOpensItsOwnTab(t *testing.T) {
 	w, f := newSplitWindow(t)
 	first := openShell(t, w, f, testDir(t))
 
@@ -205,22 +206,35 @@ func TestNewTabInASplitLandsInThePaneOnScreen(t *testing.T) {
 	if len(w.order) != 3 {
 		t.Fatalf("the window holds %d tabs, want the two shells and the new one", len(w.order))
 	}
-	if w.split == nil || w.split.count() != 2 {
-		t.Fatal("⌘T took the split apart")
-	}
 	third := w.activeTab()
 	if third == first || third == second {
-		t.Fatal("⌘T did not put the new shell in the pane on screen")
+		t.Fatal("⌘T did not put the new shell on screen")
+	}
+	if w.split != nil {
+		t.Fatal("⌘T kept the split on screen instead of opening a tab of its own")
+	}
+	if first.ws == nil || first.ws != second.ws {
+		t.Fatal("the split's workspace was taken apart by ⌘T")
 	}
 	if got := liveCount(f); got != 3 {
 		t.Fatalf("%d live shells, want all three", got)
 	}
+
+	// The workspace was put away, not closed: picking one of its panes brings
+	// the same two panes back.
+	w.selectTab(second)
+	if w.split == nil || w.split.count() != 2 {
+		t.Fatal("picking a pane of the workspace did not restore its split")
+	}
+	if w.activeTab() != second {
+		t.Fatal("the pane picked is not the one on screen")
+	}
 }
 
-// Picking a shell that is already a pane moves the focus to it; picking one
-// that is not puts it in the pane on screen. Either way the split survives,
-// because the strip is the roster and the panes are what is on screen.
-func TestTheStripMovesTheFocusAndKeepsTheSplit(t *testing.T) {
+// Picking the shell in a pane brings its workspace back. Picking a tab of its
+// own puts the workspace away, which is what every other terminal does: the
+// strip switches tabs, it does not rearrange the split behind the person.
+func TestPickingATabLeavesTheWorkspaceWhole(t *testing.T) {
 	w, f := newSplitWindow(t)
 	first := openShell(t, w, f, testDir(t))
 
@@ -242,19 +256,31 @@ func TestTheStripMovesTheFocusAndKeepsTheSplit(t *testing.T) {
 	if w.activeTab() != first {
 		t.Fatal("picking the shell in the first pane did not focus that pane")
 	}
+	if w.split == nil || w.split.count() != 2 {
+		t.Fatal("picking a pane took the split apart")
+	}
+
 	w.selectTab(third)
 	if w.activeTab() != third {
 		t.Fatal("picking a shell with no pane did not put it on screen")
 	}
+	if w.split != nil {
+		t.Fatal("picking a tab of its own left the split on screen")
+	}
+	if third.ws != nil {
+		t.Fatal("a tab picked from the strip joined the split")
+	}
+	if second.ws == nil || first.ws != second.ws {
+		t.Fatal("the split's workspace was lost when another tab was picked")
+	}
+
+	// Coming back restores the layout, with the pane that had the focus.
+	w.selectTab(second)
 	if w.split == nil || w.split.count() != 2 {
-		t.Fatal("picking a shell took the split apart")
+		t.Fatal("picking a pane back did not restore the split")
 	}
-	if w.focus.tab != third {
-		t.Fatal("the shell picked from the strip is not in the focused pane")
-	}
-	// The pane it replaced keeps its shell in the strip, still running.
-	if second.id == "" {
-		t.Fatal("the shell the focused pane had is gone")
+	if w.activeTab() != second {
+		t.Fatal("the pane picked back is not on screen")
 	}
 }
 

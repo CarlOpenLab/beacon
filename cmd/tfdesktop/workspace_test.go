@@ -91,6 +91,55 @@ func TestASplitsPanesAreNamedByDirectoryWhenTheirTitlesRepeatTheMachine(t *testi
 	}
 }
 
+// Switching to a tab of its own puts the split away; it does not take the
+// sidebar apart or rearrange the workspace behind the tab that was picked.
+func TestSwitchingTabsLeavesTheWorkspaceRowInPlace(t *testing.T) {
+	w := splitWindow(t)
+	ws := &workspace{split: w.split, focus: w.focus}
+	w.ws = ws
+	for _, tb := range []*tab{w.tabs[1], w.tabs[2]} {
+		tb.ws = ws
+	}
+	// A third shell, a tab of its own.
+	third := &tab{id: "s3", machine: machineLocal, title: "three", ordinal: 3, alive: true}
+	w.tabs[3] = third
+	w.order = append(w.order, 3)
+
+	w.selectTab(third)
+	if w.split != nil {
+		t.Fatal("picking a tab of its own kept the split on screen")
+	}
+	entries := w.entriesFor(machineLocal)
+	if len(entries) != 2 {
+		t.Fatalf("the panel lists %d rows, want the workspace and the tab: %+v", len(entries), entries)
+	}
+	var workspace *sessionEntry
+	for i := range entries {
+		if len(entries[i].panes) > 0 {
+			workspace = &entries[i]
+		}
+	}
+	if workspace == nil {
+		t.Fatal("the workspace row left the panel when another tab was picked")
+	}
+	if len(workspace.panes) != 2 {
+		t.Fatalf("the workspace row lists %d panes, want two", len(workspace.panes))
+	}
+	if workspace.active {
+		t.Error("the put-away workspace still reads as the one on screen")
+	}
+
+	// Picking one of its panes brings the same row forward and restores the
+	// layout, instead of making a new split out of the tab.
+	w.selectTab(w.tabs[2])
+	if w.split == nil || w.split.count() != 2 {
+		t.Fatal("picking a pane of the put-away workspace did not restore it")
+	}
+	if !w.entriesFor(machineLocal)[0].active {
+		t.Error("the restored workspace is not marked as the one on screen")
+	}
+}
+
 // Closing the workspace's row stops watching every shell in it, and closing one
 // pane leaves the other on screen with its own row once again.
 func TestClosingOnePaneGivesTheOtherItsRowBack(t *testing.T) {

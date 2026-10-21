@@ -20,6 +20,17 @@ import (
 	"github.com/CarlOpenLab/term-fleet/locales"
 )
 
+// workspace is one tab's layout of terminals: its split tree, the pane that had
+// the keyboard when it was last on screen, and whether that pane was zoomed. A
+// standalone tab has no workspace; a split's panes share one. Switching tabs
+// puts the layout away and brings another back, which is what stops a tab pick
+// from rearranging the split behind it.
+type workspace struct {
+	split  *splitNode
+	focus  *splitNode
+	zoomed bool
+}
+
 // splitNode is one leaf or one branch of the split tree. A leaf holds a tab; a
 // branch holds two children and how the room between them is shared.
 type splitNode struct {
@@ -125,19 +136,45 @@ func (w *window) insertSplit(on *tab, leaf *splitNode, side bool) {
 	if !leaf.leaf() {
 		return
 	}
-	at := w.focus
-	if w.split == nil {
+	ws := w.ws
+	if on != nil && on.ws != nil && on.ws != ws {
+		// The tab being split belongs to a workspace that is not loaded: bring
+		// it back first, so the new pane joins that layout and not another.
+		w.enterWorkspace(on.ws, on)
+		ws = on.ws
+	}
+	if ws == nil {
 		if on == nil {
 			return
 		}
-		at = &splitNode{tab: on}
-		w.split = at
+		if w.split == nil {
+			// The first split of a standalone tab starts the workspace: the tab
+			// itself becomes the first pane, and the fresh shell the second.
+			at := &splitNode{tab: on}
+			w.split, w.focus = at, at
+		}
+		// A split built without a workspace is adopted as one, so the panes
+		// know which layout they belong to from here on.
+		ws = &workspace{split: w.split, focus: w.focus}
+		w.ws = ws
+		for _, tb := range workspaceLeaves(ws) {
+			tb.ws = ws
+		}
+	} else if on != nil && on.ws == nil {
+		on.ws = ws
 	}
-	if !at.leaf() {
+	at := w.focus
+	if at == nil || !at.leaf() {
+		at = w.split.firstLeaf()
+	}
+	if at == nil {
 		return
 	}
+	leaf.tab.ws = ws
 	w.split = replaceSplit(w.split, at, &splitNode{side: side, pct: splitHalf, a: at, b: leaf})
 	w.focus = leaf
+	w.zoomed = false
+	ws.split, ws.focus, ws.zoomed = w.split, w.focus, false
 }
 
 // closeSplitPane closes the pane on screen: the shell keeps running and its tab
@@ -167,7 +204,14 @@ func (w *window) collapseLeaf(n *splitNode, settle bool) {
 	if w.split == nil || !n.leaf() {
 		return
 	}
+	if n.tab != nil {
+		n.tab.ws = nil
+	}
 	if w.split == n {
+		if w.ws != nil {
+			w.ws.split, w.ws.focus, w.ws.zoomed = nil, nil, false
+			w.ws = nil
+		}
 		w.split, w.focus = nil, nil
 		return
 	}
@@ -183,9 +227,64 @@ func (w *window) collapseLeaf(n *splitNode, settle bool) {
 	if w.focus == n {
 		w.focus = sibling.firstLeaf()
 	}
+	if w.ws != nil {
+		w.ws.split, w.ws.focus = w.split, w.focus
+	}
 	if settle {
 		w.settleSplit()
 	}
+}
+
+// workspaceLeaves are a workspace's panes, in the order the body draws them.
+func workspaceLeaves(ws *workspace) []*tab {
+	if ws == nil || ws.split == nil {
+		return nil
+	}
+	var out []*tab
+	var walk func(*splitNode)
+	walk = func(n *splitNode) {
+		if n == nil {
+			return
+		}
+		if n.tab != nil {
+			out = append(out, n.tab)
+			return
+		}
+		walk(n.a)
+		walk(n.b)
+	}
+	walk(ws.split)
+	return out
+}
+
+// leaveWorkspace puts the layout on screen away, keeping it whole: its tree and
+// the pane with the keyboard are saved, and the body goes back to one tab. A
+// person switching to another tab is leaving a workspace, not closing one.
+func (w *window) leaveWorkspace() {
+	if w.ws != nil {
+		w.ws.split, w.ws.focus, w.ws.zoomed = w.split, w.focus, w.zoomed
+	}
+	w.ws = nil
+	w.split, w.focus, w.zoomed = nil, nil, false
+}
+
+// enterWorkspace brings a workspace back, with tb's pane in front. The layout
+// is the one it was left with, not a new split of whichever tab was picked.
+func (w *window) enterWorkspace(ws *workspace, tb *tab) {
+	if ws == nil {
+		w.selectTabRaw(tb)
+		return
+	}
+	if w.ws != ws {
+		w.leaveWorkspace()
+		w.ws = ws
+		w.split, w.focus, w.zoomed = ws.split, ws.focus, ws.zoomed
+	}
+	if n := w.leafOf(tb); n != nil {
+		w.focus = n
+		ws.focus = n
+	}
+	w.selectTabRaw(tb)
 }
 
 // settleSplit puts the window back to one pane when the split tree has been
@@ -196,8 +295,13 @@ func (w *window) settleSplit() {
 		return
 	}
 	tb := w.split.tab
+	if w.ws != nil {
+		w.ws.split, w.ws.focus, w.ws.zoomed = nil, nil, false
+		w.ws = nil
+	}
 	w.split, w.focus, w.zoomed = nil, nil, false
 	if tb != nil {
+		tb.ws = nil
 		w.selectTabRaw(tb)
 	}
 }
@@ -208,6 +312,9 @@ func (w *window) settleSplit() {
 func (w *window) syncSplit() {
 	w.settleSplit()
 	if w.split != nil && w.focus != nil && w.focus.tab != nil {
+		if w.ws != nil {
+			w.ws.split, w.ws.focus = w.split, w.focus
+		}
 		w.selectTabRaw(w.focus.tab)
 	}
 }
@@ -220,6 +327,9 @@ func (w *window) focusSplit(n *splitNode) {
 		return
 	}
 	w.focus = n
+	if w.ws != nil {
+		w.ws.focus = n
+	}
 	w.selectTabRaw(n.tab)
 }
 
@@ -242,6 +352,77 @@ func (w *window) leafOf(tb *tab) *splitNode {
 		return walk(n.b)
 	}
 	return walk(w.split)
+}
+
+// detachTab takes a tab out of its workspace's layout, whether that workspace is
+// the one on screen or one put away. The tab itself is left to its caller: a
+// closed pane's shell keeps running, and a closed tab is gone either way.
+func (w *window) detachTab(tb *tab) {
+	if tb == nil || tb.ws == nil {
+		return
+	}
+	ws := tb.ws
+	if w.ws == ws {
+		if n := w.leafOf(tb); n != nil {
+			w.collapseLeaf(n, false)
+		}
+		tb.ws = nil
+		return
+	}
+	n := leafOfWorkspace(ws, tb)
+	if n != nil {
+		ws.split = removeLeaf(ws.split, n)
+		if ws.split == nil || ws.split.leaf() {
+			if ws.split != nil && ws.split.tab != nil {
+				ws.split.tab.ws = nil
+			}
+			ws.split, ws.focus, ws.zoomed = nil, nil, false
+		} else if ws.focus == n {
+			ws.focus = ws.split.firstLeaf()
+		}
+	}
+	tb.ws = nil
+}
+
+// leafOfWorkspace is the leaf showing tb in a workspace, or nil.
+func leafOfWorkspace(ws *workspace, tb *tab) *splitNode {
+	if ws == nil || ws.split == nil || tb == nil {
+		return nil
+	}
+	var walk func(*splitNode) *splitNode
+	walk = func(n *splitNode) *splitNode {
+		if n == nil {
+			return nil
+		}
+		if n.tab == tb {
+			return n
+		}
+		if found := walk(n.a); found != nil {
+			return found
+		}
+		return walk(n.b)
+	}
+	return walk(ws.split)
+}
+
+// removeLeaf returns the tree without target: the branch that held it becomes
+// its sibling, and a tree that was only target is nil.
+func removeLeaf(root, target *splitNode) *splitNode {
+	if root == nil || root == target {
+		return nil
+	}
+	if root.leaf() {
+		return root
+	}
+	root.a = removeLeaf(root.a, target)
+	root.b = removeLeaf(root.b, target)
+	if root.a == nil {
+		return root.b
+	}
+	if root.b == nil {
+		return root.a
+	}
+	return root
 }
 
 // parentOf is the branch holding a node, or nil for the root.
@@ -377,6 +558,9 @@ func (w *window) zoomFocused() {
 		return
 	}
 	w.zoomed = !w.zoomed
+	if w.ws != nil {
+		w.ws.zoomed = w.zoomed
+	}
 	w.invalidate()
 }
 

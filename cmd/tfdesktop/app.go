@@ -89,6 +89,7 @@ type window struct {
 	// not nil. See split.go.
 	split *splitNode
 	focus *splitNode
+	ws    *workspace
 
 	// renaming is the shell whose name is being edited and renameDraft is what
 	// the field holds; see rename.go. renameSeed is the name the draft started
@@ -976,16 +977,11 @@ func (w *window) followOn(machine string) (session, dir string) {
 	return tb.id, tb.cwd
 }
 
-// showInFocus puts a tab on screen: in the focused pane when the body is split,
-// and as the selected tab otherwise. A split keeps its shape when a new shell
-// arrives — the shell lands in the pane a person is working in, and the tab it
-// replaces stays in the strip, still running.
+// showInFocus puts a tab on screen. A new shell is a tab of its own: it does
+// not take the focused pane's place, which in another terminal is what a tab
+// pick or ⌘T never does. Picking a tab that belongs to a workspace brings that
+// workspace and its layout back.
 func (w *window) showInFocus(tb *tab) {
-	if w.split != nil && w.focus != nil && w.focus.leaf() {
-		w.focus.tab = tb
-		w.selectTabRaw(tb)
-		return
-	}
 	w.selectTab(tb)
 }
 
@@ -1290,10 +1286,10 @@ func (w *window) removeTab(tb *tab) {
 	}
 	// A pane showing this tab goes with it, quietly: the tree is settled after
 	// the tab set has moved, because selecting the pane that is left would name
-	// a strip index that is about to change.
-	if n := w.leafOf(tb); n != nil {
-		w.collapseLeaf(n, false)
-	}
+	// a strip index that is about to change. A workspace that is put away is
+	// edited in place, so a tab closed from the sidebar takes its pane out of a
+	// layout nobody is looking at too.
+	w.detachTab(tb)
 	if tb.id != "" && tb.machine == machineLocal {
 		if w.dismissed == nil {
 			w.dismissed = make(map[string]bool)
@@ -1625,6 +1621,11 @@ type tab struct {
 	// shell opened beside this one falls back to when the machine cannot say
 	// where its processes stand, and what the tab's own inspection shows.
 	cwd string
+
+	// ws is the workspace whose layout holds this shell, or nil for a tab of its
+	// own. A split's panes share one; switching to another tab puts the workspace
+	// away rather than rearranging it.
+	ws *workspace
 }
 
 // bind gives the tab its session id, once the hub has named it. Until then the

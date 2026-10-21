@@ -188,12 +188,7 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 		label:   w.sidebarName(first, machine),
 		meta:    locales.WorkspacePanes(len(leaves)),
 		holder:  first.holder(),
-		active:  true,
-		pick: func() {
-			if n := w.leafOf(first); n != nil {
-				w.focusSplit(n)
-			}
-		},
+		pick:    func() { w.selectTab(first) },
 		end: func() {
 			for _, tb := range leaves {
 				w.kill(tb)
@@ -211,7 +206,6 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 		}
 	}
 	entry.status, entry.unread, entry.progress, entry.since = w.aggregateStatus(leaves)
-	entry.active = false
 	for _, tb := range leaves {
 		if tb == w.activeTab() {
 			entry.active = true
@@ -229,11 +223,7 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 				holder:  tb.holder(),
 				active:  tb == w.activeTab(),
 				alive:   tb.alive,
-				pick: func() {
-					if n := w.leafOf(tb); n != nil {
-						w.focusSplit(n)
-					}
-				},
+				pick:    func() { w.selectTab(tb) },
 			}
 			if sum, ok := w.summaryOf(machine, tb.id); ok {
 				pane = pane.withStatus(sum)
@@ -293,15 +283,19 @@ func (w *window) aggregateStatus(leaves []*tab) (state string, unread bool, prog
 func (w *window) entriesFor(machine string) []sessionEntry {
 	if machine == machineLocal {
 		out := make([]sessionEntry, 0, len(w.order))
-		leaves := w.leavesOn(machineLocal)
-		var first *tab
-		pane := map[*tab]bool{}
-		if len(leaves) > 1 {
-			first = leaves[0]
-			for _, tb := range leaves {
-				pane[tb] = true
+		seen := map[*workspace]bool{}
+		// A split built by hand (a test, or a frame before the workspace is
+		// adopted) still reads as one row: its panes are grouped even though no
+		// tab carries the workspace yet.
+		implicitSet := map[*tab]bool{}
+		var implicit []*tab
+		if w.split != nil && w.ws == nil {
+			implicit = workspaceLeaves(&workspace{split: w.split})
+			for _, tb := range implicit {
+				implicitSet[tb] = true
 			}
 		}
+		implicitDone := false
 		for _, key := range w.order {
 			tb := w.tabs[key]
 			if tb == nil || tb.machine != machineLocal {
@@ -310,14 +304,24 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 				// machine in the middle of this machine's shells.
 				continue
 			}
-			if pane[tb] {
-				if tb != first {
-					// A pane of the workspace: the split's row is the one place it
-					// is listed.
+			if implicitSet[tb] {
+				if !implicitDone {
+					out = append(out, w.workspaceRow(machineLocal, implicit))
+					implicitDone = true
+				}
+				continue
+			}
+			if tb.ws != nil {
+				if seen[tb.ws] {
+					// A pane of the workspace: the workspace's row is the one
+					// place it is listed.
 					continue
 				}
-				out = append(out, w.workspaceRow(machineLocal, leaves))
-				continue
+				seen[tb.ws] = true
+				if leaves := workspaceLeaves(tb.ws); len(leaves) > 1 {
+					out = append(out, w.workspaceRow(machineLocal, leaves))
+					continue
+				}
 			}
 			tab := tb
 			entry := sessionEntry{
@@ -342,24 +346,20 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 
 	list := w.remoteSessions[machine]
 	out := make([]sessionEntry, 0, len(list))
-	leaves := w.leavesOn(machine)
-	firstID := ""
-	if len(leaves) > 1 {
-		firstID = leaves[0].id
-	}
-	listed := false
+	seen := map[*workspace]bool{}
 	for _, s := range list {
 		if !s.Alive && w.dismissed[dismissedKey(machine, s.SessionID)] {
 			continue
 		}
-		if firstID != "" && w.tabOf(machine, s.SessionID) != nil {
-			if s.SessionID != firstID {
-				// A pane of the workspace on this machine: listed once, below.
+		if tab := w.tabOf(machine, s.SessionID); tab != nil && tab.ws != nil {
+			if seen[tab.ws] {
 				continue
 			}
-			out = append(out, w.workspaceRow(machine, leaves))
-			listed = true
-			continue
+			seen[tab.ws] = true
+			if leaves := workspaceLeaves(tab.ws); len(leaves) > 1 {
+				out = append(out, w.workspaceRow(machine, leaves))
+				continue
+			}
 		}
 		summary := s
 		name := summary.Title
@@ -407,10 +407,17 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 		}.withStatus(summary)
 		out = append(out, entry)
 	}
-	if firstID != "" && !listed {
-		// The machine's list has not caught up with the tab the split is on; the
-		// workspace is still the one row it should read as.
-		out = append(out, w.workspaceRow(machine, leaves))
+	// A workspace whose panes the machine's list has not caught up with still
+	// gets its row: the layout is the window's own, not the broadcast's.
+	for _, key := range w.order {
+		tb := w.tabs[key]
+		if tb == nil || tb.machine != machine || tb.ws == nil || seen[tb.ws] {
+			continue
+		}
+		seen[tb.ws] = true
+		if leaves := workspaceLeaves(tb.ws); len(leaves) > 1 {
+			out = append(out, w.workspaceRow(machine, leaves))
+		}
 	}
 	return out
 }
@@ -719,14 +726,23 @@ func (w *window) newestTabOn(machine string) *tab {
 // pane, and any other tab lands in the focused pane — picking a third shell
 // beside two others is asking to look at it beside them, not to lose them.
 func (w *window) selectTab(tb *tab) {
+	if tb == nil {
+		return
+	}
+	// A tab in a workspace brings the whole layout back; a tab of its own puts
+	// the layout away. The old fallback keeps a split built by hand (a test, or a
+	// frame before the workspace was adopted) behaving as one.
+	if tb.ws != nil {
+		w.enterWorkspace(tb.ws, tb)
+		return
+	}
 	if w.split != nil {
 		if n := w.leafOf(tb); n != nil {
 			w.focusSplit(n)
 			return
 		}
-		w.showInFocus(tb)
-		return
 	}
+	w.leaveWorkspace()
 	w.selectTabRaw(tb)
 }
 
@@ -775,7 +791,9 @@ func (w *window) openOrSelect(machine, sessionID string) {
 		// A shell of this machine's always has a tab: the session list mounts one.
 		return
 	}
-	if w.openTab(machine, sessionID) == nil {
+	if tb := w.openTab(machine, sessionID); tb != nil {
+		w.showInFocus(tb)
+	} else {
 		w.linkNote = w.noLinkReason(machine)
 	}
 }
