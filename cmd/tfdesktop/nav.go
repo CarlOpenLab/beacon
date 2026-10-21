@@ -189,13 +189,21 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 		meta:    locales.WorkspacePanes(len(leaves)),
 		holder:  first.holder(),
 		active:  true,
-		pick:    func() {
+		pick: func() {
 			if n := w.leafOf(first); n != nil {
 				w.focusSplit(n)
 			}
 		},
-		end:   func() { for _, tb := range leaves { w.kill(tb) } },
-		close: func() { for _, tb := range leaves { w.removeTab(tb) } },
+		end: func() {
+			for _, tb := range leaves {
+				w.kill(tb)
+			}
+		},
+		close: func() {
+			for _, tb := range leaves {
+				w.removeTab(tb)
+			}
+		},
 	}
 	for _, tb := range leaves {
 		if tb.alive {
@@ -493,14 +501,15 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 	}
 }
 
-// paneRow is one terminal of a split, under the workspace's row: the branch of
-// the tree, the number that tells it from the tab's other panes, and its name.
-// The name is quieter than the tab's, so the parent row reads first; a name that
-// repeats the machine's gives way to the directory, and a pane whose name is the
-// same as another's still has its number. The last pane's branch stops at its
-// middle, so the tree ends where its rows do.
-func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, n int, last bool) {
-	row := ui.Row(c).Height(30).FillWidth().Padding(0, 8, 0, 10).Gap(8).
+// paneRow is one terminal of a split, under the workspace's row: a dotted branch
+// of the tree, its state, and its name. The branch is dotted rather than a solid
+// indent line, so it reads as a list under a tab instead of a second column; the
+// state sits at the start of the branch, where the eye looks first. The last
+// pane's branch stops at its middle, so the tree ends where its rows do. A pane
+// at its prompt gets a hollow ring rather than no mark: under the workspace's
+// row every pane should show where it is in the list.
+func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, last bool) {
+	row := ui.Row(c).Height(30).FillWidth().Padding(0, 8, 0, 10).Gap(6).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
 	if pal.Dark {
@@ -527,16 +536,20 @@ func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, n
 			if last {
 				bottom = mid
 			}
-			line := pal.Text.Alpha(0.14)
-			p.Line(r.X+9, r.Y, r.X+9, bottom, 1, line)
-			p.Line(r.X+9, mid, r.X+r.W-1, mid, 1, line)
+			line := pal.Text.Alpha(0.22)
+			// A dotted trunk, and a dashed elbow that reaches the state mark.
+			for y := r.Y; y < bottom; y += 4 {
+				p.Fill(ui.Rect{X: r.X + 6, Y: y, W: 1, H: 1.5}, line, 0.5)
+			}
+			for x := r.X + 6; x < r.X+r.W+4; x += 3 {
+				p.Fill(ui.Rect{X: x, Y: mid, W: 1.5, H: 1}, line, 0.5)
+			}
 		})
-		// The number stays whether or not the names repeat: it is how a person
-		// names "the second terminal" of a split, besides ⌘].
-		index := ui.Box(c).Size(16, 16).Radius(4).Center().Shrink(0).Background(pal.Chip)
-		index.Children(func() {
-			ui.Textf(c, "%d", n).FontSize(10).TextColor(pal.TextMuted).FontFeatures("tnum")
-		})
+		if e.status == "" || e.status == "idle" && !e.unread {
+			idleRing(c, pal, 12)
+		} else {
+			statusGlyph(c, pal, e.status, e.unread, e.progress, 12)
+		}
 		name := ui.Text(c, e.label).FontSize(12.5).TextColor(pal.TextMuted).
 			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if selected {
@@ -549,15 +562,27 @@ func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, n
 		if !e.alive {
 			name.TextColor(pal.TextMuted)
 		}
-		if e.dir != "" && e.dir != e.label {
-			ui.Text(c, e.dir).FontSize(11).TextColor(pal.TextFaint).
-				SingleLine().Ellipsis("…").Shrink(2).MinWidth(0)
+		if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
+			badgeChip(c, badge, color)
 		}
-		statusGlyph(c, pal, e.status, e.unread, e.progress, 12)
 	})
 	if row.Clicked() {
 		e.pick()
 	}
+}
+
+// idleRing is the hollow circle of a pane at its prompt, the same size as the
+// filled states so that a row's name does not move as the pane changes state.
+func idleRing(c *ui.Context, pal *uitokens.Palette, size float32) ui.Element {
+	box := ui.Box(c).Size(size, size).Shrink(0)
+	box.Draw(func(p *ui.Painter, r ui.Rect) {
+		cx, cy := r.X+r.W/2, r.Y+r.H/2
+		rad := min(r.W, r.H)/2 - 1
+		var ring ui.Path
+		ring.Circle(cx, cy, rad*0.68)
+		p.StrokePath(&ring, 1.4, pal.TextFaint.Alpha(0.75))
+	})
+	return box
 }
 
 // sessionMeta is the row's second line: the shell's id, its size, and what it is
