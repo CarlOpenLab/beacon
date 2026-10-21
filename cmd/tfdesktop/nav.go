@@ -69,6 +69,9 @@ type sessionEntry struct {
 	// close stops watching the shell: it closes the tab this row is about and
 	// nothing else. Empty for a row that has no tab of this window's.
 	close func()
+	// dir is the directory a pane stands in, shown under the workspace's row
+	// when the pane's name repeats. Empty for rows that do not draw it.
+	dir string
 	// panes are the terminals behind a split's one row, in the order the body
 	// draws them. Empty for an ordinary session.
 	panes []sessionEntry
@@ -160,6 +163,19 @@ func (w *window) leavesOn(machine string) []*tab {
 	return out
 }
 
+// sidebarName is what a split's row calls a pane. A shell that has not named
+// itself reports the machine's hostname as its title, which says nothing and
+// makes four panes read as four copies of the machine: the directory it stands
+// in is the better name then, and the row keeps the index for the rest.
+func (w *window) sidebarName(tb *tab, machine string) string {
+	name := tb.name()
+	dir := shortDir(tb.cwd)
+	if dir != "" && dir != name && name == w.machineName(machine) {
+		return dir
+	}
+	return name
+}
+
 // workspaceRow is the one row a split earns in the sidebar — a session,
 // its panes the bodies of the split. The sidebar lists what a person can switch
 // to, not every shell behind a divider: pressing ⌘D splits the shell on screen,
@@ -169,7 +185,7 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 	entry := sessionEntry{
 		machine: machine,
 		session: first.id,
-		label:   first.name(),
+		label:   w.sidebarName(first, machine),
 		meta:    locales.WorkspacePanes(len(leaves)),
 		holder:  first.holder(),
 		active:  true,
@@ -199,7 +215,8 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 			pane := sessionEntry{
 				machine: machine,
 				session: tb.id,
-				label:   tb.name(),
+				label:   w.sidebarName(tb, machine),
+				dir:     shortDir(tb.cwd),
 				meta:    tb.size(),
 				holder:  tb.holder(),
 				active:  tb == w.activeTab(),
@@ -477,11 +494,12 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 }
 
 // paneRow is one terminal of a split, under the workspace's row: the branch of
-// the tree on the left, the panes' state beside it, and the name. It is a row
-// of its own so that a person can go straight to a pane rather than land on the
-// workspace and press ⌘] until the right one is in front. The last pane's branch
-// stops at its middle, so the tree ends where its rows do.
-func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, last bool) {
+// the tree, the number that tells it from the tab's other panes, and its name.
+// The name is quieter than the tab's, so the parent row reads first; a name that
+// repeats the machine's gives way to the directory, and a pane whose name is the
+// same as another's still has its number. The last pane's branch stops at its
+// middle, so the tree ends where its rows do.
+func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, n int, last bool) {
 	row := ui.Row(c).Height(30).FillWidth().Padding(0, 8, 0, 10).Gap(8).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
@@ -513,17 +531,29 @@ func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, l
 			p.Line(r.X+9, r.Y, r.X+9, bottom, 1, line)
 			p.Line(r.X+9, mid, r.X+r.W-1, mid, 1, line)
 		})
-		statusGlyph(c, pal, e.status, e.unread, e.progress, 12)
-		name := ui.Text(c, e.label).FontSize(13).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		// The number stays whether or not the names repeat: it is how a person
+		// names "the second terminal" of a split, besides ⌘].
+		index := ui.Box(c).Size(16, 16).Radius(4).Center().Shrink(0).Background(pal.Chip)
+		index.Children(func() {
+			ui.Textf(c, "%d", n).FontSize(10).TextColor(pal.TextMuted).FontFeatures("tnum")
+		})
+		name := ui.Text(c, e.label).FontSize(12.5).TextColor(pal.TextMuted).
+			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		if selected {
+			name.TextColor(pal.Text)
+		}
 		if e.unread {
-			name.FontWeight(650)
+			name.FontWeight(600)
+			name.TextColor(pal.Text)
 		}
 		if !e.alive {
 			name.TextColor(pal.TextMuted)
 		}
-		if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
-			badgeChip(c, badge, color)
+		if e.dir != "" && e.dir != e.label {
+			ui.Text(c, e.dir).FontSize(11).TextColor(pal.TextFaint).
+				SingleLine().Ellipsis("…").Shrink(2).MinWidth(0)
 		}
+		statusGlyph(c, pal, e.status, e.unread, e.progress, 12)
 	})
 	if row.Clicked() {
 		e.pick()
@@ -609,6 +639,9 @@ func (w *window) sessionTooltip(e sessionEntry) string {
 	lines := []string{w.machineName(e.machine), e.session}
 	if e.meta != "" {
 		lines = append(lines, e.meta)
+	}
+	if e.dir != "" && e.dir != e.label {
+		lines = append(lines, e.dir)
 	}
 	switch {
 	case w.holds(e):

@@ -61,6 +61,36 @@ func TestASplitIsOneTabWithItsPanesUnderIt(t *testing.T) {
 	}
 }
 
+// A shell whose title is just the machine's hostname says nothing: four panes
+// of a split would read as four copies of the machine. The directory names them,
+// and the number in front of it tells the panes apart when even that repeats.
+func TestASplitsPanesAreNamedByDirectoryWhenTheirTitlesRepeatTheMachine(t *testing.T) {
+	w := splitWindow(t)
+	w.tabs[1].title = w.machineName(machineLocal)
+	w.tabs[2].title = w.machineName(machineLocal)
+	w.tabs[1].cwd = "/tmp/work/api"
+	w.tabs[2].cwd = "/tmp/work/web"
+
+	entries := w.entriesFor(machineLocal)
+	if got := entries[0].label; got != "api" {
+		t.Errorf("the workspace is named %q, want the directory api", got)
+	}
+	if len(entries[0].panes) != 2 {
+		t.Fatalf("the split lists %d panes, want two", len(entries[0].panes))
+	}
+	if got := entries[0].panes[1].label; got != "web" {
+		t.Errorf("the second pane is named %q, want the directory web", got)
+	}
+	if entries[0].panes[1].dir != "web" {
+		t.Errorf("the second pane's directory is %q, want web", entries[0].panes[1].dir)
+	}
+
+	nav := drawNav(t, w)
+	if !nav.HasText("api") || !nav.HasText("web") {
+		t.Fatalf("the panes are not named by their directories: %v", nav.Texts())
+	}
+}
+
 // Closing the workspace's row stops watching every shell in it, and closing one
 // pane leaves the other on screen with its own row once again.
 func TestClosingOnePaneGivesTheOtherItsRowBack(t *testing.T) {

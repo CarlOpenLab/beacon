@@ -264,7 +264,7 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 			if i == 0 {
 				continue
 			}
-			w.paneRow(c, pal, pane, i == len(e.panes)-1)
+			w.paneRow(c, pal, pane, i+1, i == len(e.panes)-1)
 		}
 	}
 	if len(entries) == 0 {
