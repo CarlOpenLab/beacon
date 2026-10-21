@@ -372,6 +372,11 @@ func (s *settingsWindow) view(c *ui.Context) {
 				card := ui.Column(c).Fill().MinWidth(0).Radius(uitokens.CardRadius).Clip()
 				raised(card.Background(pal.Card), pal)
 				card.Children(func() {
+					// The page names itself once, in a header that stays while the
+					// settings below scroll, as the platform's settings windows do.
+					ui.Row(c).Height(44).Shrink(0).Padding(0, 18).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, settingsPageTitle(s.pane)).FontSize(15).FontWeight(650).TextColor(pal.Text)
+					})
 					// The pane is the whole card, so it scrolls rather than clips:
 					// a short window must not hide a switch under the fold.
 					ui.Scroll(c).Fill().Children(func() {
@@ -398,14 +403,33 @@ func (s *settingsWindow) view(c *ui.Context) {
 			})
 		})
 		if s.status != "" {
-			line := ui.Text(c, s.status).FontSize(11).PaddingX(12)
+			// A footer, not a green band: a dot carries the state, and the
+			// sentence stays in the chrome's quiet grey so it reads as the
+			// last thing that happened rather than as a warning across the window.
+			tone := pal.Success
+			text := pal.TextMuted
 			if s.statusErr {
-				line.TextColor(t.Danger)
-			} else {
-				line.TextColor(t.Success)
+				tone, text = pal.Danger, pal.Danger
 			}
+			footer := ui.Row(c).Height(34).Shrink(0).Padding(0, 16).Gap(7).AlignItems(ui.Center).
+				BorderWidth(1, 0, 0, 0).BorderColor(pal.Text.Alpha(0.06))
+			footer.Children(func() {
+				ui.Box(c).Size(6, 6).Radius(3).Background(tone).Shrink(0)
+				ui.Text(c, s.status).FontSize(11.5).TextColor(text).
+					SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			})
 		}
 	})
+}
+
+// settingsPageTitle is the name of a page, for the header above its settings.
+func settingsPageTitle(pane int) string {
+	for _, page := range settingsPages {
+		if page.id == pane {
+			return page.title()
+		}
+	}
+	return locales.SettingsTitle()
 }
 
 // settingsPage is one page of the Settings window.
@@ -460,6 +484,13 @@ func (s *settingsWindow) settingsNav(c *ui.Context, pal *uitokens.Palette, page 
 // groupTitle is a group's title, over the panel of settings it names.
 func groupTitle(c *ui.Context, pal *uitokens.Palette, title string) {
 	ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(pal.TextMuted).Padding(0, 4)
+}
+
+// settingsFormGroup puts a form on the soft panel the settings pages group
+// their rows in. The form keeps its labels' focus behaviour; the panel is what
+// changes, so a page of fields reads as one group rather than as a white field.
+func settingsFormGroup(c *ui.Context, pal *uitokens.Palette, fn func()) {
+	ui.Column(c).Radius(12).Background(pal.Chip).Padding(12, 16).Children(fn)
 }
 
 // settingsGroup is a titled set of settings on a soft panel, as the settings are
@@ -609,7 +640,7 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 	}
 
 	groupRows = 0
-	settingsGroup(c, pal, locales.SettingsPaneAppearance(), func() {
+	settingsGroup(c, pal, "", func() {
 		settingRow(c, pal, locales.SettingsTheme(), "", func() {
 			labels := []string{locales.ThemeSystem(), locales.ThemeLight(), locales.ThemeDark()}
 			choice := themeIndex(mode)
@@ -697,7 +728,7 @@ func paneNote(c *ui.Context, text string, color ui.Color) {
 func (s *settingsWindow) keyboardPage(c *ui.Context) {
 	pal := paletteFor(c)
 	groupRows = 0
-	settingsGroup(c, pal, locales.SettingsPaneKeyboard(), func() {
+	settingsGroup(c, pal, "", func() {
 		for _, a := range appActions {
 			s.shortcutRow(c, pal, a)
 		}
@@ -836,7 +867,7 @@ func (s *settingsWindow) setKeys(a action, accel string) {
 func (s *settingsWindow) notificationsPage(c *ui.Context) {
 	pal := paletteFor(c)
 	groupRows = 0
-	settingsGroup(c, pal, locales.SettingsPaneNotifications(), func() {
+	settingsGroup(c, pal, "", func() {
 		settingRow(c, pal, locales.SettingsNotifyWaiting(), "", func() {
 			toggle(c, pal, "notify-waiting", &s.notifyWaiting)
 		})
@@ -857,96 +888,101 @@ func (s *settingsWindow) notificationsPage(c *ui.Context) {
 func (s *settingsWindow) terminalPane(c *ui.Context) {
 	t := c.Theme()
 	pal := paletteFor(c)
-	ui.Form(c, func() {
-		ui.Field(c, locales.SettingsFont(), func() {
-			// Suggestions only, and no commit on change: this field takes free text,
-			// so committing per keystroke would rewrite the settings and rebuild
-			// the relay link on every character. Text fields save on 应用.
-			ui.Autocomplete(c, &s.family, s.familyChoices()).Width(260).AlignSelf(ui.End)
-		})
-		ui.Field(c, locales.SettingsFontSize(), func() {
-			s.fontSizePopup(c, pal)
-		})
-		// The language applies on the click, like the switches: a person who
-		// picks another language wants to see it, not to look for 应用.
-		lang := languageIndex(s.language)
-		ui.Field(c, locales.SettingsLanguage(), func() {
-			seg := segmentedChoice(c, pal, "language", &lang, []string{
-				locales.SettingsLangSystem(), locales.SettingsLangZh(), locales.SettingsLangEn(),
+	settingsFormGroup(c, pal, func() {
+		ui.Form(c, func() {
+			ui.Field(c, locales.SettingsFont(), func() {
+				// Suggestions only, and no commit on change: this field takes free text,
+				// so committing per keystroke would rewrite the settings and rebuild
+				// the relay link on every character. Text fields save on 应用.
+				ui.Autocomplete(c, &s.family, s.familyChoices()).Width(260).AlignSelf(ui.End)
 			})
-			seg.Track.AlignSelf(ui.End)
-			seg.Track.OnChange(func() {
-				s.language = languageChoices[lang].tag
-				s.commit()
+			ui.Field(c, locales.SettingsFontSize(), func() {
+				s.fontSizePopup(c, pal)
 			})
-		}).Description(locales.SettingsLanguageNote())
-		paneNote(c, locales.SettingsFontNote(), t.TextMuted)
+			// The language applies on the click, like the switches: a person who
+			// picks another language wants to see it, not to look for 应用.
+			lang := languageIndex(s.language)
+			ui.Field(c, locales.SettingsLanguage(), func() {
+				seg := segmentedChoice(c, pal, "language", &lang, []string{
+					locales.SettingsLangSystem(), locales.SettingsLangZh(), locales.SettingsLangEn(),
+				})
+				seg.Track.AlignSelf(ui.End)
+				seg.Track.OnChange(func() {
+					s.language = languageChoices[lang].tag
+					s.commit()
+				})
+			}).Description(locales.SettingsLanguageNote())
+			paneNote(c, locales.SettingsFontNote(), t.TextMuted)
+		})
 	})
 }
 
 func (s *settingsWindow) relayPane(c *ui.Context) {
 	t := c.Theme()
-	ui.Form(c, func() {
-		ui.Field(c, locales.SettingsRelayUrl(), func() {
-			ui.TextInput(c, &s.relay).Placeholder("wss://relay.example/relay/agent").Fill()
-		})
-		ui.Field(c, locales.SettingsRelayDevice(), func() {
-			ui.TextInput(c, &s.device).Placeholder("mac-mini").Fill()
-		})
-		ui.Field(c, locales.SettingsRelaySecret(), func() {
-			ui.TextInput(c, &s.secret).Password().Fill()
-		})
-		ui.Field(c, locales.SettingsRelayCa(), func() {
-			ui.Column(c).Gap(6).Children(func() {
-				ui.TextInput(c, &s.ca).Placeholder(locales.SettingsCaEmptyHint()).Fill()
-				ui.Row(c).Gap(8).Children(func() {
-					if ui.Button(c, locales.SettingsCaFetch()).Clicked() {
-						s.fetchCA()
-					}
-					if ui.Button(c, locales.SettingsCaPick()).Clicked() {
-						s.pickCA()
-					}
-					if s.ca != "" && ui.Button(c, locales.SettingsCaClear()).Clicked() {
-						s.ca = ""
-						s.commit()
-					}
-				})
-				ui.Text(c, s.caNote).FontSize(11).TextColor(t.TextMuted)
+	pal := paletteFor(c)
+	settingsFormGroup(c, pal, func() {
+		ui.Form(c, func() {
+			ui.Field(c, locales.SettingsRelayUrl(), func() {
+				ui.TextInput(c, &s.relay).Placeholder("wss://relay.example/relay/agent").Width(340).AlignSelf(ui.End)
 			})
-		})
-		ui.Field(c, locales.SettingsRelayOn(), func() {
-			// AlignSelf(Start): the field's control column stretches, and a
-			// stretched switch would sit at the far end of the row, away from
-			// the label it belongs to.
-			ui.Switch(c, &s.relayOn).AlignSelf(ui.Start).OnChange(func() { s.commit() })
-		})
-		// The link's own colour: green while it is up, amber while it is not, so
-		// the state is readable without parsing the sentence. An unused relay has
-		// nothing to report — the agent's state is reset when the link is dropped,
-		// and "connecting" about a link nobody asked for would be a lie.
-		//
-		// The client link is a second connection with a credential of its own,
-		// so it gets its own line: a fleet with nothing in it and a link that was
-		// refused look the same on the 机器 panel, and this is where the
-		// difference is read.
-		if s.relayOn {
-			if line := s.relayStatusLine(); line != "" {
+			ui.Field(c, locales.SettingsRelayDevice(), func() {
+				ui.TextInput(c, &s.device).Placeholder("mac-mini").Width(340).AlignSelf(ui.End)
+			})
+			ui.Field(c, locales.SettingsRelaySecret(), func() {
+				ui.TextInput(c, &s.secret).Password().Width(340).AlignSelf(ui.End)
+			})
+			ui.Field(c, locales.SettingsRelayCa(), func() {
+				ui.Column(c).Gap(6).Children(func() {
+					ui.TextInput(c, &s.ca).Placeholder(locales.SettingsCaEmptyHint()).Width(340).AlignSelf(ui.End)
+					ui.Row(c).Gap(8).Children(func() {
+						if ui.Button(c, locales.SettingsCaFetch()).Clicked() {
+							s.fetchCA()
+						}
+						if ui.Button(c, locales.SettingsCaPick()).Clicked() {
+							s.pickCA()
+						}
+						if s.ca != "" && ui.Button(c, locales.SettingsCaClear()).Clicked() {
+							s.ca = ""
+							s.commit()
+						}
+					})
+					ui.Text(c, s.caNote).FontSize(11).TextColor(t.TextMuted)
+				})
+			})
+			ui.Field(c, locales.SettingsRelayOn(), func() {
+				// AlignSelf(Start): the field's control column stretches, and a
+				// stretched switch would sit at the far end of the row, away from
+				// the label it belongs to.
+				ui.Switch(c, &s.relayOn).AlignSelf(ui.End).OnChange(func() { s.commit() })
+			})
+			// The link's own colour: green while it is up, amber while it is not, so
+			// the state is readable without parsing the sentence. An unused relay has
+			// nothing to report — the agent's state is reset when the link is dropped,
+			// and "connecting" about a link nobody asked for would be a lie.
+			//
+			// The client link is a second connection with a credential of its own,
+			// so it gets its own line: a fleet with nothing in it and a link that was
+			// refused look the same on the 机器 panel, and this is where the
+			// difference is read.
+			if s.relayOn {
+				if line := s.relayStatusLine(); line != "" {
+					color := t.Warning
+					if s.fleet != nil && s.fleet.RelayState().Connected {
+						color = t.Success
+					}
+					paneNote(c, line, color)
+				}
+			}
+			if line := s.reachStatusLine(); line != "" {
 				color := t.Warning
-				if s.fleet != nil && s.fleet.RelayState().Connected {
+				if strings.HasPrefix(line, locales.SettingsReachReady()) {
 					color = t.Success
 				}
 				paneNote(c, line, color)
 			}
-		}
-		if line := s.reachStatusLine(); line != "" {
-			color := t.Warning
-			if strings.HasPrefix(line, locales.SettingsReachReady()) {
-				color = t.Success
-			}
-			paneNote(c, line, color)
-		}
-		paneNote(c, locales.SettingsRelayHelp(), t.TextMuted)
-		paneNote(c, locales.SettingsTokenHelp(), t.TextMuted)
+			paneNote(c, locales.SettingsRelayHelp(), t.TextMuted)
+			paneNote(c, locales.SettingsTokenHelp(), t.TextMuted)
+		})
 	})
 }
 
@@ -1080,36 +1116,39 @@ func (s *settingsWindow) setNote(note string) {
 
 func (s *settingsWindow) serverPane(c *ui.Context) {
 	t := c.Theme()
-	ui.Form(c, func() {
-		// The description says what turning this on asks the system for. macOS
-		// shows its application-firewall prompt the first time a listening
-		// socket appears, and it has no API for an app to pre-authorise itself:
-		// the only way through is the user clicking 允许 once, after which it
-		// never asks again. A person who meets that prompt cold reads it as the
-		// app doing something suspicious, so it is named here, before it happens.
-		ui.Field(c, locales.SettingsServer(), func() {
-			ui.Switch(c, &s.server).AlignSelf(ui.Start).OnChange(func() { s.commit() })
-		}).Description(locales.SettingsServerDesc())
-		// The machine's own shells, and who may type into them. It is here rather
-		// than on the remote pane because it is not about the relay: a browser on
-		// the LAN answers to it too. It applies on the click, like the switch
-		// above, because a switch that guards a machine should not wait for 应用.
-		ui.Field(c, locales.SettingsControl(), func() {
-			ui.Switch(c, &s.control).AlignSelf(ui.Start).OnChange(func() { s.commit() })
-		}).Description(locales.SettingsControlDesc())
-		if url := s.fleet.BaseURL(); url != "" {
-			paneNote(c, locales.SettingsServerUrlLine(url), t.TextMuted)
-		} else {
-			paneNote(c, locales.SettingsServerOffLine(), t.TextMuted)
-		}
-		// What the switch means, said the way the fleet works: joining a relay is
-		// the consent, so this is a way to say no — not a confirmation anyone has
-		// to give for each machine that wants in.
-		if s.control {
-			paneNote(c, locales.SettingsControlOnLine(), t.TextMuted)
-		} else {
-			paneNote(c, locales.SettingsControlOffLine(), t.Warning)
-		}
+	pal := paletteFor(c)
+	settingsFormGroup(c, pal, func() {
+		ui.Form(c, func() {
+			// The description says what turning this on asks the system for. macOS
+			// shows its application-firewall prompt the first time a listening
+			// socket appears, and it has no API for an app to pre-authorise itself:
+			// the only way through is the user clicking 允许 once, after which it
+			// never asks again. A person who meets that prompt cold reads it as the
+			// app doing something suspicious, so it is named here, before it happens.
+			ui.Field(c, locales.SettingsServer(), func() {
+				ui.Switch(c, &s.server).AlignSelf(ui.End).OnChange(func() { s.commit() })
+			}).Description(locales.SettingsServerDesc())
+			// The machine's own shells, and who may type into them. It is here rather
+			// than on the remote pane because it is not about the relay: a browser on
+			// the LAN answers to it too. It applies on the click, like the switch
+			// above, because a switch that guards a machine should not wait for 应用.
+			ui.Field(c, locales.SettingsControl(), func() {
+				ui.Switch(c, &s.control).AlignSelf(ui.End).OnChange(func() { s.commit() })
+			}).Description(locales.SettingsControlDesc())
+			if url := s.fleet.BaseURL(); url != "" {
+				paneNote(c, locales.SettingsServerUrlLine(url), t.TextMuted)
+			} else {
+				paneNote(c, locales.SettingsServerOffLine(), t.TextMuted)
+			}
+			// What the switch means, said the way the fleet works: joining a relay is
+			// the consent, so this is a way to say no — not a confirmation anyone has
+			// to give for each machine that wants in.
+			if s.control {
+				paneNote(c, locales.SettingsControlOnLine(), t.TextMuted)
+			} else {
+				paneNote(c, locales.SettingsControlOffLine(), t.Warning)
+			}
+		})
 	})
 }
 

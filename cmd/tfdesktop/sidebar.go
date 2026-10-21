@@ -248,10 +248,8 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		if iconButton(c, iconRefresh, locales.SessionRefreshMachine(), 20).Clicked() {
 			w.refreshSessions(m.ID)
 		}
-		if hovered {
-			if iconButton(c, iconPlus, locales.SessionNewOnMachine(), 20).Clicked() {
-				w.newTabOn(m.ID)
-			}
+		if iconButton(c, iconPlus, locales.SessionNewOnMachine(), 20).Clicked() {
+			w.newTabOn(m.ID)
 		}
 	})
 	if collapsed {

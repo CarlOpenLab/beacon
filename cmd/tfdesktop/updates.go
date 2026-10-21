@@ -73,45 +73,48 @@ func lastCheckLabel(when time.Time) string {
 // control that cannot do anything is worse than a sentence saying so.
 func (s *settingsWindow) updatesPane(c *ui.Context) {
 	t := c.Theme()
+	pal := paletteFor(c)
 	prefs := loadUpdatePrefs()
 
-	ui.Form(c, func() {
-		ui.Field(c, locales.UpdateCurrent(), func() { ui.Text(c, versionLabel()) })
-		ui.Field(c, locales.UpdateLastCheck(), func() { ui.Text(c, lastCheckLabel(prefs.lastCheck)) })
+	settingsFormGroup(c, pal, func() {
+		ui.Form(c, func() {
+			ui.Field(c, locales.UpdateCurrent(), func() { ui.Text(c, versionLabel()) })
+			ui.Field(c, locales.UpdateLastCheck(), func() { ui.Text(c, lastCheckLabel(prefs.lastCheck)) })
 
-		if !prefs.available {
-			ui.Field(c, locales.UpdateAutoCheck(), func() { ui.Text(c, locales.UpdateUnavailable()) })
-			ui.Field(c, locales.UpdateAutoDownload(), func() { ui.Text(c, locales.UpdateUnavailable()) })
-		} else {
-			// Each switch is drawn from the plugin's state and pushed back when
-			// clicked, so the pane reads what is on disk every frame and keeps no
-			// second copy of it.
-			checks := prefs.automaticChecks
-			ui.Field(c, locales.UpdateAutoCheck(), func() {
-				if ui.Switch(c, &checks).AlignSelf(ui.Start).Clicked() {
-					saveUpdatePrefs(checks, prefs.automaticDownloads)
-				}
-			})
-			downloads := prefs.automaticDownloads
-			ui.Field(c, locales.UpdateAutoDownload(), func() {
-				if ui.Switch(c, &downloads).AlignSelf(ui.Start).Clicked() {
-					saveUpdatePrefs(prefs.automaticChecks, downloads)
-				}
-			})
-		}
-		paneNote(c, locales.UpdateDailyNote(), t.TextMuted)
-		// A build that cannot update itself gets the reason instead of a button —
-		// the same rule the two switches above follow.
-		if prefs.available {
-			ui.Field(c, "", func() {
-				if ui.Button(c, locales.UpdateCheckNow()).Clicked() {
-					checkForUpdatesNow()
-				}
-			})
-			paneNote(c, locales.UpdateFoundNote(), t.TextMuted)
-		} else {
-			paneNote(c, locales.UpdateUnavailableNote(), t.TextMuted)
-		}
-		paneNote(c, locales.UpdateSourceNote(), t.TextMuted)
+			if !prefs.available {
+				ui.Field(c, locales.UpdateAutoCheck(), func() { ui.Text(c, locales.UpdateUnavailable()) })
+				ui.Field(c, locales.UpdateAutoDownload(), func() { ui.Text(c, locales.UpdateUnavailable()) })
+			} else {
+				// Each switch is drawn from the plugin's state and pushed back when
+				// clicked, so the pane reads what is on disk every frame and keeps no
+				// second copy of it.
+				checks := prefs.automaticChecks
+				ui.Field(c, locales.UpdateAutoCheck(), func() {
+					if ui.Switch(c, &checks).AlignSelf(ui.End).Clicked() {
+						saveUpdatePrefs(checks, prefs.automaticDownloads)
+					}
+				})
+				downloads := prefs.automaticDownloads
+				ui.Field(c, locales.UpdateAutoDownload(), func() {
+					if ui.Switch(c, &downloads).AlignSelf(ui.End).Clicked() {
+						saveUpdatePrefs(prefs.automaticChecks, downloads)
+					}
+				})
+			}
+			paneNote(c, locales.UpdateDailyNote(), t.TextMuted)
+			// A build that cannot update itself gets the reason instead of a button —
+			// the same rule the two switches above follow.
+			if prefs.available {
+				ui.Field(c, "", func() {
+					if ui.Button(c, locales.UpdateCheckNow()).AlignSelf(ui.End).Clicked() {
+						checkForUpdatesNow()
+					}
+				})
+				paneNote(c, locales.UpdateFoundNote(), t.TextMuted)
+			} else {
+				paneNote(c, locales.UpdateUnavailableNote(), t.TextMuted)
+			}
+			paneNote(c, locales.UpdateSourceNote(), t.TextMuted)
+		})
 	})
 }

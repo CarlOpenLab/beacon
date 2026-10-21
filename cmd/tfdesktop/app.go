@@ -815,13 +815,17 @@ func (w *window) askForReach() {
 func (w *window) settingsDialog(c *ui.Context) {
 	width, height := c.Size()
 	pal := paletteFor(c)
-	ui.Modal(c, &w.settingsOpen, func() {
-		// The settings window in the app's terms: a small window of its own, on the
-		// wash, with the pages and their card inside it.
-		panel := ui.Column(c).Width(min(760, width-80)).Height(min(600, height-80)).
+	wash := uitokens.WashFor(w.store.Get().Background)
+	// A settings sheet on the window's own wash, not a dialog over a dimmed
+	// window: the wash covers the shells, and the settings card floats on it the
+	// way the cards do behind. The old modal's grey scrim was the one surface the
+	// rest of the app does not use.
+	ui.DialogBase(c, &w.settingsOpen, func(backdrop, panel ui.Element) {
+		backdrop.Background(pal.Sidebar).LinearGradient(wash.Base(pal.Dark))
+		panel.Width(min(820, width-64)).Height(min(620, height-64)).
 			Radius(uitokens.CardRadius).Clip()
 		floating(panel, pal)
-		panel.LinearGradient(uitokens.WashFor(w.store.Get().Background).Base(pal.Dark)).Children(func() {
+		panel.LinearGradient(wash.Base(pal.Dark)).Children(func() {
 			if w.settingsContent != nil {
 				w.settingsContent.view(c)
 			}
