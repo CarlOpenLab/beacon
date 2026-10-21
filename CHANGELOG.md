@@ -4,6 +4,24 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.0
+
+**Desktop & relay: close means close, a diagnostic log, and logs on the relay — 桌面端与中继：关闭即关闭、诊断日志与中继日志页**
+
+- **Closing a tab ends its session.** The card's × and ⌘W now do what closing a tab does in a terminal: the pane and the shell behind it go together. In a split the × used to take the pane out of the layout and leave both the tab and the process running, which contradicted its own 关闭标签 tooltip. A shell that has already ended, or a tab still waiting for its id, is only a view to remove.
+  — 关闭 tab 现在等于结束会话：卡片右上角 × 与 ⌘W 会同时关掉窗格和它背后的 shell，也就是普通终端里关闭标签的行为。分屏时原先只是把窗格移出布局，tab 和进程都还在，与「关闭标签」的提示自相矛盾；已经退出的 shell、仍在等待会话 id 的 tab 则只关闭视图。
+- **The session panel lists every live shell on this machine.** It used to list only this window's open tabs, so a Mac showed two shells locally while Windows (and the browser) listed all seven still running. The local roster now lists every live session too — including shells started from a browser or phone — and picking a row with no tab opens one. The panel counts sessions, not tabs.
+  — 「会话」面板现在列出本机全部运行中的 shell。原先只列本窗口打开的 tab，导致 Mac 本地只有两行，而 Windows 和浏览器看到七行。现在本机也会列出浏览器/手机启动的、没有 tab 的会话，点开即重新打开标签；同一台机器在任何客户端上数量一致。面板统计的是会话，不是标签。
+- **The relay admin panel is laid out like the desktop app.** Sign-in/setup is one floating card on the wash; the dashboard is a 212px rail with a floating content card, grouped inset rows, system light/dark following, and a manual appearance toggle. Machines, access, connect, account and logs each have their own page instead of one long column of cards.
+  — 中继管理页按桌面端的设计语言重做：登录/初始化是一张落在 wash 上的浮动卡片；仪表盘改为 212px 侧栏加浮动内容卡，分组内嵌行、跟随系统明暗并带手动切换。机器、访问、连接、账户与日志各占一页，不再是一长列卡片。
+- **A diagnostic log that answers "why is this pane blank?"** Both `tfd` and `tfdesktop` write a file to the settings directory (rotated at 8 MB, one previous file), with `-log-level` and `-log-dir` to tune it; the desktop's 设置 → 诊断 page shows the path, copies it, reveals it and saves a copy, and the macOS menu has 诊断日志…. Every attach, replay, role, exit and dropped frame carries machine= and session= fields, so one timeline can be matched across the window and the daemon.
+  — 新增诊断日志：`tfd` 与 `tfdesktop` 会把日志写到设置目录（8 MB 轮转、保留一份旧文件），可用 `-log-level` / `-log-dir` 调整；桌面端「设置 → 诊断」可查看路径、复制、在文件管理器中显示、另存一份，macOS 菜单也有「诊断日志…」。每次 attach、重放、role、exit 与丢帧都带 machine= / session= 字段，窗口与 daemon 的时间线可以对上。
+- **Blank panes fixed at their source.** A closed tab's session object is no longer left registered in the link, so reopening the same shell paints the hub's replay instead of routing it to a terminal nobody draws; a frame for a session nobody watches is counted and said once instead of disappearing; a session row on an offline machine answers with a sentence rather than opening a white tab; and a terminal view that fails to start now says so on screen instead of leaving an empty rectangle.
+  — 修复白屏根因：关闭的 tab 不再把旧 session 对象留在 link 里，重新打开同一 shell 时重放会画到新终端而不是旧连接；无人观看的帧会计数并提示一次而不是静默丢失；离线机器上的会话行会给出提示而不是打开白屏；终端视图创建失败也会在界面上说明，而不是留下一个空白矩形。
+
+- **Machines push their diagnostic tail to the relay.** `tfd` and `tfdesktop` post the newest 2,000 lines every 30 seconds, authenticated with the device credential; the relay keeps the latest bounded report per machine, and the panel's `Logs` page reads, downloads or forgets it. A blank pane on a headless Mac can now be diagnosed from another computer.
+  — 机器会把自己的诊断日志尾部上报到中继：`tfd` 与 `tfdesktop` 每 30 秒推送最新 2,000 行，使用设备凭据认证；中继按机器保留最新一份有上限的报告，管理页的「日志」页可查看、下载或清除。无头 Mac 上的空白窗格因此可以在另一台电脑上排查。
+
 ## 0.5.5
 
 **Desktop: a split stays with its tab — 桌面端：分屏跟随自己的 tab**
