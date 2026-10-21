@@ -13,6 +13,8 @@ import (
 	"io"
 	"sync"
 
+	"github.com/egoist/mygo/plugins/terminal"
+
 	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 )
@@ -35,6 +37,11 @@ type termConn struct {
 	lastRows   int
 	syncedCols int
 	syncedRows int
+
+	// screen is the view this conn feeds, for the size the screen lays out at.
+	// It is nil until that terminal is made: this conn is its Conn, so it
+	// cannot be handed over before.
+	screen *terminal.Terminal
 
 	// fed and read are the two ends of this conn's life: what the link gave the
 	// terminal, and what the terminal took. A blank pane whose conn says
@@ -153,6 +160,13 @@ func (c *termConn) Write(p []byte) (int, error) {
 
 // Resize is how the terminal tells the hub the size of the view; the plugin
 // finds it by name on the Conn.
+//
+// Holding the lease, the view is the size the shell's screen has: the screen is
+// laid out at what the hub is told, so that the bytes the program writes for
+// this size land here exactly as they do on the machine that runs it, and so
+// that every viewer of the same shell lays them out at the same width. Not
+// holding it, the view only records the size: a viewer watches a screen that
+// already has a size, and changing the outline here is not changing the shell.
 func (c *termConn) Resize(cols, rows int) error {
 	c.mu.Lock()
 	c.lastCols, c.lastRows = cols, rows
@@ -165,30 +179,49 @@ func (c *termConn) Resize(cols, rows int) error {
 		return nil
 	}
 	c.syncedCols, c.syncedRows = cols, rows
+	screen := c.screen
 	c.mu.Unlock()
 
 	c.sess.link.resize(c.sess.sessionID(), cols, rows)
+	if screen != nil {
+		screen.Resize(cols, rows)
+	}
 	return nil
 }
 
-// syncSize notifies the hub of the terminal's actual size once the lease is held.
-// If cols/rows are 0, it falls back to the last recorded size from Resize.
-// It avoids redundant resize frames if the size is already synced.
+// syncSize notifies the hub of the view's actual size once the lease is held.
+// If cols/rows are 0, it falls back to the last size the view reported from
+// Resize, and then — before any frame has laid the view out — to the screen's
+// own size, which is the best answer there is. It avoids redundant resize
+// frames if the size is already synced.
 func (c *termConn) syncSize(cols, rows int) {
 	if c == nil || c.sess == nil || c.sess.link == nil {
 		return
 	}
 	c.mu.Lock()
 	if cols <= 0 || rows <= 0 {
+		// The view's size, not the screen's: taking the lease gives the shell
+		// the size of the window that now drives it, and the screen may still
+		// be laid out at the size of the window that drove it before.
 		cols, rows = c.lastCols, c.lastRows
 	} else {
 		c.lastCols, c.lastRows = cols, rows
 	}
-	if cols <= 0 || rows <= 0 || (cols == c.syncedCols && rows == c.syncedRows) {
-		c.mu.Unlock()
+	screen := c.screen
+	c.mu.Unlock()
+
+	if cols <= 0 || rows <= 0 {
+		if screen == nil {
+			return
+		}
+		cols, rows = screen.Size()
+	}
+	if cols <= 0 || rows <= 0 || !c.sess.holds() {
 		return
 	}
-	if !c.sess.holds() {
+
+	c.mu.Lock()
+	if cols == c.syncedCols && rows == c.syncedRows {
 		c.mu.Unlock()
 		return
 	}
@@ -196,6 +229,71 @@ func (c *termConn) syncSize(cols, rows int) {
 	c.mu.Unlock()
 
 	c.sess.link.resize(c.sess.sessionID(), cols, rows)
+	if screen != nil {
+		// Taking the lease gives the shell this pane's size: the screen takes
+		// it here, at the same moment the hub is told, so the output written
+		// for the old size is not laid out at the new one.
+		screen.Resize(cols, rows)
+	}
+}
+
+// watchScreen hands this conn the view it feeds, which is how the screen learns
+// the size it lays out at. It is set once the terminal is made: the conn is that
+// terminal's Conn, so it cannot be handed over before.
+func (c *termConn) watchScreen(term *terminal.Terminal) {
+	c.mu.Lock()
+	c.screen = term
+	c.mu.Unlock()
+}
+
+// takeSize tells the hub the size of the view as the size of the shell's
+// screen, even when this conn told it that same size before. Taking the lease is
+// the moment the shell's size becomes this window's: the window that held it
+// until now may have resized the shell, so what this conn last sent is not what
+// the shell has — and a window that stayed quiet on that reasoning would leave
+// the shell at the other window's width, drawn for it, in a pane of its own.
+func (c *termConn) takeSize() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.syncedCols, c.syncedRows = 0, 0
+	c.mu.Unlock()
+	c.syncSize(0, 0)
+}
+
+// viewSize is the size the view last told this conn it fits, or 0, 0 before a
+// frame has laid it out.
+func (c *termConn) viewSize() (cols, rows int) {
+	if c == nil {
+		return 0, 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastCols, c.lastRows
+}
+
+// layOut puts the screen at the size the shell's own terminal has, and reports
+// whether that took. A viewer's pane is a window onto a screen that already
+// exists: the replay it is fed was written for that size, with the program's
+// cursor moves measured against it, so laying it out at this pane's width
+// instead would wrap lines the machine's window has whole and put every later
+// redraw of the program in the wrong place.
+func (c *termConn) layOut(cols, rows int) bool {
+	if c == nil || cols <= 0 || rows <= 0 {
+		return false
+	}
+	c.mu.Lock()
+	screen := c.screen
+	c.mu.Unlock()
+	if screen == nil {
+		return false
+	}
+	if haveCols, haveRows := screen.Size(); haveCols == cols && haveRows == rows {
+		return false
+	}
+	screen.Resize(cols, rows)
+	return true
 }
 
 // Close detaches this view. It never ends the session: the shell keeps running

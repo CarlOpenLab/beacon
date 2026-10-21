@@ -132,12 +132,13 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	w.local.onGone = w.linkGone
 
 	tt := drawNav(t, w)
-	if _, ok := tt.Find(locales.ActionNewTerminalTip()); !ok {
+	if _, ok := tt.Find(locales.SessionNewOnMachine()); !ok {
 		t.Fatal("the session panel has no new terminal control")
 	}
 
-	// A new shell, from the panel's button.
-	if err := tt.Click(locales.ActionNewTerminalTip()); err != nil {
+	// A new shell, from the machine group's button — the window's own top bar
+	// has none, because the column is a list of machines and each opens its own.
+	if err := tt.Click(locales.SessionNewOnMachine()); err != nil {
 		t.Fatalf("Click(新建标签页): %v", err)
 	}
 	if got := waitSessions(f, 1); got != 1 {
@@ -162,7 +163,7 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	// The same act from the row's ×: one more shell, then close it from the
 	// control the pointer finds on its row.
 	tt.Frame()
-	if err := tt.Click(locales.ActionNewTerminalTip()); err != nil {
+	if err := tt.Click(locales.SessionNewOnMachine()); err != nil {
 		t.Fatalf("Click(新建标签页): %v", err)
 	}
 	if got := waitSessions(f, 1); got != 1 {

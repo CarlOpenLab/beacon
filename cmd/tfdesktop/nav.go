@@ -803,11 +803,7 @@ func (w *window) selectTabRaw(tb *tab) {
 			w.machineSel = tb.machine
 		}
 		if tb.held() {
-			cols, rows := 0, 0
-			if tb.term != nil {
-				cols, rows = tb.term.Size()
-			}
-			tb.conn.syncSize(cols, rows)
+			tb.conn.syncSize(0, 0)
 		}
 		w.invalidate()
 		return

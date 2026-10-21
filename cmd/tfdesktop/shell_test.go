@@ -31,8 +31,8 @@ func TestTheCardHeaderNamesTheActiveTerminal(t *testing.T) {
 	if tt.HasText(locales.HeaderMachineShell(locales.MachineLocal(), "one")) {
 		t.Fatal("the removed band across the top is still drawn")
 	}
-	if _, ok := tt.Find(locales.ActionNewTerminalTip()); !ok {
-		t.Fatal("missing new terminal action")
+	if _, ok := tt.Find(locales.ActionNewTerminalTip()); ok {
+		t.Fatal("the card header still carries the window's new-terminal button")
 	}
 	if _, ok := tt.Find(locales.ActionSettings()); !ok {
 		t.Fatal("missing settings action")

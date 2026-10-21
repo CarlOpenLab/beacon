@@ -115,6 +115,11 @@ type window struct {
 	// shows but nobody has looked at yet has no stream.
 	remote map[string]*relayLink
 
+	// refreshAt is when each machine's session list was last asked for, keyed by
+	// machine id, so the group's refresh can turn from the click to the answer.
+	// See refreshing.
+	refreshAt map[string]time.Time
+
 	// roster is the relay's machine list as it last pushed it, and remoteSessions
 	// is what each machine's hub said it was running. Both are the panel's data.
 	roster         []tunnel.Machine
@@ -251,7 +256,9 @@ func (w *window) invalidate() {
 // machine — turns up the same way.
 func (w *window) sessionsArrived(list []protocol.Summary) {
 	w.update(func() {
+		w.refreshLanded(machineLocal)
 		w.reconcile(list)
+		w.followSizes(machineLocal, list)
 		w.reportStatuses(machineLocal, list)
 		w.updateTitle()
 	})
@@ -449,6 +456,7 @@ func (w *window) rosterArrived(machines []tunnel.Machine) {
 // remoteSessionsArrived is a remote machine's hub reporting what it runs.
 func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) {
 	w.update(func() {
+		w.refreshLanded(machine)
 		w.remoteSessions[machine] = list
 		// Each tab on that machine keeps the directory its hub last reported,
 		// which is where a shell opened beside it falls back to.
@@ -458,6 +466,7 @@ func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) 
 			}
 		}
 		w.reportStatuses(machine, list)
+		w.followSizes(machine, list)
 		w.invalidate()
 	})
 }
@@ -761,6 +770,45 @@ func (w *window) ensureSessionList(machine string) {
 	w.linkNote = w.noLinkReason(machine)
 }
 
+// refreshSpin is how long a machine's refresh may turn before its answer is
+// given up on. A machine that is off, or one whose stream never comes up, must
+// not leave the row turning for the rest of the session; the stream goes on
+// retrying on its own, so this is the mark's lifetime rather than the ask's.
+const refreshSpin = 8 * time.Second
+
+// refreshRequested marks a machine's list as being asked for, so its group's
+// refresh turns from the click until the answer lands.
+func (w *window) refreshRequested(machine string) {
+	if w.refreshAt == nil {
+		w.refreshAt = make(map[string]time.Time)
+	}
+	if machine == "" {
+		machine = machineLocal
+	}
+	w.refreshAt[machine] = time.Now()
+}
+
+// refreshLanded says a machine's list has arrived, so its refresh can stop.
+func (w *window) refreshLanded(machine string) {
+	if machine == "" {
+		machine = machineLocal
+	}
+	if _, ok := w.refreshAt[machine]; ok {
+		delete(w.refreshAt, machine)
+		w.invalidate()
+	}
+}
+
+// refreshing reports whether a machine's list was asked for and has not answered
+// yet. It is what the group's refresh turns on.
+func (w *window) refreshing(machine string) bool {
+	if machine == "" {
+		machine = machineLocal
+	}
+	at, ok := w.refreshAt[machine]
+	return ok && time.Since(at) < refreshSpin
+}
+
 // refreshAll re-queries the relay for the roster and the active machine for its sessions.
 func (w *window) refreshAll() {
 	w.refreshMachines()
@@ -770,6 +818,11 @@ func (w *window) refreshAll() {
 
 // refreshSessions asks the selected machine's hub for its live session list.
 func (w *window) refreshSessions(machine string) {
+	// A machine the roster says is gone will not answer, so nothing turns on a
+	// click that can only end in a sentence: the sentence is the answer.
+	if machine == "" || w.machineOnline(machine) {
+		w.refreshRequested(machine)
+	}
 	if machine == machineLocal || machine == "" {
 		if w.local != nil {
 			w.local.list()
@@ -886,24 +939,37 @@ func (w *window) reachDialog(c *ui.Context) {
 	}
 }
 
-// currentTermSize returns the active terminal view size in columns and rows,
-// or 80x24 when no terminal is available.
+// currentTermSize returns the size the active terminal view fits, in columns
+// and rows, or 80x24 when no terminal is available. It is the view's size rather
+// than the screen's: a shell this window starts here is driven by this window,
+// so it takes the size of the pane it is about to be drawn in — not the size of
+// the screen another machine's window gave the shell that was on screen.
 func (w *window) currentTermSize() (cols, rows int) {
-	if tb := w.activeTab(); tb != nil && tb.term != nil {
-		c, r := tb.term.Size()
-		if c > 0 && r > 0 {
+	if tb := w.activeTab(); tb != nil {
+		if c, r := tb.viewSize(); c > 0 && r > 0 {
 			return c, r
 		}
 	}
 	for _, tb := range w.tabs {
-		if tb != nil && tb.term != nil {
-			c, r := tb.term.Size()
-			if c > 0 && r > 0 {
+		if tb != nil {
+			if c, r := tb.viewSize(); c > 0 && r > 0 {
 				return c, r
 			}
 		}
 	}
 	return 80, 24
+}
+
+// viewSize is the size the pane this tab is drawn in last asked the shell for,
+// and the screen's own size before a frame has drawn it.
+func (t *tab) viewSize() (cols, rows int) {
+	if c, r := t.conn.viewSize(); c > 0 && r > 0 {
+		return c, r
+	}
+	if t.term != nil {
+		return t.term.Size()
+	}
+	return 0, 0
 }
 
 // newTab asks the machine the panels are showing for a shell and gives it a tab
@@ -1253,6 +1319,18 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 		// The shell's own colours, so the pane belongs to the window around it.
 		Theme:     terminalTheme(false),
 		DarkTheme: terminalTheme(true),
+		// The screen lays out at the size the shell has, which is not always the
+		// size this pane is. A viewer is a window onto a screen that already
+		// exists: the replay it is fed was written for that screen's width, with
+		// the program's cursor moves and erases measured against it, so laying
+		// the same bytes out at this pane's width instead would wrap the lines
+		// the machine's window has whole and put every later redraw of the
+		// program in the wrong place — the pushed-over screen reading as another
+		// screen rather than as a narrower view of the same one. The conn hands
+		// the screen its size: this pane's while the window drives the shell
+		// (see termConn.Resize), the shell's own while it watches (see
+		// tabHandlers.Attached and window.followSize).
+		ResizeByConn: true,
 	})
 	if err != nil {
 		// The pane would be a white rectangle with no shell in it and no
@@ -1263,6 +1341,7 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 		log.Printf("tfdesktop: terminal: %v", err)
 		w.setNotice(locales.AppTerminalUnavailable(err.Error()))
 	}
+	conn.watchScreen(term)
 	tb.term, tb.conn, tb.sess = term, conn, sess
 	tb.machine = machine
 	tb.setLease("", "", 0)
@@ -1292,6 +1371,42 @@ func tabSize(term *terminal.Terminal) string {
 		return "unlaid"
 	}
 	return fmt.Sprintf("%dx%d", cols, rows)
+}
+
+// followServerSize lays a viewer's screen out at the size the machine reports
+// for the shell's terminal.
+//
+// A shell has one screen, and the window that drives it decides its size: the
+// program writes for that width, moves its cursor against it, and erases to the
+// edges of it. Every other window watches that same screen, so its pane is a
+// window onto it rather than a terminal of its own — a pane 60 columns wide
+// showing a screen written for 120 shows the left 60 columns of it, exactly as
+// the machine's own window does, and a program that redraws itself lands where
+// it meant to. Laying the same bytes out at the pane's width instead is what
+// made a pushed-over screen read as a different one: lines wrapped here and not
+// there, and every redraw after the first landed a row or a column off.
+//
+// The controller is left alone: its own size is what it has just told the hub,
+// and the screen took it in termConn.Resize.
+func (w *window) followServerSize(tb *tab, sum protocol.Summary) {
+	if tb == nil || tb.term == nil || tb.held() {
+		return
+	}
+	if sum.Cols <= 0 || sum.Rows <= 0 {
+		return
+	}
+	if tb.conn.layOut(sum.Cols, sum.Rows) {
+		diag.Debugf("term", "viewer screen follows machine=%s session=%s size=%dx%d",
+			tb.machine, tb.id, sum.Cols, sum.Rows)
+	}
+}
+
+// followSizes is followServerSize over a machine's list, which is where a shell
+// another window has resized becomes visible to this one.
+func (w *window) followSizes(machine string, list []protocol.Summary) {
+	for i := range list {
+		w.followServerSize(w.tabOf(machine, list[i].SessionID), list[i])
+	}
 }
 
 // reattachMachineTabs gives the tabs watching machine a link again after the
@@ -1484,6 +1599,7 @@ func (h tabHandlers) Attached(sum protocol.Summary, cursor int64, truncated bool
 		if tb.program == "" && sum.Shell != "" {
 			tb.program = programName(sum.Shell)
 		}
+		w.followServerSize(tb, sum)
 		w.invalidate()
 	})
 }
@@ -1496,11 +1612,9 @@ func (h tabHandlers) Created(id string) {
 		if tb := w.tabOfSession(h.sess); tb != nil {
 			tb.bind(id)
 			if tb.held() {
-				cols, rows := 0, 0
-				if tb.term != nil {
-					cols, rows = tb.term.Size()
-				}
-				h.conn.syncSize(cols, rows)
+				// The view's size, which syncSize reads off the conn: the
+				// screen may still be the size the shell had a moment ago.
+				h.conn.syncSize(0, 0)
 			}
 		}
 		w.invalidate()
@@ -1526,11 +1640,11 @@ func (h tabHandlers) Role(role, controller string, epoch uint64) {
 		}
 		tb.setLease(role, controller, epoch)
 		if tb.held() {
-			cols, rows := 0, 0
-			if tb.term != nil {
-				cols, rows = tb.term.Size()
-			}
-			h.conn.syncSize(cols, rows)
+			// Taking the lease re-establishes the shell's size, whatever this
+			// conn last told the hub: the window that held it until now may
+			// have resized the shell, and the shell is this pane's size from
+			// here on.
+			h.conn.takeSize()
 		}
 		switch {
 		case !held || tb.held():

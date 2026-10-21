@@ -629,7 +629,15 @@ func (h *Hub) handleResize(c *client, id string, cols, rows int, epoch uint64) {
 	}
 	if err := s.Resize(cols, rows); err != nil {
 		c.fail(protocol.ErrBadSize, err.Error(), id)
+		return
 	}
+	// A resize is news to every watcher, not only the one that asked for it.
+	// The screen belongs to the shell, and the window driving it just gave the
+	// shell a new size: the other clients lay the same bytes out at that size
+	// (their panes are windows onto this screen, not terminals of their own), so
+	// a viewer that is not told would go on drawing the shell at the width it
+	// had a moment ago — every line wrapped where the shell no longer wraps it.
+	h.broadcastSessions()
 }
 
 // control is what a frame bearing an epoch is entitled to.

@@ -85,6 +85,34 @@ func TestAMachineGroupRefreshesItsSessions(t *testing.T) {
 	if w.collapsed[machineLocal] {
 		t.Error("clicking refresh folded the machine's group")
 	}
+
+	// The button answers the click on the row itself: it turns while the list is
+	// on its way, so a click that was taken is not confused with one that did
+	// nothing.
+	if !w.refreshing(machineLocal) {
+		t.Fatal("the refresh did not turn after the click")
+	}
+	tt.Frame()
+	if !w.refreshing(machineLocal) {
+		t.Error("a frame stopped the refresh before the list arrived")
+	}
+
+	// The list landing is what stops it — not a fixed while, and not a second
+	// click.
+	w.sessionsArrived(nil)
+	w.drain()
+	if w.refreshing(machineLocal) {
+		t.Error("the refresh kept turning after the machine's list arrived")
+	}
+
+	// A machine that never answers stops turning too: the mark has a lifetime, so
+	// an unreachable machine cannot leave a ring turning for the rest of the
+	// session.
+	w.refreshRequested(machineLocal)
+	w.refreshAt[machineLocal] = time.Now().Add(-refreshSpin - time.Second)
+	if w.refreshing(machineLocal) {
+		t.Error("the refresh is still turning past its lifetime")
+	}
 }
 
 // A tab's row keeps its close and its state at rest, and carries no clock:

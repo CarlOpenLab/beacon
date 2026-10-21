@@ -20,15 +20,15 @@ import (
 // is animated, and the cards beside it move with it. The measurements below are
 // what the animation and the layout agree on.
 const (
-	// toolbarButton is the square of the top bar's buttons, and of the same
-	// buttons when the card header holds them with the column hidden.
+	// toolbarButton is the square of the top bar's button, and of the same
+	// button when the card header holds it with the column hidden.
 	toolbarButton = float32(28)
 
 	// headerPadShown is a card header's own left inset while the column is
 	// shown. With it hidden the header starts after the traffic lights and the
-	// column's buttons, which it then carries.
+	// column's button, which it then carries.
 	headerPadShown = float32(uitokens.CardGap + 8)
-	cardTitleLead  = windowLead + 2*toolbarButton + 2 + 8
+	cardTitleLead  = windowLead + toolbarButton + 8
 )
 
 // sidebarMotion is the fold's curve. It lands quickly and moves in every frame:
@@ -111,9 +111,6 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 				if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
 					w.sidebarHidden = true
 				}
-				if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), toolbarButton).Clicked() {
-					w.newTab()
-				}
 				ui.Spacer(c)
 			})
 
@@ -147,9 +144,6 @@ func (w *window) sidebarPeek(c *ui.Context) {
 		Height(toolbarButton).Gap(2).AlignItems(ui.Center).Opacity(alpha).Children(func() {
 		if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
 			w.sidebarHidden = false
-		}
-		if iconButton(c, iconPlus, locales.ActionNewTerminalTip(), toolbarButton).Clicked() {
-			w.newTab()
 		}
 	})
 }
@@ -245,7 +239,7 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		// Ask this machine for its session list again. It stays on the group at
 		// rest: a refresh is the answer to a list that looks stale, and a button
 		// that only appears under the pointer is not there when it is needed.
-		if iconButton(c, iconRefresh, locales.SessionRefreshMachine(), 20).Clicked() {
+		if refreshButton(c, pal, w.refreshing(m.ID), locales.SessionRefreshMachine()).Clicked() {
 			w.refreshSessions(m.ID)
 		}
 		if iconButton(c, iconPlus, locales.SessionNewOnMachine(), 20).Clicked() {
@@ -279,6 +273,43 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 			w.refreshSessions(m.ID)
 		}
 	}
+}
+
+// refreshButton is a machine group's refresh: the arrow at rest, a turning ring
+// while the machine's list is being asked for, and the arrow again once the list
+// lands. A click that gave no sign would read as a click that did nothing, which
+// is exactly what a list that looks stale already claims.
+func refreshButton(c *ui.Context, pal *uitokens.Palette, turning bool, caption string) ui.Element {
+	t := c.Theme()
+	el := ui.Box(c).Size(20, 20).Radius(radiusSmall).
+		AlignItems(ui.Center).Justify(ui.Center).Label(caption).Tooltip(caption)
+	if el.Hovered() {
+		el.Background(t.SurfaceHover)
+	}
+	el.Children(func() {
+		if !turning {
+			ui.Icon(c, iconRefresh).FontSize(11).TextColor(shellColorsFor(t).icon)
+			return
+		}
+		// The ring turns a third of a second a revolution, in the same language
+		// as a working shell's own ring: a ring that never lands, because the
+		// answer is what stops it.
+		ui.Box(c).Size(14, 14).Draw(func(p *ui.Painter, r ui.Rect) {
+			p.AnimationFrame()
+			cx, cy := r.X+r.W/2, r.Y+r.H/2
+			rad := min(r.W, r.H)/2 - 1.2
+			var track ui.Path
+			track.Circle(cx, cy, rad)
+			p.StrokePath(&track, 1.5, pal.Text.Alpha(0.15))
+			deg := float32(p.Now().UnixMilli()%900) / 900 * 360
+			p.Transform(ui.Rotation(deg), cx, cy, func() {
+				var arc ui.Path
+				arc.Circle(cx, cy, rad)
+				p.StrokePath(arc.Trim(0, 0.3), 1.5, pal.Text)
+			})
+		})
+	})
+	return el
 }
 
 // machineDot is a machine's state in one colour: the local service's own three
