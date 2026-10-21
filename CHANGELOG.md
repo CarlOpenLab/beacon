@@ -4,6 +4,17 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.5.5
+
+**Desktop: a split stays with its tab — 桌面端：分屏跟随自己的 tab**
+
+- **Picking another tab no longer rearranges the split.** Each split's panes now share a workspace that keeps their layout, their focused pane and their zoom while another tab is on screen. Picking a tab of its own puts the workspace away; picking one of its panes brings the same layout back. The sidebar keeps the workspace's row and its terminals in place through the switch instead of folding one tab into another.
+  — 切换其他 tab 不再改写分屏：分屏的窗格现在属于同一个 workspace，保存布局、焦点窗格与缩放；选到独立 tab 时把布局收起，再点回其中任一窗格就原样恢复。侧边栏在整个切换过程中保持 workspace 行与其终端不变，不会再把一个 tab 折进另一个里。
+- **⌘T opens a tab of its own.** The new shell no longer takes the focused pane's place; the split stays in the sidebar, put away, and a new remote session is shown once it mounts.
+  — ⌘T 现在新开一个独立 tab，不再占用当前窗格的位置；分屏留在侧边栏里（收起），远程新会话挂载后会直接显示。
+- **Closing panes and tabs edits the right layout.** A pane's tab now comes out of its workspace whether that workspace is on screen or put away; a workspace left with one terminal settles back into an ordinary tab.
+  — 关闭窗格或 tab 会从正确的 layout 中移除：无论 workspace 正在显示还是已收起；只剩一个终端时自动回到普通单终端 tab。
+
 ## 0.5.4
 
 **Desktop: one tab for a split's terminals, and a settings sheet in the platform's style — 桌面端：分屏归为一个多终端 tab，设置页改为平台样式**
