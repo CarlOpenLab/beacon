@@ -348,8 +348,10 @@ func (s *settingsWindow) view(c *ui.Context) {
 	// user to ignore it, and the pending marker is what says otherwise.
 	dirty := s.dirty()
 	ui.Column(c).Fill().Children(func() {
+		// 标题栏是拖动这块浮层的抓手：整块对话框由 app.go 的 settingsDialog
+		// 交给 Draggable，标题这里不再拖整个窗口。
 		ui.Row(c).Height(uitokens.HeaderH).Shrink(0).Padding(0, 12).Gap(8).
-			AlignItems(ui.Center).DragWindow().Children(func() {
+			AlignItems(ui.Center).Cursor(ui.CursorGrab).Children(func() {
 			ui.Text(c, locales.SettingsTitle()).FontSize(14).FontWeight(600).TextColor(pal.Text)
 			ui.Spacer(c)
 			if dirty {

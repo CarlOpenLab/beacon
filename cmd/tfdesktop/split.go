@@ -456,11 +456,19 @@ func replaceSplit(root, from, to *splitNode) *splitNode {
 // them with the gap between, which the pointer drags from a grip that shows on
 // the hover, and a double click puts back in the middle.
 func (w *window) splitView(c *ui.Context, pal *uitokens.Palette, n *splitNode) {
+	w.splitViewAt(c, pal, n, true, true)
+}
+
+// splitViewAt draws a subtree that may hold the window's top-right corner, and
+// says so to the pane that does: its card header keeps the room the window's
+// controls take there on Windows and Linux. top and right say whether this
+// subtree reaches the window's top edge and its right edge.
+func (w *window) splitViewAt(c *ui.Context, pal *uitokens.Palette, n *splitNode, top, right bool) {
 	if n == nil {
 		return
 	}
 	if n.leaf() {
-		w.paneCard(c, pal, n.tab, n == w.focus, func() { w.focusSplit(n) })
+		w.paneCard(c, pal, n.tab, n == w.focus, func() { w.focusSplit(n) }, top && right)
 		return
 	}
 	pct := n.pct
@@ -475,12 +483,14 @@ func (w *window) splitView(c *ui.Context, pal *uitokens.Palette, n *splitNode) {
 	box.Children(func() {
 		first := ui.Column(c).Grow(pct).Basis(0).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 		first.Children(func() {
-			w.splitView(c, pal, n.a)
+			// The left of a split does not reach the window's right edge, and
+			// the top of a stacked one is the one that reaches its top.
+			w.splitViewAt(c, pal, n.a, top, right && !n.side)
 		})
 		w.splitGap(c, pal, n, pct)
 		second := ui.Column(c).Grow(100 - pct).Basis(0).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 		second.Children(func() {
-			w.splitView(c, pal, n.b)
+			w.splitViewAt(c, pal, n.b, top && n.side, right)
 		})
 	})
 }

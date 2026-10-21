@@ -192,7 +192,7 @@ func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 		// A zoomed pane is the whole body: the others are still there, one ⌘⇧↩
 		// away, which is what zoom means.
 		if w.zoomed && w.focus != nil && w.focus.tab != nil {
-			w.paneCard(c, pal, w.focus.tab, true, func() { w.focusSplit(w.focus) })
+			w.paneCard(c, pal, w.focus.tab, true, func() { w.focusSplit(w.focus) }, true)
 			return
 		}
 		w.splitView(c, pal, w.split)
@@ -217,14 +217,15 @@ func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 		})
 		return
 	}
-	w.paneCard(c, pal, tb, true, nil)
+	w.paneCard(c, pal, tb, true, nil, true)
 }
 
 // paneCard is one shell in a card: a header with the shell's name, where it
 // stands and what it is doing, and the terminal under it, the card's corners
 // clipping both. A pane the user is not in fades — its text too — so that a
 // split says which of its halves has the keyboard without a border.
-func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool, focus func()) {
+func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool,
+	focus func(), corner bool) {
 	if tb == nil || tb.term == nil {
 		return
 	}
@@ -242,7 +243,7 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 			focus()
 		}
 		card.Children(func() {
-			w.cardHeader(c, pal, tb, focused)
+			w.cardHeader(c, pal, tb, focused, corner)
 			w.takeoverBar(c, tb, focused)
 			// The terminal fills the card under the header. It draws its own
 			// background, so a full-screen program's color reaches the edges.
@@ -295,10 +296,17 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 // stands, what it is running, and — while the pointer is there — the controls
 // that act on the card. A pane the window is not in says 只读 or 已退出 here; the
 // pane on screen has the sentence and the button in takeoverBar instead.
-func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool) {
+func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool,
+	corner bool) {
 	left := w.headerLead()
+	right := float32(10)
+	if corner && controlsAtRight {
+		// The window's controls are drawn over this card's corner on Windows and
+		// Linux: keep the header's own chips clear of them.
+		right += windowButtonsRoom
+	}
 	h := ui.Row(c).Height(uitokens.HeaderH).Shrink(0).AlignItems(ui.Center).
-		Padding(0, 10, 0, left).Gap(8)
+		Padding(0, right, 0, left).Gap(8)
 	hovered := h.Hovered()
 	h.DragWindow()
 
@@ -365,8 +373,14 @@ func (w *window) headerLead() float32 {
 // nothing to say, but it is still the window's title bar: the pointer drags the
 // window by it.
 func (w *window) emptyCardHeader(c *ui.Context) {
+	right := float32(10)
+	if controlsAtRight {
+		// The empty window's card is the whole window: the controls sit at its
+		// top-right corner.
+		right += windowButtonsRoom
+	}
 	ui.Row(c).Height(uitokens.HeaderH).Shrink(0).
-		Padding(0, 10, 0, 10).DragWindow()
+		Padding(0, right, 0, 10).DragWindow()
 }
 
 // takeoverBar is the one sentence the window has to say about the shell on

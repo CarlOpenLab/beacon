@@ -231,3 +231,50 @@ func TestTheLeaseGlowDoesNotShrinkThePane(t *testing.T) {
 			r1>>8, g1>>8, b1>>8, r2>>8, g2>>8, b2>>8)
 	}
 }
+
+// TestTheWindowButtonsSitAtTheTopRight is the layout Windows and Linux get: the
+// controls belong in the top-right corner, as Windows draws them, not in
+// macOS's top-left.
+func TestTheWindowButtonsSitAtTheTopRight(t *testing.T) {
+	previous := controlsAtRight
+	controlsAtRight = true
+	defer func() { controlsAtRight = previous }()
+
+	w, f := controlsTestWindow(t)
+	tt := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
+	tt.Frame()
+
+	for _, label := range []string{locales.WindowClose(), locales.WindowMinimize()} {
+		rect, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("%q is not on screen; texts = %v", label, tt.Texts())
+		}
+		if rect.X <= float32(frameTestWidth)/2 {
+			t.Errorf("%q is at x=%v, not in the window's right corner", label, rect.X)
+		}
+		if center := rect.Y + rect.H/2; center < uitokens.TopBar/2-2 || center > uitokens.TopBar/2+2 {
+			t.Errorf("%q is centered at y=%v, not on the top bar's line %v", label, center, uitokens.TopBar/2)
+		}
+	}
+
+	min, _ := tt.Find(locales.WindowMinimize())
+	tt.ClickAt(min.X+min.W/2, min.Y+min.H/2)
+	tt.Frame()
+	if f.minimized != 1 {
+		t.Fatalf("the minimize button called Minimize %d times, want once", f.minimized)
+	}
+
+	max, _ := tt.Find(locales.WindowMaximize())
+	tt.ClickAt(max.X+max.W/2, max.Y+max.H/2)
+	tt.Frame()
+	if f.maximized != 1 || !f.stillMaxed {
+		t.Fatalf("the maximize button did not maximize: %+v", f)
+	}
+
+	close, _ := tt.Find(locales.WindowClose())
+	tt.ClickAt(close.X+close.W/2, close.Y+close.H/2)
+	tt.Frame()
+	if f.closed != 1 {
+		t.Fatalf("the close button called Close %d times, want once", f.closed)
+	}
+}

@@ -25,10 +25,10 @@ const (
 	toolbarButton = float32(28)
 
 	// headerPadShown is a card header's own left inset while the column is
-	// shown. With it hidden the header starts after the traffic lights and the
+	// shown. With it hidden the header starts after the window's controls (the
+	// traffic lights, where the platform keeps them at the left) and the
 	// column's button, which it then carries.
 	headerPadShown = float32(uitokens.CardGap + 8)
-	cardTitleLead  = windowLead + toolbarButton + 8
 )
 
 // sidebarMotion is the fold's curve. It lands quickly and moves in every frame:
@@ -58,7 +58,7 @@ func chromeFor(progress, width float32) sideChrome {
 	pad := round(uitokens.CardGap * (1 - shown))
 	// Where the header's title starts in the window, rounded once: after the
 	// column's buttons with it hidden, 16 into the card with it shown.
-	hidden, shownAt := cardTitleLead, width+headerPadShown
+	hidden, shownAt := cardTitleLead(), width+headerPadShown
 	x := round(hidden + (shownAt-hidden)*shown)
 	return sideChrome{ready: true, shown: shown, width: w, mainPad: pad, headerPad: x - w - pad}
 }
@@ -72,7 +72,7 @@ func (w *window) chromeNow() sideChrome {
 	}
 	if w.sidebarHidden {
 		return sideChrome{shown: 0, width: 0, mainPad: uitokens.CardGap,
-			headerPad: cardTitleLead - uitokens.CardGap}
+			headerPad: cardTitleLead() - uitokens.CardGap}
 	}
 	return sideChrome{shown: 1, width: w.sideWidth(), headerPad: headerPadShown}
 }
@@ -106,7 +106,7 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 			if ch.shown > 0.99 {
 				w.resizeHandle(c, pal)
 			}
-			ui.Row(c).Height(topHeight).Shrink(0).Padding(0, 12, 0, windowLead).Gap(2).
+			ui.Row(c).Height(topHeight).Shrink(0).Padding(0, 12, 0, windowLead()).Gap(2).
 				AlignItems(ui.Center).DragWindow().Children(func() {
 				if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
 					w.sidebarHidden = true
@@ -139,7 +139,7 @@ func (w *window) sidebarPeek(c *ui.Context) {
 		return
 	}
 	ui.Row(c).Key("sidebar-peek").Absolute().
-		Left(windowLead).
+		Left(windowLead()).
 		Top((uitokens.TopBar - toolbarButton) / 2).
 		Height(toolbarButton).Gap(2).AlignItems(ui.Center).Opacity(alpha).Children(func() {
 		if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {

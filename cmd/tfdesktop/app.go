@@ -46,8 +46,12 @@ type window struct {
 
 	settingsContent *settingsWindow
 	settingsOpen    bool
-	sidebarHidden   bool
-	dismissed       map[string]bool
+	// settingsDrag is where the settings dialog has been dragged to, from the
+	// centre of the window: the dialog is a floating one, not a sheet over the
+	// whole page, so it can be moved aside to watch what a setting changes.
+	settingsDrag  ui.Point
+	sidebarHidden bool
+	dismissed     map[string]bool
 
 	// chrome is where the sidebar's fold has the column and the cards this
 	// frame; see sidebar.go. The view writes it and the parts it draws read it.
@@ -883,24 +887,41 @@ func (w *window) askForReach() {
 	}()
 }
 
+// settingsMargin is the gap a dragged settings dialog keeps from the window's
+// edges.
+const settingsMargin = float32(12)
+
 func (w *window) settingsDialog(c *ui.Context) {
 	width, height := c.Size()
 	pal := paletteFor(c)
 	wash := uitokens.WashFor(w.store.Get().Background)
-	// A settings sheet on the window's own wash, not a dialog over a dimmed
-	// window: the wash covers the shells, and the settings card floats on it the
-	// way the cards do behind. The old modal's grey scrim was the one surface the
-	// rest of the app does not use.
+	panelW := min(820, width-64)
+	panelH := min(620, height-64)
+	// The offset the pointer drags the dialog by is from the centre, where it
+	// starts: the bounds are the room that keeps its whole face inside the
+	// window, a margin from the edges.
+	dragBounds := ui.Rect{
+		X: settingsMargin - (width-panelW)/2,
+		Y: settingsMargin - (height-panelH)/2,
+		W: max(0, width-panelW-2*settingsMargin),
+		H: max(0, height-panelH-2*settingsMargin),
+	}
+	// A floating settings window over the shells, not a sheet on the window's
+	// wash: the wash covered the shells, so the appearance settings could not be
+	// tried against what they change. No scrim either: the dialog is a window of
+	// its own, moved by its header, and the page stays in sight behind it.
 	ui.DialogBase(c, &w.settingsOpen, func(backdrop, panel ui.Element) {
-		backdrop.Background(pal.Sidebar).LinearGradient(wash.Base(pal.Dark))
-		panel.Width(min(820, width-64)).Height(min(620, height-64)).
+		backdrop.Background(ui.Transparent)
+		panel.Width(panelW).Height(panelH).
 			Radius(uitokens.CardRadius).Clip()
 		floating(panel, pal)
-		panel.LinearGradient(wash.Base(pal.Dark)).Children(func() {
-			if w.settingsContent != nil {
-				w.settingsContent.view(c)
-			}
-		})
+		panel.LinearGradient(wash.Base(pal.Dark)).
+			Draggable(&w.settingsDrag, ui.DraggableOptions{Bounds: &dragBounds, Rigid: true}).
+			Children(func() {
+				if w.settingsContent != nil {
+					w.settingsContent.view(c)
+				}
+			})
 	})
 }
 
