@@ -4,6 +4,19 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.5.3
+
+**Desktop: a folding sidebar, per-machine refresh, and a takeover panel at the foot — 桌面端：侧栏折叠、按机器刷新、接管浮窗移到底部**
+
+- **The sidebar folds instead of vanishing.** One progress now drives the column's width, the cards' left edge and the header's inset over 260ms, while the rows slide out under a clip. The top bar's buttons keep their place over the cards and hand the corner to the card's header, so the drawer no longer jumps from open to gone in one frame.
+  — 侧栏改为真正的折叠动画：一个进度同时驱动栏宽、卡片左缘和卡片头缩进，260ms 内一起移动；会话行在裁剪下滑出，顶栏按钮先留在窗口原位，再把位置交给卡片头，不再一帧之内从全开跳到全隐。
+- **Each machine's group refreshes its own session list.** A refresh button sits at the right of a group header, left of the new-terminal button, and asks that machine for its sessions again; a tooltip names the action without borrowing the window-wide refresh shortcut.
+  — 每个机器分组右侧新增刷新按钮，位于「新建终端」左边，只重新拉取该机器的会话列表；提示文案单独一条，不冒充全局刷新的快捷键。
+- **The takeover panel moved to the bottom center of the pane.** The panel that names who holds a shell, explains the read-only state and offers 拿回控制权 / 接管 is now a floating card anchored above the pane's foot rather than a block in its top-left corner, in the same surface and buttons as the rest of the window. It still closes on an outside press or Escape.
+  — 「谁在控制这个终端」的接管浮窗从窗格左上角移到窗格底部居中，改为与应用一致的浮动卡片（同样的圆角、阴影与按钮），内容仍是持有者、只读说明和拿回/接管按钮；点击外部或 Esc 仍可关闭。
+- **Window controls are macOS traffic lights, drawn on every platform.** Close, minimize and zoom are three dots in the top-left corner with their glyphs on hover; the system's window buttons are hidden everywhere, and the top-right card header no longer keeps a corner clear for them.
+  — 窗口按钮统一为左上角自绘的 macOS 风格红绿灯：关闭、最小化、缩放，悬停时显示字形；所有平台都隐藏系统按钮，右上角卡片头也不再为它们预留空位。
+
 ## 0.5.2
 
 **Desktop: the window draws its own controls, and a taken shell gets a strip of its own — 桌面端自绘窗口按钮，接管提示单独成条**
