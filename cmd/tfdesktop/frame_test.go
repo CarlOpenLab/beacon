@@ -42,6 +42,17 @@ func trafficLightCenter(i int) (x, y float32) {
 	return x, y
 }
 
+// macControls pins the controls to the top-left corner, where the frame tests
+// below read them. The suite runs on every platform, and these are about what
+// macOS shows: Windows and Linux draw the same three actions at the top-right,
+// which TestTheWindowButtonsSitAtTheTopRight covers.
+func macControls(t *testing.T) {
+	t.Helper()
+	previous := controlsAtRight
+	controlsAtRight = false
+	t.Cleanup(func() { controlsAtRight = previous })
+}
+
 // controlsTestWindow is a window with a shell on screen and a frame to count
 // what the controls do.
 func controlsTestWindow(t *testing.T) (*window, *fakeWindowFrame) {
@@ -67,6 +78,7 @@ func TestFramedWindowTurnsTheSystemsControlsOff(t *testing.T) {
 
 // TestTheWindowControlsActOnTheWindow presses all three where they are drawn.
 func TestTheWindowControlsActOnTheWindow(t *testing.T) {
+	macControls(t)
 	w, f := controlsTestWindow(t)
 	tt := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
 	tt.Frame()
@@ -104,6 +116,7 @@ const uiHeightForFrameTest = 600
 // controls belong to the frame, not to a terminal, and a window with no way to
 // close is worse than an empty one.
 func TestAnEmptyWindowStillHasItsControls(t *testing.T) {
+	macControls(t)
 	w, _ := newTestShellWindow(t)
 	w.fleet = newTestFleet(t)
 	f := &fakeWindowFrame{}
@@ -123,6 +136,7 @@ func TestAnEmptyWindowStillHasItsControls(t *testing.T) {
 // start at the window's edge, on the top bar's center line, and their labels are
 // the window's own.
 func TestTheControlsSitInTheTopLeft(t *testing.T) {
+	macControls(t)
 	w, _ := controlsTestWindow(t)
 	tt := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
 	tt.Frame()
