@@ -1,7 +1,7 @@
 {
   "name": "beacon",
   "private": true,
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Ambient terminal hub: share PTY sessions over one WebSocket across desktop, web, and mobile with presence and state awareness.",
   "scripts": {
     "install:web": "pnpm --dir web install",

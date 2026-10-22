@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.6
+
+**Beacon: a closed tab is closed everywhere — Beacon：关掉的标签，每台设备上一起关掉**
+
+- **Closing a tab takes the tab with it on every client.** The × and ⌘W ended the shell and then left a 已退出 tab on the machine the shell runs on, and on every phone or browser watching it — a close and an exit were the same frame on the wire, and an exit is deliberately kept so its last lines can be read. A close now says it is a tab being closed, and the hub repeats that on the exit frame: each client drops its tab with the process, so the machine that hosted the shell does not keep a dead pane nobody there closed. 结束 sends the same close without the flag, and that is still the act that leaves the tab holding the final output.
+  — 桌面端 × 与 ⌘W 结束进程后，会在运行这个 shell 的机器和其他正在观看的手机/浏览器上留下一枚「已退出」标签：close 与 exit 在协议上是同一帧，而 exit 是刻意保留的，好让最后几行还能读。现在关闭标签会带上「这是关标签」的标记，hub 把它带在 exit 帧里广播，各客户端随进程一起移除自己的标签，主机上不会再留一个没人关的死面板；「结束」仍发送不带该标记的 close，也就是保留标签读最后输出的那个动作。
+- **The browser's × now ends the session too, after asking.** The mobile and web clients read a tab close as "stop watching", so closing there left the shell running and the desktop's tab alive. Closing a tab now means what it means on the desktop — the pane and the shell go together, everywhere — and it asks first, because the kill is irreversible for every other client and a thumb is easy to misplace. A tab whose shell has already exited is still only a view to dismiss.
+  — 浏览器/手机端此前把关闭标签当作「停止观看」，关掉后 shell 继续跑、桌面端的标签也还在。现在点 × 与桌面端同义（窗格和 shell 一起走，且对所有客户端生效），并且会先确认——对其他人不可恢复，手指又容易点偏。已经退出的 shell 仍只是关掉视图。
+
 ## 0.6.5
 
 **Beacon: a remote paste is this keyboard's, and a watched screen fits — Beacon：远程粘贴用本机剪贴板，观看屏幕适配窗格**
