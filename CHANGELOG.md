@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.4
+
+**Beacon: the session list is dragged like a sortable list — Beacon：侧栏会话改成 sortable 式拖动**
+
+- **A dragged row now previews the order it is making.** The row picked up leaves an empty slot where it would land, a copy follows the pointer, and the rows it passes slide out of the way; dropping writes the order, while Escape or letting go outside the rows puts it back. The browser client draws the same interaction with pointer events and a 160 ms FLIP instead of the browser's drag image, and decides the landing place from layout positions, so a list that is still sliding cannot change its mind under a pointer that has not moved.
+  — 拖动的会话行现在就是新顺序的预览：原位置留出空槽，副本跟着指针，被经过的行滑开让位；松手才写入顺序，Esc 或丢在列表外则原样退回。浏览器端改用 Pointer Events 与 160ms FLIP 画同一套交互（浏览器自带的拖拽图像跟不上实时重排的列表），落点按布局坐标判定 —— 正在滑动的列表不会在指针不动时自己改主意。
+- **The motion no longer bounces, and the list stays quiet under the pointer.** Rows move with a short spring that does not overshoot, a dragged row's copy is a lifted card rather than another row passing through, and hover backgrounds and the close × are suppressed while rows slide under the pointer. A drag that is cancelled or dropped outside leaves no trace in the saved order.
+  — 动画不再弹：行用一段不回弹的短弹簧让位，被拖那枚的副本有卡片底和阴影，不再像另一行从列表里飘过；行从指针下经过时不闪 hover 与关闭 ×。取消或丢在列表外的拖动不会在保存的顺序里留下痕迹。
+
 ## 0.6.3
 
 **Beacon: drag the fleet into your order, and let the terminal name itself — Beacon：把会话拖成自己的顺序，让标题自己说话**
