@@ -66,6 +66,11 @@ func TestEscapeLeavesTheShellNamedAsItWas(t *testing.T) {
 	w, f := newSplitWindow(t)
 	tb := openShell(t, w, f, testDir(t))
 	before := tb.name()
+	// The name before a rename is whatever the shell's terminal called itself;
+	// on Windows that is cmd's "Administrator: C:\\Windows\\SYSTEM32\\cmd.exe".
+	// Escape and an untouched field must leave both that name and the hub's
+	// copy of it alone.
+	beforeHub := hubTitleNow(f, tb.id)
 
 	tt := drawNav(t, w)
 	tt.Frame()
@@ -81,7 +86,7 @@ func TestEscapeLeavesTheShellNamedAsItWas(t *testing.T) {
 	if got := tb.name(); got != before {
 		t.Fatalf("the shell is named %q, want the name it had, %q", got, before)
 	}
-	if named := hubTitle(t, f, tb.id, ""); named != "" {
+	if named := hubTitle(t, f, tb.id, beforeHub); named != beforeHub {
 		t.Fatalf("the hub was told a name the person did not commit: %q", named)
 	}
 }
@@ -132,6 +137,7 @@ func TestAnUntouchedFieldNamesNothing(t *testing.T) {
 	w, f := newSplitWindow(t)
 	tb := openShell(t, w, f, testDir(t))
 	before := tb.name()
+	beforeHub := hubTitleNow(f, tb.id)
 
 	tt := drawNav(t, w)
 	tt.Frame()
@@ -155,11 +161,22 @@ func TestAnUntouchedFieldNamesNothing(t *testing.T) {
 	if got := tb.name(); got != before {
 		t.Fatalf("the shell is named %q, want the name it had, %q", got, before)
 	}
-	// Nothing was sent: the hub never heard a title, so its own list still
-	// names the shell after its program.
-	if named := hubTitle(t, f, tb.id, ""); named != "" {
+	// Nothing was sent: the hub's list still names the shell the way it
+	// already did.
+	if named := hubTitle(t, f, tb.id, beforeHub); named != beforeHub {
 		t.Fatalf("the hub was told a name nobody typed: %q", named)
 	}
+}
+
+// hubTitleNow is the title the hub gives a session right now, for a test that
+// compares against what it already was rather than against empty.
+func hubTitleNow(f *fleet, id string) string {
+	for _, s := range f.Hub().Sessions() {
+		if s.SessionID == id {
+			return s.Title
+		}
+	}
+	return ""
 }
 
 // hubTitle is the title the hub gives a session, waited for until it says want:
