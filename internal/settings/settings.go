@@ -89,9 +89,12 @@ type Settings struct {
 	Language string `json:"language,omitempty"`
 }
 
-// Dir is where the desktop shell keeps its settings. TERM_FLEET_CONFIG_HOME
-// overrides it, which is how tests and a portable copy keep their own file.
+// Dir is where the desktop shell keeps its settings. BEACON_CONFIG_HOME or
+// TERM_FLEET_CONFIG_HOME overrides it, which is how tests and a portable copy keep their own file.
 func Dir() string {
+	if d := os.Getenv("BEACON_CONFIG_HOME"); d != "" {
+		return d
+	}
 	if d := os.Getenv("TERM_FLEET_CONFIG_HOME"); d != "" {
 		return d
 	}
@@ -99,7 +102,15 @@ func Dir() string {
 	if err != nil {
 		base = "."
 	}
-	return filepath.Join(base, "term-fleet")
+	beaconDir := filepath.Join(base, "beacon")
+	if _, err := os.Stat(beaconDir); err == nil {
+		return beaconDir
+	}
+	legacyDir := filepath.Join(base, "term-fleet")
+	if _, err := os.Stat(legacyDir); err == nil {
+		return legacyDir
+	}
+	return beaconDir
 }
 
 // Path is the settings file inside dir.

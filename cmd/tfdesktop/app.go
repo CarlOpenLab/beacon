@@ -437,12 +437,12 @@ func (w *window) updateTitle() {
 		return
 	}
 	waiting, working, _ := w.statusCounts()
-	title := "term-fleet"
+	title := "Beacon"
 	switch {
 	case waiting > 0:
-		title = fmt.Sprintf("● %d · term-fleet", waiting)
+		title = fmt.Sprintf("● %d · Beacon", waiting)
 	case working > 0:
-		title = fmt.Sprintf("◐ %d · term-fleet", working)
+		title = fmt.Sprintf("◐ %d · Beacon", working)
 	}
 	w.win.SetTitle(title)
 }

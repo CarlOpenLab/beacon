@@ -157,8 +157,14 @@ func TestStoreConcurrentUpdates(t *testing.T) {
 }
 
 func TestDirHonorsOverride(t *testing.T) {
+	t.Setenv("BEACON_CONFIG_HOME", "/tmp/beacon-test-config")
+	if got := Dir(); got != "/tmp/beacon-test-config" {
+		t.Fatalf("Dir() = %q, want the BEACON_CONFIG_HOME override", got)
+	}
+
+	t.Setenv("BEACON_CONFIG_HOME", "")
 	t.Setenv("TERM_FLEET_CONFIG_HOME", "/tmp/tf-test-config")
 	if got := Dir(); got != "/tmp/tf-test-config" {
-		t.Fatalf("Dir() = %q, want the override", got)
+		t.Fatalf("Dir() = %q, want the TERM_FLEET_CONFIG_HOME override", got)
 	}
 }

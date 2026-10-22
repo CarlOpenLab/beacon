@@ -1,4 +1,4 @@
-# term-fleet member, as a *user* service.
+# Beacon member, as a *user* service.
 #
 #   mkdir -p ~/.config/systemd/user
 #   cp deploy/tfmember.service ~/.config/systemd/user/
@@ -16,7 +16,7 @@
 # file cannot protect you from.
 
 [Unit]
-Description=term-fleet member
+Description=Beacon member
 Documentation=https://github.com/CarlOpenLab/term-fleet
 After=network-online.target
 Wants=network-online.target

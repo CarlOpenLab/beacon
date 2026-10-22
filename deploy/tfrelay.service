@@ -1,5 +1,5 @@
 [Unit]
-Description=term-fleet relay
+Description=Beacon relay
 Documentation=https://github.com/CarlOpenLab/term-fleet
 After=network-online.target
 Wants=network-online.target

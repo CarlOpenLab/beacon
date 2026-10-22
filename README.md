@@ -1,15 +1,18 @@
 <p align="center">
-  <img alt="term-fleet" src=".github/assets/logo.png" width="150" height="150">
+  <img alt="Beacon" src=".github/assets/logo.png" width="150" height="150">
 </p>
 
-<h1 align="center">term-fleet</h1>
+<h1 align="center">Beacon</h1>
 
-<p align="center">One terminal fleet, controlled from anywhere.</p>
+<p align="center">One terminal hub, controlled from anywhere. Signaled when it needs you.</p>
 
 <p align="center">
   <a href="https://github.com/CarlOpenLab/term-fleet/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/CarlOpenLab/term-fleet/actions/workflows/ci.yml/badge.svg"></a>
   <a href="https://github.com/CarlOpenLab/term-fleet/releases/latest"><img alt="latest release" src="https://img.shields.io/github/v/release/CarlOpenLab/term-fleet"></a>
 </p>
+
+**Beacon** turns real PTY sessions on any machine into an ambient, multi-device
+terminal hub.
 
 `tfd` owns the PTY sessions on a machine and serves them over a single
 WebSocket. A desktop client built with Mygo — a native window, drawn by Mygo's
@@ -17,8 +20,8 @@ own UI toolkit and terminal rather than a WebView — and a browser or phone
 client all attach to that same connection, so every terminal tab on the phone
 is the same shell as the tab on the desktop.
 
-Machines can also dial *out* to a relay (`tfrelay`) on a public server, so the
-fleet is reachable from outside the LAN without a port forward, a public
+Machines can also dial *out* to a relay (`tfrelay`) on a public server, so your
+machines are reachable from outside the LAN without a port forward, a public
 address, or a VPN. The relay routes bytes and nothing else — see
 [PLAN.md](PLAN.md) §3.
 
@@ -212,7 +215,7 @@ stays what a browser or a phone is given.
 tabs run) and `-cwd` (their working directory). Its relay credential, the
 terminal's font and size, and whether the local service listens are not flags:
 the Settings window writes them to `settings.json` under the OS config
-directory (`TERM_FLEET_CONFIG_HOME` overrides it) and applies them as you change
+directory (`BEACON_CONFIG_HOME` overrides it, with fallback to `TERM_FLEET_CONFIG_HOME`) and applies them as you change
 them, so this desktop shell can join a relay without a command line. A new tab
 runs PowerShell on Windows when it is installed (`pwsh`, else `powershell`),
 falling back to `cmd.exe` only if neither is present.
@@ -301,9 +304,9 @@ Both programs keep a log next to the settings file, and both are silent about it
 until it is needed. The desktop's 设置 → 诊断 page shows the file, copies its
 path, reveals it in the file manager and saves a copy to send; `诊断日志…` in the
 macOS menu opens that page. The file itself is
-`~/Library/Application Support/term-fleet/logs/tfdesktop.log` on macOS,
-`%AppData%\term-fleet\logs\tfdesktop.log` on Windows and
-`~/.config/term-fleet/logs/tfdesktop.log` on Linux; `tfd` writes `tfd.log` in the
+`~/Library/Application Support/beacon/logs/tfdesktop.log` on macOS,
+`%AppData%\beacon\logs\tfdesktop.log` on Windows and
+`~/.config/beacon/logs/tfdesktop.log` on Linux (or `term-fleet` for prior installations); `tfd` writes `tfd.log` in the
 same directory, and `-log-dir` moves either.
 
 The log exists for one failure a terminal app cannot see about itself: a pane

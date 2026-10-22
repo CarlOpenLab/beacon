@@ -74,7 +74,7 @@ jobs:
             found && $0 ~ "^## " { exit }
             found { print }
           ' CHANGELOG.md > notes.md
-          [ -s notes.md ] || printf 'term-fleet %s\n' "$tag" > notes.md
+          [ -s notes.md ] || printf 'Beacon %s\n' "$tag" > notes.md
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release edit "$tag" --title "$tag" --notes-file notes.md --latest
           else
@@ -137,7 +137,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          name="term-fleet-cli_${VERSION}_${GOOS}_${GOARCH}"
+          name="beacon-cli_${VERSION}_${GOOS}_${GOARCH}"
           if [ "$GOOS" = windows ]; then
             (cd stage && zip -q -r "../${name}.zip" .)
             asset="${name}.zip"
@@ -179,7 +179,7 @@ jobs:
         run: |
           set -euo pipefail
           dmg=$(ls dist/darwin-universal/*.dmg | head -1)
-          asset="term-fleet_${VERSION}_macos_universal.dmg"
+          asset="beacon_${VERSION}_macos_universal.dmg"
           cp "$dmg" "$asset"
           gh release upload "${{ needs.prepare.outputs.tag }}" "$asset" --clobber
 
@@ -219,12 +219,12 @@ jobs:
             deb=$(ls "$d"/*.deb 2>/dev/null | head -1 || true)
             tar=$(ls "$d"/*.tar.gz 2>/dev/null | head -1 || true)
             if [ -n "$deb" ]; then
-              cp "$deb" "term-fleet_${VERSION}_linux_${arch}.deb"
-              assets+=("term-fleet_${VERSION}_linux_${arch}.deb")
+              cp "$deb" "beacon_${VERSION}_linux_${arch}.deb"
+              assets+=("beacon_${VERSION}_linux_${arch}.deb")
             fi
             if [ -n "$tar" ]; then
-              cp "$tar" "term-fleet_${VERSION}_linux_${arch}.tar.gz"
-              assets+=("term-fleet_${VERSION}_linux_${arch}.tar.gz")
+              cp "$tar" "beacon_${VERSION}_linux_${arch}.tar.gz"
+              assets+=("beacon_${VERSION}_linux_${arch}.tar.gz")
             fi
             [ ${#assets[@]} -gt 0 ] || { echo "::warning::nothing to upload for linux-$arch"; continue; }
             gh release upload "${{ needs.prepare.outputs.tag }}" "${assets[@]}" --clobber
@@ -268,12 +268,12 @@ jobs:
           assets=()
           setup=$(ls "$d"/*Setup*.exe 2>/dev/null | head -1 || true)
           if [ -n "$setup" ]; then
-            cp "$setup" "term-fleet_${VERSION}_windows_amd64_setup.exe"
-            assets+=("term-fleet_${VERSION}_windows_amd64_setup.exe")
+            cp "$setup" "beacon_${VERSION}_windows_amd64_setup.exe"
+            assets+=("beacon_${VERSION}_windows_amd64_setup.exe")
           else
             echo "::warning::no Setup .exe was produced"
           fi
-          zip="term-fleet_${VERSION}_windows_amd64_portable.zip"
+          zip="beacon_${VERSION}_windows_amd64_portable.zip"
           # The Setup .exe lives in the same directory but is uploaded on its
           # own; keep it out of the portable archive so the two do not duplicate.
           (cd "$d" && zip -q -r "$GITHUB_WORKSPACE/$zip" . -x "*Setup*.exe")

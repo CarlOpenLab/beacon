@@ -1,8 +1,8 @@
 {
-  "name": "term-fleet",
+  "name": "beacon",
   "private": true,
   "version": "0.6.2",
-  "description": "Share a machine's PTY sessions over one WebSocket with desktop and mobile clients",
+  "description": "Ambient terminal hub: share PTY sessions over one WebSocket across desktop, web, and mobile with presence and state awareness.",
   "scripts": {
     "install:web": "pnpm --dir web install",
     "build:web": "pnpm --dir web run build",

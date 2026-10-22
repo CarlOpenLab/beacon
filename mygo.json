@@ -1,6 +1,6 @@
 {
-  "name": "term-fleet",
-  "identifier": "dev.carl.termfleet",
+  "name": "Beacon",
+  "identifier": "dev.carl.beacon",
   "version": "0.6.2",
   "main": "./cmd/tfdesktop",
   "buildCommand": "pnpm run build:web",

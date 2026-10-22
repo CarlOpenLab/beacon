@@ -1,4 +1,4 @@
-# Deploying term-fleet
+# Deploying Beacon
 
 Three roles, one binary each:
 

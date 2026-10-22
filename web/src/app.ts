@@ -683,7 +683,7 @@ export class App {
 
     const sideTop = el('div', 'tf-side-top')
     const brand = el('div', 'tf-brand')
-    brand.append(el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
+    brand.append(el('span', 'tf-dot'), el('span', undefined, 'Beacon'))
     const newBtn = iconButton('tf-icon-btn tf-side-new', `新建终端 (${MOD_LABEL}T)`, ICON.plus, () =>
       this.newTab(),
     )
@@ -1496,7 +1496,7 @@ export class App {
     const box = el('div', 'tf-connect')
     const card = el('div', 'tf-connect-card')
     const brand = el('div', 'tf-connect-brand')
-    brand.append(el('span', 'tf-dot'), el('span', undefined, 'term-fleet'))
+    brand.append(el('span', 'tf-dot'), el('span', undefined, 'Beacon'))
     card.append(brand, el('h1', undefined, '连接中继'), el('p', 'tf-connect-note', reason))
 
     const url = el('input', 'tf-input') as HTMLInputElement
