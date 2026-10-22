@@ -35,6 +35,20 @@ func (c *pasteConn) Write(p []byte) (int, error) {
 }
 func (c *pasteConn) Close() error { return c.reader.Close() }
 
+// waitForPaste polls for a condition for two seconds. The test package's usual
+// waitFor lives in a !windows file, and this test runs on every platform.
+func waitForPaste(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("%s: timed out", what)
+}
+
 func (c *pasteConn) text() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -61,7 +75,7 @@ func TestCtrlVPastesTheLocalClipboardIntoARemoteShell(t *testing.T) {
 	tt.SetClipboard("本地剪贴板")
 	tt.Key(ui.Ctrl, ui.KeyV)
 
-	waitFor(t, "the local clipboard to reach the remote shell", 2*time.Second, func() bool {
+	waitForPaste(t, "the local clipboard to reach the remote shell", func() bool {
 		return conn.text() == "本地剪贴板"
 	})
 
@@ -69,7 +83,7 @@ func TestCtrlVPastesTheLocalClipboardIntoARemoteShell(t *testing.T) {
 	// binding falls through, so Control-V keeps meaning quoted-insert.
 	tt.SetClipboard("")
 	tt.Key(ui.Ctrl, ui.KeyV)
-	waitFor(t, "the empty clipboard to fall through as ^V", 2*time.Second, func() bool {
+	waitForPaste(t, "the empty clipboard to fall through as ^V", func() bool {
 		return conn.text() == "本地剪贴板\x16"
 	})
 }
