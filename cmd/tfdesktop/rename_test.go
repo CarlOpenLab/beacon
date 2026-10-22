@@ -65,6 +65,7 @@ func TestADoubleClickOnTheRowNamesTheShell(t *testing.T) {
 func TestEscapeLeavesTheShellNamedAsItWas(t *testing.T) {
 	w, f := newSplitWindow(t)
 	tb := openShell(t, w, f, testDir(t))
+	settleName(t, w, tb)
 	before := tb.name()
 	// The name before a rename is whatever the shell's terminal called itself;
 	// on Windows that is cmd's "Administrator: C:\\Windows\\SYSTEM32\\cmd.exe".
@@ -136,6 +137,7 @@ func TestAPressElsewhereCommitsTheName(t *testing.T) {
 func TestAnUntouchedFieldNamesNothing(t *testing.T) {
 	w, f := newSplitWindow(t)
 	tb := openShell(t, w, f, testDir(t))
+	settleName(t, w, tb)
 	before := tb.name()
 	beforeHub := hubTitleNow(f, tb.id)
 
@@ -165,6 +167,28 @@ func TestAnUntouchedFieldNamesNothing(t *testing.T) {
 	// already did.
 	if named := hubTitle(t, f, tb.id, beforeHub); named != beforeHub {
 		t.Fatalf("the hub was told a name nobody typed: %q", named)
+	}
+}
+
+// settleName waits until the shell stops naming itself. Windows' cmd sets its
+// console title a moment after it starts, and a test that captures the name
+// before that frame would see the name change under it for a reason that has
+// nothing to do with a rename.
+func settleName(t *testing.T, w *window, tb *tab) {
+	t.Helper()
+	last := tb.name()
+	stable := time.Now()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		w.drain()
+		time.Sleep(20 * time.Millisecond)
+		if now := tb.name(); now != last {
+			last = now
+			stable = time.Now()
+		}
+		if time.Since(stable) >= 250*time.Millisecond {
+			return
+		}
 	}
 }
 
