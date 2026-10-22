@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.7
+
+**Beacon: a close closes the tab, even from an older client — Beacon：旧客户端发出的关闭，也不会再留下「已退出」**
+
+- **A close dismisses the tab unless it says it is 结束.** 0.6.6 put "this is a tab close" on the close frame, and that only worked when the device that closed it was already on 0.6.6: a device still on 0.6.5 sent the same bare frame for 关闭标签 and 结束, so its closes reached the hub with nothing on them and every other client kept a 已退出 pane. The hub now takes a bare close as a tab close; 结束 sends `keep`, and that is the only close that leaves the tab showing the final output. One consequence, for one release: a 0.6.6 client's 结束 arrives bare, so its watchers drop the tab — the client that pressed it keeps its own.
+  — 0.6.6 让 close 帧带上「这是关标签」，但只对已经在 0.6.6 上的设备生效：还停在 0.6.5 的设备，关闭标签与结束发出的是同一帧不带任何标记的 close，于是别的客户端照样留下「已退出」的面板。现在 hub 把不带标记的 close 当作关标签处理，只有明确带 `keep` 的结束才保留标签继续显示最后输出（0.6.7 的客户端会发）。过渡期有一个代价：0.6.6 客户端按「结束」时发的是不带标记的 close，观看端会关掉标签——按下的那一端自己的标签仍然保留。
+- **Every close says what it meant, in the diagnostic log.** A close now logs its session, `keep` and `dismiss`, so a tab that outlives its shell can be traced to the side that sent the frame — a stale client, or a daemon on a machine that has not been updated.
+  — 每次 close 现在都会在诊断日志里记下 session、`keep` 与 `dismiss`，于是「标签比 shell 活得久」可以直接追到发帧的那一侧：是没更新的客户端，还是某台机器上的旧 daemon。
+
 ## 0.6.6
 
 **Beacon: a closed tab is closed everywhere — Beacon：关掉的标签，每台设备上一起关掉**
