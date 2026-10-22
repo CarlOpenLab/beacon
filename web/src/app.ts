@@ -10,7 +10,7 @@
 
 import { Fleet, type ConnState, type FleetHandlers } from './fleet'
 import { DirectConnector, type Connector } from './link'
-import { ERR, ROLE, type Host, type Role, type Summary } from './protocol'
+import { ERR, PROTOCOL_VERSION, ROLE, type Host, type Role, type Summary } from './protocol'
 import { RelayConnection, relayURLFromLocation, type RelayState } from './relay'
 import { applyTerminalTheme, createTerminal, type TerminalBundle } from './term'
 import { mountTouchKeys } from './touchkeys'
@@ -69,6 +69,9 @@ export interface AppOptions {
 
 const MOD_LABEL = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ctrl'
 
+/** Where the sidebar's dragged order is kept, per machine. */
+const ORDER_KEY = 'beacon.session-order.v1'
+
 /**
  * The machine serving this page. Its shells are the ones this client can open
  * without a relay, and the ones nobody else can be handed: see the release
@@ -97,6 +100,36 @@ function basename(p: string): string {
   if (!p) return ''
   const parts = p.replace(/[/\\]+$/, '').split(/[/\\]/)
   return parts[parts.length - 1] || p
+}
+
+/** The sidebar order the last visit left, by machine id. */
+function loadOrder(): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  let raw = ''
+  try {
+    raw = localStorage.getItem(ORDER_KEY) ?? ''
+  } catch {
+    return out
+  }
+  if (!raw) return out
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return out
+    for (const [machine, ids] of Object.entries(parsed as Record<string, unknown>)) {
+      if (Array.isArray(ids)) out.set(machine, ids.filter((id): id is string => typeof id === 'string'))
+    }
+  } catch {
+    /* a stale or hand-edited value is no order at all */
+  }
+  return out
+}
+
+function saveOrder(order: Map<string, string[]>): void {
+  try {
+    localStorage.setItem(ORDER_KEY, JSON.stringify(Object.fromEntries(order)))
+  } catch {
+    /* private mode; the order lasts this page's life */
+  }
 }
 
 /** The short relative time the row shows at the end of a row: now, 4m, 2h, 3d, 1w. */
@@ -295,6 +328,16 @@ export class App {
   private filter = ''
   private settingsPop?: HTMLElement
   /**
+   * The order the person dragged each machine's rows into, by session id. It is
+   * this client's own arrangement — every client renders the order the hub
+   * lists sessions in — so it lives beside the theme, not in the session list.
+   * Ids the list no longer has stay here so that a shell that comes back lands
+   * where it was.
+   */
+  private order = new Map<string, string[]>()
+  /** The row being dragged, while a drag is in flight. */
+  private dragRow?: { machine: string; session: string }
+  /**
    * Whether the inspector is open. It is the person's choice, so a rerender
    * never overrides it — and it starts closed, as the desktop window's does: a
    * 280px column over a terminal is a terminal cut to 900px, and the button in
@@ -308,6 +351,7 @@ export class App {
   constructor(container: HTMLElement, opts: AppOptions) {
     this.root = container
     this.opts = opts
+    this.order = loadOrder()
     this.build()
     this.bindKeys()
 
@@ -463,8 +507,8 @@ export class App {
         if (host?.hostname && (this.opts.mode === 'direct' || !mv.label || mv.label === machineId)) {
           mv.label = host.hostname
         }
-        if (version && version !== 1) {
-          this.toast(`服务端协议版本 ${version}，客户端期望 1`, 'warn')
+        if (version && version !== PROTOCOL_VERSION) {
+          this.toast(`服务端协议版本 ${version}，客户端期望 ${PROTOCOL_VERSION}`, 'warn')
         }
         this.renderFleet()
         this.renderStatus()
@@ -1007,9 +1051,109 @@ export class App {
   private allSessions(): Array<{ mv: MachineView; s: Summary }> {
     const out: Array<{ mv: MachineView; s: Summary }> = []
     for (const mv of this.orderedMachines()) {
-      for (const s of mv.sessions) out.push({ mv, s })
+      for (const s of this.orderedSessions(mv)) out.push({ mv, s })
     }
     return out
+  }
+
+  /**
+   * One machine's rows in the order the person arranged them. A session the
+   * saved order has never seen keeps the list's own place at the end, so a new
+   * shell joins the row below the one it was opened from instead of jumping
+   * into the middle of an arrangement it knows nothing about.
+   */
+  private orderedSessions(mv: MachineView): Summary[] {
+    const saved = this.order.get(mv.id)
+    if (!saved?.length) return mv.sessions
+    const rank = new Map<string, number>()
+    for (const [i, id] of saved.entries()) {
+      if (!rank.has(id)) rank.set(id, i)
+    }
+    return mv.sessions
+      .map((s, i) => ({ s, i, at: rank.get(s.sessionId) }))
+      .sort((a, b) => {
+        if (a.at !== undefined && b.at !== undefined) return a.at - b.at
+        if (a.at !== undefined) return -1
+        if (b.at !== undefined) return 1
+        return a.i - b.i
+      })
+      .map((x) => x.s)
+  }
+
+  /**
+   * Move one row in front of, or after, another: the order the hub lists
+   * sessions in is the fleet's, not one person's, so this is kept here and
+   * saved for the next visit.
+   */
+  private moveSession(machineId: string, fromId: string, toId: string, after: boolean): void {
+    const mv = this.machines.get(machineId)
+    if (!mv || fromId === toId) return
+    const ids = this.orderedSessions(mv).map((s) => s.sessionId)
+    const from = ids.indexOf(fromId)
+    if (from < 0) return
+    ids.splice(from, 1)
+    const at = ids.indexOf(toId)
+    if (at < 0) ids.push(fromId)
+    else ids.splice(after ? at + 1 : at, 0, fromId)
+    this.order.set(machineId, ids)
+    saveOrder(this.order)
+    this.renderFleet()
+  }
+
+  /** The insertion line a drag shows on the row it would land beside. */
+  private markDrop(row: HTMLElement, after: boolean): void {
+    this.clearDropMarks()
+    row.classList.add(after ? 'drop-after' : 'drop-before')
+  }
+
+  private clearDropMarks(): void {
+    for (const node of this.fleetList.querySelectorAll('.drop-before, .drop-after')) {
+      node.classList.remove('drop-before', 'drop-after')
+    }
+  }
+
+  /** Dragging a session row reorders this client's sidebar; it does not pick it. */
+  private wireRowDrag(row: HTMLElement, mv: MachineView, s: Summary): void {
+    row.draggable = true
+    row.addEventListener('dragstart', (ev) => {
+      // The close button and the rename field are their own targets.
+      const target = ev.target as HTMLElement | null
+      if (target?.closest('.tf-kill, input')) {
+        ev.preventDefault()
+        return
+      }
+      this.dragRow = { machine: mv.id, session: s.sessionId }
+      row.classList.add('dragging')
+      ev.dataTransfer?.setData('text/plain', s.sessionId)
+      if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move'
+    })
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging')
+      this.dragRow = undefined
+      this.clearDropMarks()
+    })
+    row.addEventListener('dragover', (ev) => {
+      const from = this.dragRow
+      if (!from || from.machine !== mv.id || from.session === s.sessionId) return
+      ev.preventDefault()
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move'
+      const rect = row.getBoundingClientRect()
+      this.markDrop(row, ev.clientY > rect.top + rect.height / 2)
+    })
+    row.addEventListener('dragleave', (ev) => {
+      if (!row.contains(ev.relatedTarget as Node | null)) {
+        row.classList.remove('drop-before', 'drop-after')
+      }
+    })
+    row.addEventListener('drop', (ev) => {
+      const from = this.dragRow
+      this.dragRow = undefined
+      this.clearDropMarks()
+      if (!from || from.machine !== mv.id || from.session === s.sessionId) return
+      ev.preventDefault()
+      const rect = row.getBoundingClientRect()
+      this.moveSession(mv.id, from.session, s.sessionId, ev.clientY > rect.top + rect.height / 2)
+    })
   }
 
   private orderedMachines(): MachineView[] {
@@ -1083,7 +1227,7 @@ export class App {
 
   private renderSessionsInto(host: HTMLElement, mv: MachineView): void {
     let shown = 0
-    for (const s of mv.sessions) {
+    for (const s of this.orderedSessions(mv)) {
       if (!this.matchesFilter(s)) continue
       shown++
       const status = s.status || (!s.alive ? 'exited' : 'idle')
@@ -1176,6 +1320,7 @@ export class App {
         ev.preventDefault()
         this.renameSession(mv, s, name)
       }
+      this.wireRowDrag(row, mv, s)
       host.append(row)
     }
 

@@ -447,13 +447,13 @@ func (msgs Messages) TabClose() string {
 // TabCloseTip says "关闭标签页（结束该会话的进程）"
 // in the language the app shows.
 //
-// The tab's close button, saying what it does not do.
+// The tab's close button, saying that it ends the session.
 func TabCloseTip() string { return In(i18n.Locale()).TabCloseTip() }
 
 // TabCloseTip says "关闭标签页（结束该会话的进程）"
 // in the language of msgs.
 //
-// The tab's close button, saying what it does not do.
+// The tab's close button, saying that it ends the session.
 func (msgs Messages) TabCloseTip() string {
 	return Catalog.Format(msgs.locale, "tab_close_tip", nil)
 }

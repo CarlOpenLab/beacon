@@ -990,6 +990,29 @@ func TestARenameReachesEveryClient(t *testing.T) {
 	}
 }
 
+// A program that names its terminal names the shell: an agent writing OSC 0/2
+// is how a row says which task the shell is on, without anybody renaming it.
+func TestATerminalTitleNamesTheShell(t *testing.T) {
+	ts := newTestHub(t)
+	c := dialTest(t, ts)
+	c.send(protocol.Msg{T: protocol.CTCreate, SessionID: "s1", Cols: 80, Rows: 24, Shell: "/bin/sh"})
+	c.waitFor("created", func(m protocol.Msg) bool {
+		return m.T == protocol.STCreated && m.SessionID == "s1"
+	})
+
+	c.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1", Data: []byte("printf '\\033]0;deploy the thing\\007'\n")})
+	if seen := titleInRoster(t, c, "s1", "deploy the thing"); seen != "deploy the thing" {
+		t.Fatalf("the roster names the shell %q, want the terminal's own title", seen)
+	}
+
+	// The program clearing its title hands the name back to the shell's
+	// fallback: the terminal does not keep a name nobody set.
+	c.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1", Data: []byte("printf '\\033]0;\\007'\n")})
+	if seen := titleInRoster(t, c, "s1", ""); seen != "" {
+		t.Fatalf("the roster still names the shell %q after the program cleared it", seen)
+	}
+}
+
 // titleInRoster is the title the session lists give a session, read until one
 // says want: the broadcasts around a change carry the old name first, and a
 // title that is cleared is only visible once a list says so.

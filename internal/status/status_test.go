@@ -125,6 +125,56 @@ func TestASpinnerTitleMeansWorking(t *testing.T) {
 	}
 }
 
+func TestTheTerminalTitleNamesTheSession(t *testing.T) {
+	tr, changes := newTracker()
+	tr.Observe([]byte("\x1b]2;⠋ build the parser\x1b\\"))
+	got := tr.Snapshot()
+	if got.Title != "build the parser" {
+		t.Fatalf("title = %q, want the title without its spinner", got.Title)
+	}
+	if *changes == 0 {
+		t.Fatal("a title did not tell anyone")
+	}
+
+	// The spinner is the program's clock, not its name: another frame of it is
+	// not a change a client needs to hear about.
+	before := *changes
+	tr.Observe([]byte("\x1b]2;⠙ build the parser\x07"))
+	if got := tr.Snapshot().Title; got != "build the parser" {
+		t.Fatalf("title = %q after another spinner frame", got)
+	}
+	if *changes != before {
+		t.Fatalf("a spinner frame was reported as a name change (%d -> %d)", before, *changes)
+	}
+
+	// An agent renames its terminal as it moves on, and the row follows.
+	tr.Observe([]byte("\x1b]0;reviewing the patch\x07"))
+	if got := tr.Snapshot().Title; got != "reviewing the patch" {
+		t.Fatalf("title = %q after a rename", got)
+	}
+
+	// An empty title is a program clearing its name.
+	tr.Observe([]byte("\x1b]0;\x07"))
+	if got := tr.Snapshot().Title; got != "" {
+		t.Fatalf("title = %q after it was cleared, want empty", got)
+	}
+}
+
+// A prompt drawn in UTF-8 must not be read as a control sequence: the byte
+// 0x9D is both the C1 OSC and the middle of "❯", and a scanner that took it for
+// the control swallowed the title the prompt was followed by.
+func TestAUTF8PromptIsNotAnOSC(t *testing.T) {
+	tr, _ := newTracker()
+	tr.Observe([]byte("\x1b[1;32m\xe2\x9d\xaf\x1b[0m \x1b]0;Alpha task\x07"))
+	if got := tr.Snapshot().Title; got != "Alpha task" {
+		t.Fatalf("title = %q, want the title after a UTF-8 prompt", got)
+	}
+	tr.Observe([]byte("\xe2\x9d\xaf \x1b]7501;state=working\x1b\\"))
+	if got := tr.Snapshot().State; got != Working {
+		t.Fatalf("state = %q, want the report after a UTF-8 prompt", got)
+	}
+}
+
 func TestOutputWorksAndThenGoesQuiet(t *testing.T) {
 	tr, _ := newTracker()
 	tr.Observe([]byte("compiling…"))

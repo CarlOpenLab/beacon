@@ -248,8 +248,14 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	if collapsed {
 		return
 	}
+	// The group's rows are drawn in this window's order. A row dropped on
+	// another is remembered here and applied once every row is on screen: a
+	// move in the middle of the loop would redraw the list under the pointer.
+	var move *orderMove
 	for _, e := range entries {
-		w.sessionRow(c, pal, e)
+		if from, after, ok := w.sessionRow(c, pal, e); ok && from != "" {
+			move = &orderMove{machine: m.ID, from: from, to: sessionKey(e), after: after}
+		}
 		// The first pane is the tab's own row; the others hang under it.
 		for i, pane := range e.panes {
 			if i == 0 {
@@ -257,6 +263,9 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 			}
 			w.paneRow(c, pal, pane, i == len(e.panes)-1)
 		}
+	}
+	if move != nil {
+		w.moveSession(*move)
 	}
 	if len(entries) == 0 {
 		note := locales.SidebarMachineEmpty()

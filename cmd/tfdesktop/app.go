@@ -64,6 +64,11 @@ type window struct {
 	sideDrag     float32
 	collapsed    map[string]bool
 
+	// sessionOrder is the order each machine's rows were dragged into, by
+	// machine id. It is this window's arrangement, kept in the settings file;
+	// the hub's list stays oldest-first for everybody else.
+	sessionOrder map[string][]string
+
 	// zoomed fills the body with the focused pane of a split, ⌘⇧↩.
 	zoomed bool
 
@@ -196,6 +201,7 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 		nextKey:      1,
 		cmdBar:       newCommandBar(),
 		dismissed:    make(map[string]bool),
+		sessionOrder: store.Get().SessionOrder,
 	}
 	// The window is a client of its own hub from the moment it opens, so every
 	// shell it shows — including one a browser took over — arrives as frames
@@ -1245,9 +1251,7 @@ func (w *window) nextOrdinal(machine string) int {
 // a browser sees — and types into it under the same lease a browser answers to.
 func (w *window) mount(s protocol.Summary) error {
 	tb := w.openTab(machineLocal, s.SessionID)
-	if s.Title != "" {
-		tb.setTitle(s.Title)
-	}
+	tb.setTitle(s.Title)
 	if s.Shell != "" {
 		tb.program = programName(s.Shell)
 	}
@@ -1614,9 +1618,7 @@ func (h tabHandlers) Attached(sum protocol.Summary, cursor int64, truncated bool
 			return
 		}
 		tb.alive = sum.Alive
-		if sum.Title != "" {
-			tb.setTitle(sum.Title)
-		}
+		tb.setTitle(sum.Title)
 		if tb.program == "" && sum.Shell != "" {
 			tb.program = programName(sum.Shell)
 		}
@@ -1911,12 +1913,12 @@ func (t *tab) setLease(role, controller string, epoch uint64) {
 	t.mu.Unlock()
 }
 
+// setTitle records the name the hub says the shell has. An empty title is an
+// answer too — a cleared rename, or a program that stopped naming its terminal
+// — and puts the tab back on its program-and-number fallback.
 func (t *tab) setTitle(title string) {
-	if title == "" {
-		return
-	}
 	t.mu.Lock()
-	t.title = title
+	t.title = strings.TrimSpace(title)
 	t.mu.Unlock()
 }
 

@@ -429,6 +429,7 @@ svg {
 
 /* A session row is one line, 34px, and the glyph is its last word. */
 .tf-session {
+  position: relative;
   height: var(--h-row);
   min-height: var(--h-row);
   display: flex;
@@ -439,6 +440,33 @@ svg {
   cursor: pointer;
   color: var(--fg);
   transition: background var(--dur) ease, box-shadow var(--dur) ease;
+}
+
+/* A session row is dragged to change this client's order, not to pick it: the
+   ghost the browser draws is the row itself, dimmed, and the line says where
+   it would land. */
+.tf-session.dragging {
+  opacity: 0.42;
+}
+
+.tf-session.drop-before::after,
+.tf-session.drop-after::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.tf-session.drop-before::after {
+  top: -2px;
+}
+
+.tf-session.drop-after::after {
+  bottom: -2px;
 }
 
 .tf-session:hover {

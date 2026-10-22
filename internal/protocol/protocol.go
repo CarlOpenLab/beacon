@@ -139,13 +139,17 @@ type Host struct {
 }
 
 // Summary is one row of the session list. Clients render exactly one row per
-// live session and keep the order the server sent, which is what makes the
-// phone list and the PC list one-to-one.
+// live session and keep the order the server sent — a client may keep an order
+// of its own beside it, but the list's order is the one every screen shares.
 type Summary struct {
 	SessionID string `json:"sessionId"`
 	PID       int    `json:"pid"`
 	Cwd       string `json:"cwd"`
-	Title     string `json:"title"`
+	// Title is what the row is called: the name a rename gave the shell, else
+	// the title the program set on its terminal (OSC 0/2) — which is how an
+	// agent names the task it is on. Empty leaves the clients their own
+	// fallback.
+	Title string `json:"title"`
 	// Shell is the program the session runs. Clients fall back to it when the
 	// shell has not reported a title yet, so a fresh tab reads as "zsh 2"
 	// rather than a bare session id.

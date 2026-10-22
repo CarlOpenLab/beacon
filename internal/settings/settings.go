@@ -87,6 +87,12 @@ type Settings struct {
 	// app is written in: "zh-Hans" or "en". Empty — what a first run gets —
 	// follows the languages the system says the person reads.
 	Language string `json:"language,omitempty"`
+
+	// SessionOrder is the order the person dragged each machine's session rows
+	// into, by machine id and then session id. The hub lists sessions oldest
+	// first for every client; this is the one window's own arrangement, so it
+	// is kept here rather than pushed to the fleet.
+	SessionOrder map[string][]string `json:"sessionOrder,omitempty"`
 }
 
 // Dir is where the desktop shell keeps its settings. BEACON_CONFIG_HOME or

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // State is what a session is doing.
@@ -45,6 +46,10 @@ type Snapshot struct {
 	// Process is the program in the foreground of the PTY: "zsh" at a prompt,
 	// "claude" while an agent runs. It is "" when the platform cannot say.
 	Process string
+	// Title is the name the program gave the terminal with OSC 0/2, with the
+	// spinner a busy program puts in front of it taken off. It is "" when the
+	// program has not named the terminal, or has cleared the name again.
+	Title string
 }
 
 // report is what a program said about itself, with OSC 7501.
@@ -102,7 +107,7 @@ func (t *Tracker) Observe(p []byte) {
 	var got report
 	var bell bool
 	var title string
-	has := false
+	has, hasTitle := false, false
 	t.scan.scan(p, func(ev event) {
 		switch ev.kind {
 		case evReport:
@@ -110,7 +115,9 @@ func (t *Tracker) Observe(p []byte) {
 		case evBell:
 			bell = true
 		case evTitle:
-			title = ev.text
+			// An empty title is an answer too: a program clears the name it set
+			// by writing an empty one, and the shell goes back to its fallback.
+			title, hasTitle = ev.text, true
 		}
 	})
 	if has {
@@ -130,7 +137,7 @@ func (t *Tracker) Observe(p []byte) {
 			t.bell = false
 		}
 	}
-	if title != "" {
+	if hasTitle {
 		t.title = title
 	}
 	if bell {
@@ -199,7 +206,8 @@ func (t *Tracker) Snapshot() Snapshot {
 }
 
 func (t *Tracker) snapshotLocked() Snapshot {
-	s := Snapshot{State: t.state, Unread: t.unread, Progress: -1, Since: t.since, Process: t.process}
+	s := Snapshot{State: t.state, Unread: t.unread, Progress: -1, Since: t.since,
+		Process: t.process, Title: displayTitle(t.title)}
 	if t.rep.state != "" {
 		s.Message = t.rep.message
 		s.Kind = t.rep.kind
@@ -283,7 +291,8 @@ func (t *Tracker) emit() {
 	t.mu.Lock()
 	s := t.snapshotLocked()
 	changed := s.State != t.seen.State || s.Unread != t.seen.Unread || s.Message != t.seen.Message ||
-		s.Kind != t.seen.Kind || s.Progress != t.seen.Progress || s.Process != t.seen.Process
+		s.Kind != t.seen.Kind || s.Progress != t.seen.Progress || s.Process != t.seen.Process ||
+		s.Title != t.seen.Title
 	if changed {
 		t.seen = s
 	}
@@ -299,17 +308,55 @@ func (t *Tracker) emit() {
 // cell, or one of the quarter circles.
 func spinnerTitle(title string) bool {
 	for _, r := range strings.TrimSpace(title) {
-		switch {
-		case r >= 0x2800 && r <= 0x28FF: // braille
-			return true
-		case r >= '◐' && r <= '◒': // ◐ ◑ ◒
-			return true
-		case r == '◓':
-			return true
-		}
-		return false
+		return spinnerRune(r)
 	}
 	return false
+}
+
+// spinnerRune is the glyph a busy program puts in front of its title. It is
+// also what displayTitle takes off, so that a name that only spins in front of
+// a sentence does not make the row's name change with every frame.
+func spinnerRune(r rune) bool {
+	switch {
+	case r >= 0x2800 && r <= 0x28FF: // braille
+		return true
+	case r >= '◐' && r <= '◒': // ◐ ◑ ◒
+		return true
+	case r == '◓':
+		return true
+	}
+	return false
+}
+
+// displayTitle is the terminal title as a row can wear it: one line, no
+// control characters, and without the leading spinner a busy program animates.
+// A title that was only a spinner becomes empty, which is the program saying
+// nothing rather than the shell being called "⠋".
+func displayTitle(title string) string {
+	title = sanitize(title)
+	title = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r == '\t' {
+			return ' '
+		}
+		return r
+	}, title)
+	title = strings.TrimSpace(title)
+	for title != "" {
+		r, size := utf8.DecodeRuneInString(title)
+		if !spinnerRune(r) {
+			break
+		}
+		title = strings.TrimSpace(title[size:])
+	}
+	// Names are drawn in a row with a width to keep, and a program can write a
+	// title longer than any row: keep a title's sense without carrying a whole
+	// paragraph through every session list.
+	const maxTitle = 120
+	if utf8.RuneCountInString(title) > maxTitle {
+		runes := []rune(title)
+		title = strings.TrimSpace(string(runes[:maxTitle])) + "…"
+	}
+	return title
 }
 
 // --- the scanner ---
@@ -330,6 +377,13 @@ type event struct {
 
 // scanner finds the OSC sequences and bells in a program's output, following
 // them across reads.
+//
+// It is byte-oriented, and the seam is UTF-8: the C1 controls 0x9D (OSC) and
+// 0x9C (ST) are also ordinary continuation bytes of a three-byte character, so
+// a prompt drawn with "❯" (E2 9D AF) used to open an OSC that swallowed every
+// report and title after it. The sequences that matter — ESC ] and ESC \ — are
+// ASCII, so this scanner reads only those and treats bytes with the high bit
+// set as text, which is what a terminal that prints UTF-8 meant them as.
 type scanner struct {
 	state int // 0 text, 1 after ESC, 2 in an OSC, 3 skipping an OSC, 4 ESC in an OSC
 	buf   []byte
@@ -346,8 +400,6 @@ func (s *scanner) scan(p []byte, fn func(event)) {
 				s.state = 1
 			case 0x07:
 				fn(event{kind: evBell})
-			case 0x9d: // C1 OSC
-				s.begin()
 			}
 		case 1:
 			if b == ']' {
@@ -357,7 +409,7 @@ func (s *scanner) scan(p []byte, fn func(event)) {
 			}
 		case 2, 3:
 			switch b {
-			case 0x07, 0x9c:
+			case 0x07:
 				s.end(fn)
 			case 0x1b:
 				s.state = 4

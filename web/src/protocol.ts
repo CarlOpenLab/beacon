@@ -3,7 +3,7 @@
 // Keep field names byte-identical with the Go struct tags: the daemon rejects
 // frames it cannot decode, and a typo here shows up as a silent no-op.
 
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 /** Client -> server frame kinds. */
 export const CT = {

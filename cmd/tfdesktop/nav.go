@@ -3,12 +3,14 @@ package main
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/term-fleet/internal/settings"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
@@ -93,6 +95,141 @@ func (e sessionEntry) withStatus(sum protocol.Summary) sessionEntry {
 	e.status, e.unread, e.message, e.kind, e.progress, e.since =
 		sum.Status, sum.Unread, sum.Message, sum.Kind, sum.Progress, sum.Since
 	return e
+}
+
+// sessionKey is what a row is remembered by when the person drags it: the
+// shell it is about. A row that has no session yet (a shell the hub has not
+// named) is remembered by its label, since it is the only name it has.
+func sessionKey(e sessionEntry) string {
+	if e.session != "" {
+		return e.session
+	}
+	return "label:" + e.label
+}
+
+// sessionDrag is the value a row carries while it is being dragged. The rows
+// of one machine only take each other: dragging a row across a group would be
+// a move between machines, which this is not.
+type sessionDrag struct {
+	machine string
+	key     string
+}
+
+// orderMove is a drop the sidebar has seen but not applied: the rows were
+// drawn in the order the move replaces, so it lands after the last one is on
+// screen.
+type orderMove struct {
+	machine string
+	from    string
+	to      string
+	after   bool
+}
+
+// orderedEntries puts a machine's rows in the order the person dragged them
+// into. A row the saved order has never seen keeps the list's own place at the
+// end, so a new shell joins below the one it was opened from.
+func (w *window) orderedEntries(machine string, entries []sessionEntry) []sessionEntry {
+	saved := w.sessionOrder[machine]
+	if len(saved) == 0 {
+		return entries
+	}
+	rank := make(map[string]int, len(saved))
+	for i, key := range saved {
+		if _, seen := rank[key]; !seen {
+			rank[key] = i
+		}
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		ri, iok := rank[sessionKey(entries[i])]
+		rj, jok := rank[sessionKey(entries[j])]
+		switch {
+		case iok && jok:
+			return ri < rj
+		case iok:
+			return true
+		case jok:
+			return false
+		default:
+			return false
+		}
+	})
+	return entries
+}
+
+// moveSession records a row's new place: the rows of that machine as they are
+// now, with the dragged one lifted out and put before or after its target. The
+// arrangement is this window's, so it is saved beside the theme rather than
+// pushed to the hub.
+func (w *window) moveSession(m orderMove) {
+	if m.from == "" || m.from == m.to {
+		return
+	}
+	entries := w.entriesFor(m.machine)
+	keys := make([]string, 0, len(entries))
+	for _, e := range entries {
+		keys = append(keys, sessionKey(e))
+	}
+	from := -1
+	for i, key := range keys {
+		if key == m.from {
+			from = i
+			break
+		}
+	}
+	if from < 0 {
+		return
+	}
+	keys = append(keys[:from], keys[from+1:]...)
+	at := -1
+	for i, key := range keys {
+		if key == m.to {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		keys = append(keys, m.from)
+	} else if m.after {
+		keys = append(keys[:at+1], append([]string{m.from}, keys[at+1:]...)...)
+	} else {
+		keys = append(keys[:at], append([]string{m.from}, keys[at:]...)...)
+	}
+	if w.sessionOrder == nil {
+		w.sessionOrder = make(map[string][]string)
+	}
+	w.sessionOrder[m.machine] = keys
+	if w.store != nil {
+		machine, order := m.machine, keys
+		_, _ = w.store.Update(func(s *settings.Settings) {
+			if s.SessionOrder == nil {
+				s.SessionOrder = make(map[string][]string)
+			}
+			s.SessionOrder[machine] = order
+		})
+	}
+	w.invalidate()
+}
+
+// drawRowDropMarker draws the line a dragged row would land on: above the row
+// for before it, below for after. The line reaches past the row's own box so
+// the copy the framework paints on the pointer does not hide it.
+func drawRowDropMarker(row ui.Element, after bool, accent ui.Color) {
+	row.DrawOver(func(p *ui.Painter, r ui.Rect) {
+		y := r.Y - 1
+		if after {
+			y = r.Y + r.H - 1
+		}
+		p.Fill(ui.Rect{X: r.X + 6, Y: y, W: r.W - 12, H: 2}, accent, 1)
+	})
+}
+
+// dragAfterRow reports which half of a row the pointer is on: the lower half
+// means "after this one", the upper half "before it".
+func dragAfterRow(el ui.Element) bool {
+	if _, y, over := el.PointerPosition(); over {
+		return y > el.Bounds().H/2
+	}
+	return false
 }
 
 // summaryOf is the last word the window has about a session, from the list its
@@ -382,7 +519,7 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 				end:     func() { w.killSessionOn(machineLocal, summary.SessionID) },
 			}.withStatus(summary))
 		}
-		return out
+		return w.orderedEntries(machine, out)
 	}
 
 	list := w.remoteSessions[machine]
@@ -460,14 +597,14 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 			out = append(out, w.workspaceRow(machine, leaves))
 		}
 	}
-	return out
+	return w.orderedEntries(machine, out)
 }
 
 // sessionRow is one shell in its machine's group, drawn the way the sidebar draws
 // a session: the state on the left, the name, then the quiet facts — and the ×
 // that closes it, only while the pointer is on the row, because a row that wears
 // every control it has says nothing with any of them.
-func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry) {
+func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry) (dragFrom string, dropAfter, dropped bool) {
 	row := ui.Row(c).Height(uitokens.RowH).FillWidth().Padding(0, 8, 0, 10).Gap(8).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
@@ -475,6 +612,19 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		// Room for the chosen row's edge in every row, so that choosing one
 		// moves no text.
 		row.Border(1, ui.Transparent)
+	}
+	// A row is dragged to move it in this window's order, and nothing else: the
+	// drop is worked out after every row of the group is drawn (see
+	// machineGroup), so no row is drawn in a list that changed under it.
+	row.Drag(sessionDrag{machine: e.machine, key: sessionKey(e)})
+	if row.Dragging() {
+		row.Cursor(ui.CursorGrabbing)
+	}
+	if _, over := ui.DragOver[sessionDrag](row); over {
+		drawRowDropMarker(row, dragAfterRow(row), pal.Accent)
+	}
+	if d, ok := ui.Drop[sessionDrag](row); ok && d.machine == e.machine {
+		return d.key, dragAfterRow(row), true
 	}
 	hovered := row.Hovered()
 	// A split's top row is its first pane's row and the tab's own: it is chosen
@@ -550,6 +700,7 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 	if row.DoubleClicked() {
 		w.beginRename(e.machine, e.session, e.label)
 	}
+	return "", false, false
 }
 
 // paneRow is one terminal of a split, under the workspace's row: a dotted branch

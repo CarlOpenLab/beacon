@@ -66,7 +66,7 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 	spec := ptySpec{
 		path: path,
 		args: args,
-		env:  append(os.Environ(), "TERM=xterm-256color"),
+		env:  shellEnv(),
 		dir:  dir,
 	}
 	pty, err := startPTY(spec, cols, rows)
@@ -238,11 +238,16 @@ func (s *Session) LiveCwd() string {
 func (s *Session) Summary() protocol.Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// A name given with a rename is the name; when there is none, the title the
+	// program set on the terminal (OSC 0/2) is what the row should read — that
+	// is how an agent names the task it is on. An empty title from both leaves
+	// the clients their own fallback.
+	title := s.title
 	sum := protocol.Summary{
 		SessionID: s.ID,
 		PID:       s.pid,
 		Cwd:       s.cwd,
-		Title:     s.title,
+		Title:     title,
 		Shell:     s.shell,
 		Cols:      s.cols,
 		Rows:      s.rows,
@@ -252,6 +257,9 @@ func (s *Session) Summary() protocol.Summary {
 	}
 	if s.st != nil {
 		snap := s.st.Snapshot()
+		if title == "" {
+			sum.Title = snap.Title
+		}
 		sum.Status = string(snap.State)
 		sum.Unread = snap.Unread
 		sum.Message = snap.Message
