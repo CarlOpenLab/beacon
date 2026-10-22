@@ -426,7 +426,7 @@ func (h *Hub) handle(c *client, m protocol.Msg) {
 	case protocol.CTRelease:
 		h.handleRelease(c, m.SessionID)
 	case protocol.CTClose:
-		h.handleClose(c, m.SessionID, m.Epoch, m.Dismiss)
+		h.handleClose(c, m.SessionID, m.Epoch, m.Keep)
 	case protocol.CTRename:
 		h.handleRename(c, m.SessionID, m.Title)
 	case "":
@@ -796,7 +796,7 @@ func (h *Hub) handleRelease(c *client, id string) {
 	}
 }
 
-func (h *Hub) handleClose(c *client, id string, epoch uint64, dismiss bool) {
+func (h *Hub) handleClose(c *client, id string, epoch uint64, keep bool) {
 	s, ok := h.mgr.Get(id)
 	if !ok {
 		c.fail(protocol.ErrNoSession, "no live session named "+id, id)
@@ -807,6 +807,12 @@ func (h *Hub) handleClose(c *client, id string, epoch uint64, dismiss bool) {
 	if !h.requireControl(c, id, epoch) {
 		return
 	}
+	// A close takes the tab with it unless it says it is 结束: the tab is the
+	// view of the process, and closing a tab closes it everywhere. The default
+	// is the flag's other half. A client that predates Keep sends the same frame
+	// for both acts, and leaving dead tabs on every other screen — which is what
+	// this fix exists to end — is the worse guess of the two.
+	dismiss := !keep
 	// The flag goes in before the kill: the exit can be reaped the moment the
 	// process dies, and the goroutine that broadcasts it must find this already
 	// set, or a tab close would reach the other clients as an ordinary end.
@@ -820,6 +826,7 @@ func (h *Hub) handleClose(c *client, id string, epoch uint64, dismiss bool) {
 		delete(h.dismissed, id)
 		h.mu.Unlock()
 	}
+	diag.Infof("hub", "close session=%s keep=%t dismiss=%t", id, keep, dismiss)
 	// The exit that follows is what tells every watcher the shell is gone, and
 	// it reaches the killer too: ending a session is not a reason to lose the
 	// tab, because the tab is where its final output is read. A closed-by-us

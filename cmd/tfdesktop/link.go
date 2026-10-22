@@ -175,9 +175,11 @@ func (l *link) release(id string) {
 //
 // dismiss tells the hub this is a tab being closed, not only a shell being
 // ended: the exit frame then asks every client to drop its tab too, which is
-// what keeps the machine the shell runs on from keeping a dead tab.
+// what keeps the machine the shell runs on from keeping a dead tab. The inverse
+// travels as Keep, which a newer hub reads as 结束; a hub of 0.6.6 reads Dismiss
+// instead, so both flags go out and either daemon gets the right answer.
 func (l *link) closeSession(id string, dismiss bool) {
-	l.sendMsg(protocol.Msg{T: protocol.CTClose, SessionID: id, Dismiss: dismiss})
+	l.sendMsg(protocol.Msg{T: protocol.CTClose, SessionID: id, Dismiss: dismiss, Keep: !dismiss})
 }
 
 // input types into a session, at the epoch this window last saw. A window that

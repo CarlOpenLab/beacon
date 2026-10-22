@@ -363,7 +363,10 @@ export class Fleet {
    *
    * dismiss carries the tab with it: the exit then removes the tab on every
    * client instead of leaving each one a pane showing 已退出. 结束 sends the
-   * same close without the flag, which is the act that keeps the last output.
+   * same close with `keep`, which is the act that leaves the last output.
+   *
+   * Both flags travel: a hub from 0.6.6 reads dismiss, and a later one reads
+   * keep, so either daemon gets the answer the person meant.
    *
    * The epoch is deliberately not sent. It is only a guard against a frame from
    * a holder who has since been replaced, and the hub checks `controller == c`
@@ -372,6 +375,6 @@ export class Fleet {
    * needed: right after a claim, before the role frame that moves it has landed.
    */
   closeSession(sessionId: string, dismiss = false): void {
-    this.send({ t: CT.close, sessionId, dismiss })
+    this.send({ t: CT.close, sessionId, dismiss, keep: !dismiss })
   }
 }

@@ -334,7 +334,7 @@ func TestCloseTellsTheKillerTheSameExit(t *testing.T) {
 		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
 	})
 
-	a.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1"})
+	a.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1", Keep: true})
 
 	// The killer hears the exit, not a private acknowledgement.
 	m := a.waitFor("exit", func(msg protocol.Msg) bool { return msg.T == protocol.STExit })
@@ -371,6 +371,33 @@ func TestDismissCloseTellsEveryWatcherToDropTheTab(t *testing.T) {
 		m := c.waitFor(name+" exit", func(msg protocol.Msg) bool { return msg.T == protocol.STExit })
 		if !m.Dismiss {
 			t.Errorf("%s got an exit without dismiss; its tab would sit there saying 已退出", name)
+		}
+	}
+}
+
+// A client older than the flag sends a close with nothing on it, and the hub
+// takes that as a tab close. It cannot do better — the two acts are the same
+// frame in that client — and leaving dead tabs on every other screen is the
+// worse of the two guesses.
+func TestALegacyCloseDismissesTheTab(t *testing.T) {
+	ts := newTestHub(t)
+	a := dialTest(t, ts)
+	a.create("s1")
+	a.waitFor("role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	b := dialTest(t, ts)
+	b.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	b.waitFor("viewer role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
+	})
+
+	a.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1"})
+
+	for name, c := range map[string]*conn{"the killer": a, "the watcher": b} {
+		m := c.waitFor(name+" exit", func(msg protocol.Msg) bool { return msg.T == protocol.STExit })
+		if !m.Dismiss {
+			t.Errorf("%s kept a tab for a close with no flags; a client that cannot say which act it meant must close it", name)
 		}
 	}
 }

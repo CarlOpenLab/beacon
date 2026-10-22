@@ -128,13 +128,19 @@ type Msg struct {
 	// exit
 	ExitCode int `json:"exitCode,omitempty"`
 
-	// Dismiss is what a tab close adds to the close frame, and what the hub
-	// repeats on the exit frame it broadcasts: the tab goes with the process,
-	// so every client drops its own copy instead of keeping it to read the last
-	// lines. 结束 sends a close without it, and that exit leaves the final
-	// output on screen — the two acts end the same process but leave the view
-	// in different places.
+	// Dismiss is what the hub repeats on the exit frame it broadcasts: the tab
+	// goes with the process, so every client drops its own copy instead of
+	// keeping it to read the last lines. A close always dismisses unless it asks
+	// to keep the tab — see Keep.
 	Dismiss bool `json:"dismiss,omitempty"`
+
+	// Keep is what 结束 adds to the close frame: end the process, but leave the
+	// tab on every client so its final output can be read. Closing a tab is the
+	// default a close gets without it, because a close means a close in a
+	// terminal — and because a client older than this field sends the same
+	// frame for both acts, and leaving dead tabs on every other screen is the
+	// worse of the two guesses.
+	Keep bool `json:"keep,omitempty"`
 }
 
 // Host identifies the machine a daemon runs on. It is already in the

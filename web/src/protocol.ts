@@ -147,10 +147,16 @@ export interface Msg {
 
   exitCode?: number
   /**
-   * A tab close rather than 结束: the tab goes with the process on every client,
-   * so this one removes its tab instead of keeping the shell's last lines.
+   * On an exit: a tab close rather than 结束 — the tab goes with the process on
+   * every client, so this one removes its tab instead of keeping the last lines.
    */
   dismiss?: boolean
+  /**
+   * On a close: 结束, which ends the process and leaves the tab holding the
+   * final output. Without it, a close takes the tab with it — the default a
+   * client older than this field gets, since its two closes look the same.
+   */
+  keep?: boolean
 }
 
 /** Decode the base64 `data` field into raw bytes for xterm. */
