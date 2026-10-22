@@ -40,9 +40,15 @@ type Session struct {
 	st            *status.Tracker
 	statusChanges chan struct{}
 
-	mu       sync.Mutex
-	pty      ptyProcess
-	ptyOnce  sync.Once
+	mu      sync.Mutex
+	pty     ptyProcess
+	ptyOnce sync.Once
+	// fdMu serialises the PTY's raw descriptor against its close. Reading and
+	// writing the *os.File are safe under a concurrent Close, but asking for
+	// its Fd() while another goroutine sets Sysfd to -1 is a data race in the
+	// runtime's poller: the foreground poll does that once a second, and the
+	// last second of a shell must not be a race.
+	fdMu     sync.Mutex
 	cols     int
 	rows     int
 	title    string
@@ -148,6 +154,8 @@ func (s *Session) Foreground() string {
 	if !alive || pty == nil {
 		return ""
 	}
+	s.fdMu.Lock()
+	defer s.fdMu.Unlock()
 	name, _ := pty.Foreground()
 	return name
 }
@@ -324,6 +332,8 @@ func (s *Session) Close() error {
 // handed a reused value to someone else in the meantime, which turns a double
 // close into corruption rather than an error.
 func (s *Session) closePTY() error {
+	s.fdMu.Lock()
+	defer s.fdMu.Unlock()
 	var err error
 	s.ptyOnce.Do(func() { err = s.pty.Close() })
 	return err
