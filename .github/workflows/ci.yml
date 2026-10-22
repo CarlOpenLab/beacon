@@ -30,9 +30,12 @@ jobs:
       - name: Test
         run: go test ./...
       # The race detector needs cgo and a C toolchain, so it only runs here.
+      # Packages run one at a time: several of the suites drive real PTYs and
+      # sockets with fixed deadlines, and on a two-core runner the race build
+      # plus parallel packages is what made those deadlines expire.
       - name: Test (race)
         if: matrix.os == 'ubuntu-latest'
-        run: go test -race ./...
+        run: go test -race -p 1 ./...
 
   web:
     name: web
