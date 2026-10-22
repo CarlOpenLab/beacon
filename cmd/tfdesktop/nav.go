@@ -10,7 +10,6 @@ import (
 
 	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
@@ -115,16 +114,6 @@ type sessionDrag struct {
 	key     string
 }
 
-// orderMove is a drop the sidebar has seen but not applied: the rows were
-// drawn in the order the move replaces, so it lands after the last one is on
-// screen.
-type orderMove struct {
-	machine string
-	from    string
-	to      string
-	after   bool
-}
-
 // orderedEntries puts a machine's rows in the order the person dragged them
 // into. A row the saved order has never seen keeps the list's own place at the
 // end, so a new shell joins below the one it was opened from.
@@ -154,82 +143,6 @@ func (w *window) orderedEntries(machine string, entries []sessionEntry) []sessio
 		}
 	})
 	return entries
-}
-
-// moveSession records a row's new place: the rows of that machine as they are
-// now, with the dragged one lifted out and put before or after its target. The
-// arrangement is this window's, so it is saved beside the theme rather than
-// pushed to the hub.
-func (w *window) moveSession(m orderMove) {
-	if m.from == "" || m.from == m.to {
-		return
-	}
-	entries := w.entriesFor(m.machine)
-	keys := make([]string, 0, len(entries))
-	for _, e := range entries {
-		keys = append(keys, sessionKey(e))
-	}
-	from := -1
-	for i, key := range keys {
-		if key == m.from {
-			from = i
-			break
-		}
-	}
-	if from < 0 {
-		return
-	}
-	keys = append(keys[:from], keys[from+1:]...)
-	at := -1
-	for i, key := range keys {
-		if key == m.to {
-			at = i
-			break
-		}
-	}
-	if at < 0 {
-		keys = append(keys, m.from)
-	} else if m.after {
-		keys = append(keys[:at+1], append([]string{m.from}, keys[at+1:]...)...)
-	} else {
-		keys = append(keys[:at], append([]string{m.from}, keys[at:]...)...)
-	}
-	if w.sessionOrder == nil {
-		w.sessionOrder = make(map[string][]string)
-	}
-	w.sessionOrder[m.machine] = keys
-	if w.store != nil {
-		machine, order := m.machine, keys
-		_, _ = w.store.Update(func(s *settings.Settings) {
-			if s.SessionOrder == nil {
-				s.SessionOrder = make(map[string][]string)
-			}
-			s.SessionOrder[machine] = order
-		})
-	}
-	w.invalidate()
-}
-
-// drawRowDropMarker draws the line a dragged row would land on: above the row
-// for before it, below for after. The line reaches past the row's own box so
-// the copy the framework paints on the pointer does not hide it.
-func drawRowDropMarker(row ui.Element, after bool, accent ui.Color) {
-	row.DrawOver(func(p *ui.Painter, r ui.Rect) {
-		y := r.Y - 1
-		if after {
-			y = r.Y + r.H - 1
-		}
-		p.Fill(ui.Rect{X: r.X + 6, Y: y, W: r.W - 12, H: 2}, accent, 1)
-	})
-}
-
-// dragAfterRow reports which half of a row the pointer is on: the lower half
-// means "after this one", the upper half "before it".
-func dragAfterRow(el ui.Element) bool {
-	if _, y, over := el.PointerPosition(); over {
-		return y > el.Bounds().H/2
-	}
-	return false
 }
 
 // summaryOf is the last word the window has about a session, from the list its
@@ -604,8 +517,13 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 // a session: the state on the left, the name, then the quiet facts — and the ×
 // that closes it, only while the pointer is on the row, because a row that wears
 // every control it has says nothing with any of them.
-func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry) (dragFrom string, dropAfter, dropped bool) {
-	row := ui.Row(c).Height(uitokens.RowH).FillWidth().Padding(0, 8, 0, 10).Gap(8).
+//
+// A row is dragged to move it in this window's order, and nothing else. While it
+// is dragged the row is drawn at the place it would land, faint, under the copy
+// that follows the pointer; placeRow slides it and its neighbours there.
+func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, key string, dragged bool, top float32) (dragging bool, dropFrom string) {
+	row := ui.Row(c).Key("row:"+e.machine+"\x00"+key).
+		Height(uitokens.RowH).FillWidth().Padding(0, 8, 0, 10).Gap(8).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
 	if pal.Dark {
@@ -613,34 +531,46 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		// moves no text.
 		row.Border(1, ui.Transparent)
 	}
-	// A row is dragged to move it in this window's order, and nothing else: the
-	// drop is worked out after every row of the group is drawn (see
-	// machineGroup), so no row is drawn in a list that changed under it.
-	row.Drag(sessionDrag{machine: e.machine, key: sessionKey(e)})
+	// The copy that follows the pointer is the framework's; this row stays where
+	// it would land, as the gap the list makes room for. The drop is worked out
+	// after every row of the group is drawn (see machineGroup), so no row is
+	// drawn in a list that changed under it.
+	row.Drag(sessionDrag{machine: e.machine, key: key})
 	if row.Dragging() {
 		row.Cursor(ui.CursorGrabbing)
-	}
-	if _, over := ui.DragOver[sessionDrag](row); over {
-		drawRowDropMarker(row, dragAfterRow(row), pal.Accent)
+		dragging = true
 	}
 	if d, ok := ui.Drop[sessionDrag](row); ok && d.machine == e.machine {
-		return d.key, dragAfterRow(row), true
+		dropFrom = d.key
 	}
-	hovered := row.Hovered()
+	// Rows sliding under the pointer during a drag would flash their hover on
+	// and off as they pass; the list is being ordered, not browsed.
+	hovered := row.Hovered() && !dragged && w.rowDrag == nil
 	// A split's top row is its first pane's row and the tab's own: it is chosen
 	// when that pane is on screen, and the panes after it are the rows under it.
 	firstPane := len(e.panes) == 0 || e.panes[0].active
 	selected := e.active && firstPane
 	bg := ui.Transparent
 	switch {
+	case dragged:
+		bg = pal.RowHover.Alpha(0.55)
 	case selected:
 		bg = pal.RowSelected
 	case hovered:
 		bg = pal.RowHover
 	}
 	row.Background(row.AnimateColor("bg", bg, ui.Animation{Duration: 110e6}))
-	if selected {
+	if selected && !dragged {
 		chosen(row, pal)
+	}
+	if dragged {
+		// The row itself is not drawn where it would land — only the slot the
+		// list paints there is. What the framework paints on the pointer is a
+		// copy of this element, so the fill and the lift are what make that
+		// copy look picked up rather than another row passing through.
+		row.Opacity(0).Background(pal.Card).
+			Shadow(0, 1, 2, 0, pal.CardShadow).
+			Shadow(0, 8, 22, -6, pal.FloatShadow)
 	}
 	row.ContextMenu(func(m *ui.Menu) {
 		if m.Item(locales.TabRename()).Chosen() {
@@ -692,7 +622,7 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		}
 		statusGlyph(c, pal, e.status, e.unread, e.progress, 14)
 	})
-	if row.Clicked() {
+	if row.Clicked() && !dragged {
 		e.pick()
 	}
 	// A double-click on the row names the shell, the way every list on a Mac
@@ -700,7 +630,8 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 	if row.DoubleClicked() {
 		w.beginRename(e.machine, e.session, e.label)
 	}
-	return "", false, false
+	w.placeRow(row, e.machine, key, top, !dragged)
+	return dragging, dropFrom
 }
 
 // paneRow is one terminal of a split, under the workspace's row: a dotted branch
@@ -710,14 +641,15 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 // pane's branch stops at its middle, so the tree ends where its rows do. A pane
 // at its prompt gets a hollow ring rather than no mark: under the workspace's
 // row every pane should show where it is in the list.
-func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, last bool) {
-	row := ui.Row(c).Height(30).FillWidth().Padding(0, 8, 0, 10).Gap(6).
+func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, last bool, top float32) {
+	key := sessionKey(e)
+	row := ui.Row(c).Key("pane:"+e.machine+"\x00"+key).Height(uitokens.PaneH).FillWidth().Padding(0, 8, 0, 10).Gap(6).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
 	if pal.Dark {
 		row.Border(1, ui.Transparent)
 	}
-	hovered := row.Hovered()
+	hovered := row.Hovered() && w.rowDrag == nil
 	selected := e.active
 	bg := ui.Transparent
 	switch {
@@ -771,6 +703,7 @@ func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, l
 	if row.Clicked() {
 		e.pick()
 	}
+	w.placeRow(row, e.machine, "pane:"+key, top, true)
 }
 
 // idleRing is the hollow circle of a pane at its prompt, the same size as the

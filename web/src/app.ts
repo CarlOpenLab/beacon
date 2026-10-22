@@ -38,6 +38,28 @@ interface Tab {
   unwire: () => void
 }
 
+/**
+ * A session row being dragged within its machine's group: the row itself is the
+ * hole it left, the fixed copy under the pointer is what moves, and the list is
+ * only written when the pointer lets go.
+ */
+interface RowDrag {
+  row: HTMLElement
+  ghost: HTMLElement | null
+  machine: string
+  session: string
+  pointer: number
+  startX: number
+  startY: number
+  x: number
+  y: number
+  originLeft: number
+  originTop: number
+  started: boolean
+  raf: number
+  cleanup: () => void
+}
+
 /** One reachable machine and everything we know about it. */
 interface MachineView {
   id: string
@@ -336,7 +358,9 @@ export class App {
    */
   private order = new Map<string, string[]>()
   /** The row being dragged, while a drag is in flight. */
-  private dragRow?: { machine: string; session: string }
+  private rowDrag?: RowDrag
+  /** True from the release of a drag to the click that follows it. */
+  private suppressRowClick = false
   /**
    * Whether the inspector is open. It is the person's choice, so a rerender
    * never overrides it — and it starts closed, as the desktop window's does: a
@@ -1100,60 +1124,262 @@ export class App {
     this.renderFleet()
   }
 
-  /** The insertion line a drag shows on the row it would land beside. */
-  private markDrop(row: HTMLElement, after: boolean): void {
-    this.clearDropMarks()
-    row.classList.add(after ? 'drop-after' : 'drop-before')
+  /**
+   * Drag a session row within its machine's group. The row itself stays in the
+   * list as the hole it left, the copy under the pointer is a fixed clone, and
+   * the rows it passes slide to the side with a FLIP: the arrangement is only
+   * written on release, so a drag that is let go anywhere else puts the list
+   * back exactly as it was.
+   *
+   * The pointer events rather than HTML5 drag are what make this a sortable
+   * list: the browser's own drag image cannot follow a list that reorders
+   * itself underneath it.
+   */
+  private wireRowDrag(row: HTMLElement, mv: MachineView, s: Summary): void {
+    row.draggable = false
+    row.addEventListener('pointerdown', (ev) => {
+      if (ev.button !== 0 || ev.pointerType === 'touch') return
+      // The close button, the rename field and the row's own buttons are their
+      // own targets: a press there is not the start of a drag.
+      const target = ev.target as HTMLElement | null
+      if (target?.closest('.tf-kill, button, input')) return
+      this.trackRowDrag(ev, row, mv.id, s.sessionId)
+    })
   }
 
-  private clearDropMarks(): void {
-    for (const node of this.fleetList.querySelectorAll('.drop-before, .drop-after')) {
-      node.classList.remove('drop-before', 'drop-after')
+  /** Remember a press that may become a drag, without taking the click yet. */
+  private trackRowDrag(ev: PointerEvent, row: HTMLElement, machine: string, session: string): void {
+    if (this.rowDrag) return
+    const d: RowDrag = {
+      row,
+      ghost: null,
+      machine,
+      session,
+      pointer: ev.pointerId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      x: ev.clientX,
+      y: ev.clientY,
+      originLeft: 0,
+      originTop: 0,
+      started: false,
+      raf: 0,
+      cleanup: () => {},
+    }
+    const move = (e: PointerEvent) => {
+      if (e.pointerId !== d.pointer) return
+      d.x = e.clientX
+      d.y = e.clientY
+      if (!d.started) {
+        if (Math.hypot(d.x - d.startX, d.y - d.startY) < 4) return
+        this.beginRowDrag(d)
+      }
+      e.preventDefault()
+      this.followRowDrag(d)
+    }
+    const up = (e: PointerEvent) => {
+      if (e.pointerId !== d.pointer) return
+      this.endRowDrag(d)
+    }
+    const cancel = (e: PointerEvent) => {
+      if (e.pointerId !== d.pointer) return
+      this.cancelRowDrag(d)
+    }
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopPropagation()
+      this.cancelRowDrag(d)
+    }
+    d.cleanup = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('keydown', key, true)
+    }
+    window.addEventListener('pointermove', move, { passive: false })
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
+    window.addEventListener('keydown', key, true)
+    this.rowDrag = d
+  }
+
+  /** Lift the row: the copy appears under the pointer and the hole opens. */
+  private beginRowDrag(d: RowDrag): void {
+    const rect = d.row.getBoundingClientRect()
+    if (rect.height < 2) {
+      this.cancelRowDrag(d)
+      return
+    }
+    d.started = true
+    d.originLeft = rect.left
+    d.originTop = rect.top
+    const ghost = d.row.cloneNode(true) as HTMLElement
+    ghost.classList.add('tf-session-float')
+    ghost.removeAttribute('id')
+    ghost.removeAttribute('draggable')
+    ghost.style.left = `${rect.left}px`
+    ghost.style.top = `${rect.top}px`
+    ghost.style.width = `${rect.width}px`
+    ghost.style.height = `${rect.height}px`
+    ghost.style.transform = `translate3d(${d.x - d.startX}px, ${d.y - d.startY}px, 0)`
+    document.body.append(ghost)
+    d.ghost = ghost
+    d.row.classList.add('tf-drag-slot')
+    document.documentElement.classList.add('tf-row-dragging')
+    d.raf = requestAnimationFrame(() => this.scrollRowDrag(d))
+  }
+
+  /** The copy follows the pointer; the hole follows the copy. */
+  private followRowDrag(d: RowDrag): void {
+    if (!d.started || !d.ghost) return
+    d.ghost.style.transform = `translate3d(${d.x - d.startX}px, ${d.y - d.startY}px, 0)`
+    this.placeRowDrag(d)
+  }
+
+  /**
+   * Move the hole to the place the pointer says. The row being dragged is not
+   * asked where it goes: it is the hole, and it would answer for itself.
+   */
+  private placeRowDrag(d: RowDrag): void {
+    const list = this.fleetList
+    const rect = list.getBoundingClientRect()
+    const scrollTop = list.scrollTop
+    // Decide on layout positions, not on what the rows are painting: a FLIP in
+    // flight moves a row's box, and a target measured from a box on its way
+    // somewhere would answer with the place it is leaving, then its new place,
+    // and flip back and forth under a pointer that has not moved at all.
+    const pointerY = d.y - rect.top + scrollTop
+    const rows = [...list.querySelectorAll<HTMLElement>('.tf-session')].filter(
+      (r) => r.dataset.machine === d.machine && r !== d.row,
+    )
+    if (!rows.length) return
+    let target: HTMLElement | null = null
+    for (const row of rows) {
+      if (pointerY < row.offsetTop + row.offsetHeight / 2) {
+        target = row
+        break
+      }
+    }
+    if (target) {
+      if (d.row.nextElementSibling === target) return
+    } else {
+      const next = d.row.nextElementSibling
+      if (!(next instanceof HTMLElement) || next.dataset.machine !== d.machine) return
+    }
+    const tops = new Map<HTMLElement, number>()
+    for (const row of rows) tops.set(row, row.getBoundingClientRect().top)
+    if (target) target.before(d.row)
+    else rows[rows.length - 1].after(d.row)
+    this.flipRows(tops, d.row, rect.top, scrollTop)
+  }
+
+  /** Slide the rows a reorder moved, from where they were to where they are. */
+  private flipRows(
+    tops: Map<HTMLElement, number>,
+    moved: HTMLElement,
+    listTop: number,
+    scrollTop: number,
+  ): void {
+    for (const [row, top] of tops) {
+      if (row === moved || !row.isConnected) continue
+      // The row's new place is its layout place, not its box: the box still
+      // carries the transform of the slide that is being replaced.
+      const dy = top - (listTop + row.offsetTop - scrollTop)
+      if (Math.abs(dy) < 0.5) continue
+      row.style.transition = 'none'
+      row.style.transform = `translateY(${dy}px)`
+      void row.offsetHeight
+      requestAnimationFrame(() => {
+        row.style.transition = 'transform 160ms cubic-bezier(.2, .7, .3, 1)'
+        row.style.transform = ''
+      })
+      window.setTimeout(() => {
+        if (!row.style.transition) return
+        row.style.transition = ''
+        row.style.transform = ''
+      }, 220)
     }
   }
 
-  /** Dragging a session row reorders this client's sidebar; it does not pick it. */
-  private wireRowDrag(row: HTMLElement, mv: MachineView, s: Summary): void {
-    row.draggable = true
-    row.addEventListener('dragstart', (ev) => {
-      // The close button and the rename field are their own targets.
-      const target = ev.target as HTMLElement | null
-      if (target?.closest('.tf-kill, input')) {
-        ev.preventDefault()
-        return
-      }
-      this.dragRow = { machine: mv.id, session: s.sessionId }
-      row.classList.add('dragging')
-      ev.dataTransfer?.setData('text/plain', s.sessionId)
-      if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move'
-    })
-    row.addEventListener('dragend', () => {
-      row.classList.remove('dragging')
-      this.dragRow = undefined
-      this.clearDropMarks()
-    })
-    row.addEventListener('dragover', (ev) => {
-      const from = this.dragRow
-      if (!from || from.machine !== mv.id || from.session === s.sessionId) return
-      ev.preventDefault()
-      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move'
-      const rect = row.getBoundingClientRect()
-      this.markDrop(row, ev.clientY > rect.top + rect.height / 2)
-    })
-    row.addEventListener('dragleave', (ev) => {
-      if (!row.contains(ev.relatedTarget as Node | null)) {
-        row.classList.remove('drop-before', 'drop-after')
-      }
-    })
-    row.addEventListener('drop', (ev) => {
-      const from = this.dragRow
-      this.dragRow = undefined
-      this.clearDropMarks()
-      if (!from || from.machine !== mv.id || from.session === s.sessionId) return
-      ev.preventDefault()
-      const rect = row.getBoundingClientRect()
-      this.moveSession(mv.id, from.session, s.sessionId, ev.clientY > rect.top + rect.height / 2)
-    })
+  /** Scroll the list while the pointer is held near either end of it. */
+  private scrollRowDrag(d: RowDrag): void {
+    if (this.rowDrag !== d || !d.started) return
+    const list = this.fleetList
+    const rect = list.getBoundingClientRect()
+    const edge = 28
+    let dy = 0
+    if (d.y < rect.top + edge) dy = -Math.min(14, (rect.top + edge - d.y) / 2)
+    else if (d.y > rect.bottom - edge) dy = Math.min(14, (d.y - (rect.bottom - edge)) / 2)
+    if (dy) {
+      const before = list.scrollTop
+      list.scrollTop = before + dy
+      if (list.scrollTop !== before) this.placeRowDrag(d)
+    }
+    d.raf = requestAnimationFrame(() => this.scrollRowDrag(d))
+  }
+
+  /** Let go: the list keeps the order the hole left it in, if the rows took it. */
+  private endRowDrag(d: RowDrag): void {
+    if (this.rowDrag !== d) return
+    d.cleanup()
+    this.rowDrag = undefined
+    cancelAnimationFrame(d.raf)
+    if (!d.started) return
+    document.documentElement.classList.remove('tf-row-dragging')
+    // The click that follows a pointerup is not a pick: dragging a row is how
+    // this client orders its sidebar, not how it opens a shell.
+    this.suppressRowClick = true
+    window.setTimeout(() => {
+      this.suppressRowClick = false
+    }, 0)
+    this.fadeRowGhost(d)
+    d.row.classList.remove('tf-drag-slot')
+    const next = d.row.nextElementSibling
+    const prev = d.row.previousElementSibling
+    if (
+      next instanceof HTMLElement &&
+      next.classList.contains('tf-session') &&
+      next.dataset.machine === d.machine
+    ) {
+      this.moveSession(d.machine, d.session, next.dataset.sessionId ?? '', false)
+      return
+    }
+    if (
+      prev instanceof HTMLElement &&
+      prev.classList.contains('tf-session') &&
+      prev.dataset.machine === d.machine
+    ) {
+      this.moveSession(d.machine, d.session, prev.dataset.sessionId ?? '', true)
+      return
+    }
+    this.renderFleet()
+  }
+
+  /** Escape, or the pointer being taken away: the list goes back as it was. */
+  private cancelRowDrag(d: RowDrag): void {
+    if (this.rowDrag !== d) return
+    d.cleanup()
+    this.rowDrag = undefined
+    cancelAnimationFrame(d.raf)
+    document.documentElement.classList.remove('tf-row-dragging')
+    if (!d.started) {
+      this.renderFleet()
+      return
+    }
+    d.ghost?.remove()
+    this.renderFleet()
+  }
+
+  /** Let the copy settle into the hole instead of vanishing where it was. */
+  private fadeRowGhost(d: RowDrag): void {
+    const ghost = d.ghost
+    if (!ghost) return
+    const slot = d.row.getBoundingClientRect()
+    ghost.style.transition = 'transform 140ms cubic-bezier(.2, .7, .3, 1), opacity 140ms ease'
+    ghost.style.transform = `translate3d(${slot.left - d.originLeft}px, ${slot.top - d.originTop}px, 0)`
+    ghost.style.opacity = '0.2'
+    window.setTimeout(() => ghost.remove(), 160)
   }
 
   private orderedMachines(): MachineView[] {
@@ -1164,6 +1390,10 @@ export class App {
   }
 
   private renderFleet(): void {
+    // A drag keeps the rows it started with: replacing them mid-gesture would
+    // take the hole and the copy out from under the pointer. The next render,
+    // which every way a drag can end asks for, brings the list up to date.
+    if (this.rowDrag?.started) return
     const total = [...this.machines.values()].reduce((n, mv) => n + mv.sessions.length, 0)
     this.sideCount.textContent = String(total)
     this.fleetList.replaceChildren()
@@ -1313,11 +1543,15 @@ export class App {
         .join('\n')
 
       row.append(line)
-      row.onclick = () => this.attachOrFocus(mv.id, s.sessionId)
+      row.onclick = () => {
+        if (this.suppressRowClick) return
+        this.attachOrFocus(mv.id, s.sessionId)
+      }
       // Every list on a Mac renames what it lists on a double-click. The hub
       // keeps the title, so every client watching the shell reads it.
       row.ondblclick = (ev) => {
         ev.preventDefault()
+        if (this.suppressRowClick) return
         this.renameSession(mv, s, name)
       }
       this.wireRowDrag(row, mv, s)

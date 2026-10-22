@@ -248,24 +248,87 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	if collapsed {
 		return
 	}
-	// The group's rows are drawn in this window's order. A row dropped on
-	// another is remembered here and applied once every row is on screen: a
-	// move in the middle of the loop would redraw the list under the pointer.
-	var move *orderMove
-	for _, e := range entries {
-		if from, after, ok := w.sessionRow(c, pal, e); ok && from != "" {
-			move = &orderMove{machine: m.ID, from: from, to: sessionKey(e), after: after}
+	// The group's rows are drawn in this window's order, with the row being
+	// dragged already where it would land: the list closes the hole it left and
+	// opens one there, and the rows between slide into their new places
+	// (placeRow). The drop is worked out once every row is on screen, so no row
+	// is drawn in a list that changed under it.
+	rows, dragKey, _ := w.previewEntries(m.ID, entries)
+	tops := make([]float32, len(rows))
+	list := ui.Column(c).FillWidth()
+	// The row being dragged is not drawn where it would land, only the hole it
+	// leaves: the copy under the pointer is the row itself, painted by the
+	// framework, so the list needs a slot for it to drop into.
+	slotTop := float32(-1)
+	list.Draw(func(p *ui.Painter, r ui.Rect) {
+		if slotTop < 0 {
+			return
 		}
-		// The first pane is the tab's own row; the others hang under it.
-		for i, pane := range e.panes {
-			if i == 0 {
-				continue
+		p.Fill(ui.Rect{X: r.X, Y: r.Y + slotTop, W: r.W, H: uitokens.RowH},
+			pal.RowHover, uitokens.RowRadius)
+	})
+	var dragging bool
+	var droppedFrom string
+	list.Children(func() {
+		y := float32(0)
+		for i, e := range rows {
+			key := sessionKey(e)
+			tops[i] = y
+			if key == dragKey {
+				slotTop = y
 			}
-			w.paneRow(c, pal, pane, i == len(e.panes)-1)
+			rowDragging, drop := w.sessionRow(c, pal, e, key, key == dragKey, y)
+			if rowDragging {
+				dragging = true
+				d := w.rowDrag
+				if d == nil || d.machine != m.ID || d.key != key {
+					// The drag has just begun: the row starts where the list
+					// already had it, so the first preview changes nothing.
+					at := 0
+					for _, other := range rows[:i] {
+						if sessionKey(other) != key {
+							at++
+						}
+					}
+					d = &rowDrag{machine: m.ID, key: key, at: at}
+					w.rowDrag = d
+				}
+				d.active = true
+			}
+			if drop != "" {
+				droppedFrom = drop
+			}
+			y += uitokens.RowH + 1
+			// The first pane is the tab's own row; the others hang under it.
+			for j, pane := range e.panes {
+				if j == 0 {
+					continue
+				}
+				w.paneRow(c, pal, pane, j == len(e.panes)-1, y)
+				y += uitokens.PaneH + 1
+			}
 		}
-	}
-	if move != nil {
-		w.moveSession(*move)
+	})
+	if w.rowDrag != nil && w.rowDrag.machine == m.ID {
+		d := w.rowDrag
+		if dragging || droppedFrom != "" {
+			// Where the pointer is now, read in the list's own coordinates:
+			// the scroll may have moved under it while the drag went on.
+			_, py, _ := list.PointerPosition()
+			d.at = dropIndex(py, rows, tops, d.key)
+		}
+		if droppedFrom != "" {
+			w.rowDrag = nil
+			w.moveSessionIndex(m.ID, droppedFrom, d.at)
+			return
+		}
+		if !dragging {
+			// Let go where no row of this group took it: the preview goes back
+			// to the order the list had.
+			w.rowDrag = nil
+			w.invalidate()
+			return
+		}
 	}
 	if len(entries) == 0 {
 		note := locales.SidebarMachineEmpty()

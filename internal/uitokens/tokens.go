@@ -163,6 +163,7 @@ const (
 	CardGap = 8
 	HeaderH = 2 * (BarMid - CardGap) // a card's header, 44
 	RowH    = 34                     // a session's row
+	PaneH   = 30                     // a pane's row, under a split's
 	GroupH  = 28                     // a group's header
 	FooterH = 36                     // the sidebar's foot
 

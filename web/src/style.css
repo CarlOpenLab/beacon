@@ -14,6 +14,7 @@
      .tf .tf-body .tf-main .tf-card
      .tf-side .tf-side-top .tf-brand .tf-side-head .tf-count .tf-side-filter
      .tf-side-list .tf-empty .tf-machine(.active .off .collapsed) .tf-machine-name
+     .tf-session(.tf-drag-slot) .tf-session-float / html.tf-row-dragging
      .tf-machine-count .tf-machine-chev .tf-session(.active .open .owned .readonly
      .dead .unread) .tf-session-title .tf-session-name .tf-session-badge
      .tf-session-note(.is-warn .is-quiet) .tf-session-when .tf-glyph .tf-kill
@@ -314,6 +315,9 @@ svg {
   min-height: 0;
   overflow-y: auto;
   padding: 2px 10px 12px;
+  /* The rows' offsetParent, so their layout places can be read while a FLIP
+     moves their boxes; see placeRowDrag. */
+  position: relative;
 }
 
 .tf-empty {
@@ -443,30 +447,53 @@ svg {
 }
 
 /* A session row is dragged to change this client's order, not to pick it: the
-   ghost the browser draws is the row itself, dimmed, and the line says where
-   it would land. */
-.tf-session.dragging {
-  opacity: 0.42;
+   row stays where it was as an empty hole, a fixed copy under the pointer is
+   what moves, and the rows between slide over 160ms (see flipRows in app.ts). */
+.tf-session.tf-drag-slot {
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
-.tf-session.drop-before::after,
-.tf-session.drop-after::after {
-  content: "";
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--accent);
+.tf-session.tf-drag-slot > * {
+  visibility: hidden;
+}
+
+/* The copy under the pointer. It keeps the row's own padding and type, and
+   floats on its own plane so the terminal underneath does not move with it. */
+.tf-session-float {
+  position: fixed;
+  z-index: 90;
+  margin: 0;
+  border-radius: 8px;
+  background: var(--tab-on);
+  box-shadow: 0 1px 2px rgba(20, 20, 50, 0.08),
+    0 14px 30px -12px rgba(20, 20, 50, 0.35), 0 0 0 0.5px var(--line);
   pointer-events: none;
+  opacity: 0.96;
+  will-change: transform;
 }
 
-.tf-session.drop-before::after {
-  top: -2px;
+/* A drag holds the pointer, and the pointer holds the row: no text selection
+   starts under it, and the cursor says so wherever it goes. */
+html.tf-row-dragging,
+html.tf-row-dragging body {
+  user-select: none;
 }
 
-.tf-session.drop-after::after {
-  bottom: -2px;
+html.tf-row-dragging,
+html.tf-row-dragging * {
+  cursor: grabbing !important;
+}
+
+/* Rows sliding under the pointer during a drag would flash their hover (and
+   the × that comes with it) as they pass; the list is being ordered, not
+   browsed. The chosen row keeps its surface. */
+html.tf-row-dragging .tf-session:hover:not(.active) {
+  background: transparent;
+}
+
+html.tf-row-dragging .tf-session .tf-kill {
+  visibility: hidden;
 }
 
 .tf-session:hover {

@@ -69,6 +69,18 @@ type window struct {
 	// the hub's list stays oldest-first for everybody else.
 	sessionOrder map[string][]string
 
+	// rowDrag is the row being dragged in the sidebar, and the place it would
+	// land: the list is drawn with the row already there, leaving a gap the
+	// other rows make room for, as a sortable list does. It is cleared the
+	// frame the pointer lets go. See dragorder.go.
+	rowDrag *rowDrag
+
+	// rowTop is where each row was drawn last frame, and rowSettle counts the
+	// frames a row still owes the spring that moves it to the place it took
+	// when another row was dragged past it. Both are keyed by machine and row.
+	rowTop    map[string]float32
+	rowSettle map[string]int
+
 	// zoomed fills the body with the focused pane of a split, ⌘⇧↩.
 	zoomed bool
 
