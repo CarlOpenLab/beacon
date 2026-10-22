@@ -678,9 +678,16 @@ export class App {
           this.toast(`已被接管（${controller}），你现在是只读`, 'info')
         }
       },
-      exited: (sessionId, code) => {
+      exited: (sessionId, code, dismiss) => {
         const tab = this.findTab(machineId, sessionId)
         if (!tab) return
+        // A tab close on another client ends the shell for everyone and says the
+        // tab goes too: keeping a dead pane here would leave the machine the
+        // shell ran on — and this phone — showing a tab nobody asked to keep.
+        if (dismiss) {
+          this.removeTab(tab)
+          return
+        }
         tab.alive = false
         // The exit code goes to the banner, not to the card's name: a name
         // with " — 已退出" appended is cut by the ellipsis from the end, which
@@ -882,7 +889,7 @@ export class App {
     this.releaseBtn.hidden = true
 
     const actions = el('div', 'tf-card-actions')
-    this.cardClose = iconButton('tf-icon-btn tf-card-close', '关闭面板（仅停止观看，不结束进程）', ICON.close, () => {
+    this.cardClose = iconButton('tf-icon-btn tf-card-close', '关闭标签（结束背后的进程）', ICON.close, () => {
       const tab = this.current()
       if (tab) this.closeTab(tab)
     })
@@ -1875,8 +1882,8 @@ export class App {
           ? `会话已退出（退出码 ${tab.exit}），最后几行仍可读取。`
           : '会话已退出，最后几行仍可读取。'
       actions.push({
-        label: '关闭面板',
-        title: '关闭面板（仅停止观看）',
+        label: '关闭标签',
+        title: '关闭标签（会话已退出，只关闭视图）',
         run: () => this.closeTab(tab),
       })
     } else if (tab?.sessionId && tab.alive && tab.role !== ROLE.controller) {
@@ -2247,10 +2254,43 @@ export class App {
     this.syncComposer()
   }
 
+  /**
+   * Close the tab the way closing a tab closes in a terminal: the pane and the
+   * shell behind it go together — on every client, because the shell is shared.
+   *
+   * It asks first. On a phone the × is one thumb away from the shell, and the
+   * kill cannot be undone for anybody watching it; 结束 on a session row is the
+   * act that keeps the final output, so neither button is a quiet one.
+   *
+   * A tab whose shell has already ended, or one still waiting for its session
+   * id, has nothing to end: it is only the view that goes.
+   */
   private closeTab(tab: Tab): void {
-    // Closing a tab means "stop watching". Killing the process is a separate,
-    // explicit action because it is irreversible for every other client.
-    if (tab.sessionId) this.machine(tab.machineId)?.fleet.detach(tab.sessionId)
+    const mv = this.machine(tab.machineId)
+    if (mv && tab.sessionId && tab.alive) {
+      const name = tab.title || tab.sessionId
+      const held = tab.role === ROLE.controller
+      if (
+        !window.confirm(
+          `关闭标签会结束 ${this.machineTitle(mv)} 上的「${name}」，对所有客户端都不可恢复。\n\n` +
+            (held ? '' : '需要先从当前控制者手中取得控制权。\n\n') +
+            '要关闭吗？',
+        )
+      ) {
+        return
+      }
+      // The claim comes before the close, exactly as the desktop's tab close
+      // does: the hub refuses a viewer's close, and a close that only a viewer
+      // asked for would leave the tab gone here and the shell running there.
+      if (!held) mv.fleet.claim(tab.sessionId, true)
+      mv.fleet.closeSession(tab.sessionId, true)
+      // The tab goes now, not when the exit frame comes back: the person who
+      // pressed × has decided, and a pane that lingers for a round trip invites
+      // a second press.
+      this.removeTab(tab)
+      return
+    }
+    if (tab.sessionId) mv?.fleet.detach(tab.sessionId)
     this.removeTab(tab)
   }
 
@@ -2300,7 +2340,7 @@ export class App {
     keys.append(
       el('div', undefined, '新建终端'),
       el('div', undefined, `${MOD_LABEL}T`),
-      el('div', undefined, '关闭面板'),
+      el('div', undefined, '关闭标签'),
       el('div', undefined, `${MOD_LABEL}W`),
       el('div', undefined, '切换面板'),
       el('div', undefined, `${MOD_LABEL}Tab`),
@@ -2343,8 +2383,8 @@ export class App {
    *
    *   接管       take the lease from whoever holds it
    *   释放       give the lease up, leaving the shell running
-   *   结束       kill the process, for every client, irreversibly
-   *   关闭面板   stop watching, leaving the process alone
+   *   结束       kill the process, keeping the tab to read its last lines
+   *   关闭标签   kill the process and take the tab with it, on every client
    *
    * Ending needs control, and a client that does not hold the shell does not
    * have it — so it claims first: stealing when someone else holds the lease,
@@ -2355,7 +2395,8 @@ export class App {
    *
    * A client that already holds the shell skips the claim. The claim is a means
    * to the end, not the end: the tab is left alone either way, because reading
-   * the shell's last output is the reason it is still there.
+   * the shell's last output is the reason it is still there. That is the one
+   * thing 结束 does that the × does not.
    */
   private killSession(mv: MachineView, session: Summary): void {
     const name = session.title || basename(session.cwd) || session.sessionId

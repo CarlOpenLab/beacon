@@ -71,6 +71,13 @@ type Hub struct {
 	watches map[string]*watch
 	nextSeq int
 
+	// dismissed holds the sessions a client closed by closing its tab, keyed by
+	// session id, from the close frame to the exit it produces. The flag rides
+	// the exit frame so every client drops the tab; a session killed by 结束 is
+	// not in here, and its exit leaves the tab where its last lines are read.
+	// Written under mu like everything else a frame can change.
+	dismissed map[string]bool
+
 	// allowControl is whether a client that is not this machine's own window may
 	// be given a shell's lease. It is read and written under mu, like everything
 	// else a client's frame can change while other clients are being served.
@@ -172,6 +179,7 @@ func New(opts Options) *Hub {
 		idle:         idle,
 		allowControl: !opts.ControlOff,
 		clients:      map[*client]struct{}{},
+		dismissed:    map[string]bool{},
 		watches:      map[string]*watch{},
 	}
 }
@@ -418,7 +426,7 @@ func (h *Hub) handle(c *client, m protocol.Msg) {
 	case protocol.CTRelease:
 		h.handleRelease(c, m.SessionID)
 	case protocol.CTClose:
-		h.handleClose(c, m.SessionID, m.Epoch)
+		h.handleClose(c, m.SessionID, m.Epoch, m.Dismiss)
 	case protocol.CTRename:
 		h.handleRename(c, m.SessionID, m.Title)
 	case "":
@@ -788,7 +796,7 @@ func (h *Hub) handleRelease(c *client, id string) {
 	}
 }
 
-func (h *Hub) handleClose(c *client, id string, epoch uint64) {
+func (h *Hub) handleClose(c *client, id string, epoch uint64, dismiss bool) {
 	s, ok := h.mgr.Get(id)
 	if !ok {
 		c.fail(protocol.ErrNoSession, "no live session named "+id, id)
@@ -799,12 +807,26 @@ func (h *Hub) handleClose(c *client, id string, epoch uint64) {
 	if !h.requireControl(c, id, epoch) {
 		return
 	}
-	_ = s.Close()
+	// The flag goes in before the kill: the exit can be reaped the moment the
+	// process dies, and the goroutine that broadcasts it must find this already
+	// set, or a tab close would reach the other clients as an ordinary end.
+	if dismiss {
+		h.mu.Lock()
+		h.dismissed[id] = true
+		h.mu.Unlock()
+	}
+	if err := s.Close(); err != nil && dismiss {
+		h.mu.Lock()
+		delete(h.dismissed, id)
+		h.mu.Unlock()
+	}
 	// The exit that follows is what tells every watcher the shell is gone, and
 	// it reaches the killer too: ending a session is not a reason to lose the
 	// tab, because the tab is where its final output is read. A closed-by-us
 	// acknowledgement would only give the one client that asked a different
-	// story from the one everyone else gets.
+	// story from the one everyone else gets. A close that dismisses the tab
+	// carries that in the same frame, so the clients that keep their tabs on an
+	// ordinary exit drop them for a close.
 }
 
 // watchSession flushes output to watchers and finalises the session once its
@@ -860,13 +882,18 @@ func (h *Hub) onSessionExit(s *session.Session) {
 	h.mu.Lock()
 	w := h.watches[s.ID]
 	delete(h.watches, s.ID)
+	// The close that asked for the tab to go reads its flag back here, and the
+	// entry goes with the session: a later shell reusing the id must not inherit
+	// a dismissal nobody asked for.
+	dismiss := h.dismissed[s.ID]
+	delete(h.dismissed, s.ID)
 	var targets []*client
 	if w != nil {
 		targets = w.attached()
 	}
 	h.mu.Unlock()
 
-	msg := protocol.Msg{T: protocol.STExit, SessionID: s.ID, ExitCode: code}
+	msg := protocol.Msg{T: protocol.STExit, SessionID: s.ID, ExitCode: code, Dismiss: dismiss}
 	for _, c := range targets {
 		c.send(msg)
 	}

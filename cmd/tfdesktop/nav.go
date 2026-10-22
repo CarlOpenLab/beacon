@@ -429,7 +429,7 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 				holder:  summary.Controller,
 				alive:   true,
 				pick:    func() { w.openOrSelect(machineLocal, summary.SessionID) },
-				end:     func() { w.killSessionOn(machineLocal, summary.SessionID) },
+				end:     func() { w.killSessionOn(machineLocal, summary.SessionID, false) },
 			}.withStatus(summary))
 		}
 		return w.orderedEntries(machine, out)
@@ -493,7 +493,7 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 			active:  tab != nil && tab == w.activeTab(),
 			alive:   summary.Alive,
 			pick:    func() { w.openOrSelect(machine, summary.SessionID) },
-			end:     func() { w.killSessionOn(machine, summary.SessionID) },
+			end:     func() { w.killSessionOn(machine, summary.SessionID, false) },
 			close:   close,
 		}.withStatus(summary)
 		out = append(out, entry)

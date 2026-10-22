@@ -24,7 +24,10 @@ export interface FleetHandlers {
   attached?(sessionId: string, session: Summary | undefined, cursor: number, truncated: boolean): void
   output?(sessionId: string, cursor: number, data: Uint8Array, resync: boolean): void
   role?(sessionId: string, role: Role, controller: string): void
-  exited?(sessionId: string, exitCode: number): void
+  // dismiss says the tab goes with the process: the shell was closed from
+  // another client's tab strip, so this one drops its tab instead of keeping it
+  // to read the last lines. 结束 ends the shell without it, and the tab stays.
+  exited?(sessionId: string, exitCode: number, dismiss?: boolean): void
   closed?(sessionId: string): void
   errored?(code: string, message: string, sessionId?: string): void
 }
@@ -235,7 +238,7 @@ export class Fleet {
         break
       }
       case ST.exit: {
-        if (msg.sessionId) this.handlers.exited?.(msg.sessionId, msg.exitCode ?? 0)
+        if (msg.sessionId) this.handlers.exited?.(msg.sessionId, msg.exitCode ?? 0, msg.dismiss === true)
         break
       }
       case ST.closed: {
@@ -358,13 +361,17 @@ export class Fleet {
   /**
    * End the session: kill the process on its machine, for every watcher.
    *
+   * dismiss carries the tab with it: the exit then removes the tab on every
+   * client instead of leaving each one a pane showing 已退出. 结束 sends the
+   * same close without the flag, which is the act that keeps the last output.
+   *
    * The epoch is deliberately not sent. It is only a guard against a frame from
    * a holder who has since been replaced, and the hub checks `controller == c`
    * anyway — which is the check that matters here. Sending the epoch a client
    * happens to remember makes the close fail in exactly the case it is most
    * needed: right after a claim, before the role frame that moves it has landed.
    */
-  closeSession(sessionId: string): void {
-    this.send({ t: CT.close, sessionId })
+  closeSession(sessionId: string, dismiss = false): void {
+    this.send({ t: CT.close, sessionId, dismiss })
   }
 }

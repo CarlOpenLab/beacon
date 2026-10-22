@@ -363,13 +363,17 @@ try {
   await waitFor('two sessions', async () => (await page1.sideCount()) === 2, 20000)
   check('主机上确实起了第二个会话', true)
 
-  // ------------------------------------------------ close tab is detach only
+  // -------------------------------------- closing a tab closes it everywhere
   // Close by position, not by label: two shells started in the same directory
-  // legitimately share a title.
+  // legitimately share a title. The × is destructive for every client, so it
+  // asks first; the answer is yes here, and the question is recorded.
   await page1.evaluate(`document.querySelector('.tf-card-close').click()`)
   await waitFor('tab closed', async () => (await page1.tabs()) === 1)
-  check('点 × 关闭面板', true)
-  check('关面板只是 detach，主机会话仍在', (await page1.sideCount()) === 2, `侧栏仍有 ${await page1.sideCount()} 个会话`)
+  check('点 × 关闭标签', true)
+  const closeAsked = await page1.evaluate(`window.__confirmed.slice(-1)[0] ?? ''`)
+  check('关闭标签前会确认，并说明不可恢复', /不可恢复/.test(closeAsked), JSON.stringify(closeAsked))
+  await waitFor('the shell ended with the tab', async () => (await page1.sideCount()) === 1, 20000)
+  check('关闭标签把主机上的会话一起结束', true)
 
   // ------------------------------------------------------- reconnect+resume
   await page1.evaluate(`window.__sockets.at(-1).close()`)
@@ -394,7 +398,7 @@ try {
   await page2.waitReady()
   check('第二个客户端连上同一 daemon', true)
 
-  await waitFor('page2 sees sessions', async () => (await page2.sideCount()) === 2, 20000)
+  await waitFor('page2 sees sessions', async () => (await page2.sideCount()) === 1, 20000)
   await page2.evaluate(
     `document.querySelector('.tf-session[data-session-id="${s1}"]').click()`,
   )

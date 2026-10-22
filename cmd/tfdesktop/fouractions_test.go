@@ -191,7 +191,7 @@ func TestEndingAShellLeavesTheTabToReadIt(t *testing.T) {
 	// The lease first: 结束 claims it when it is missing, and this test is about
 	// the tab, not about the claim.
 	drainFor(t, w, func() bool { return tb.held() })
-	w.killSessionOn(machineLocal, tb.id)
+	w.killSessionOn(machineLocal, tb.id, false)
 	settleTabs(t, w, 1)
 	// Both, and in one wait. The hub's own count drops the moment the process
 	// exits, while the exit frame still has to travel to the window and be
@@ -215,6 +215,36 @@ func TestEndingAShellLeavesTheTabToReadIt(t *testing.T) {
 	// no_session to, and no 关闭 to get the row off the screen.
 	if tb.alive {
 		t.Fatal("the tab is still marked alive after the shell it watches ended")
+	}
+}
+
+// A tab closed on another client ends the shell there and says the tab goes
+// with it: this window drops its own tab on that exit instead of keeping a
+// 已退出 pane nobody here closed. 结束 sends the same close without the flag,
+// which is the exit that leaves the tab to read the last lines.
+func TestDismissedExitDropsTheTabHere(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t)
+	w.fleet = f
+	w.local = openLocalLink(f.Hub())
+	w.local.onSessions = w.sessionsArrived
+	w.local.onGone = w.linkGone
+
+	tb := w.openTab(machineLocal, "")
+	w.local.create(80, 24, "", "", "")
+	waitSessions(f, 1)
+	settleTabs(t, w, 1)
+	w.drain()
+
+	// The frame the hub broadcasts when the tab was closed somewhere else.
+	tabHandlers{w: w, sess: tb.sess, conn: tb.conn}.Exit(0, true)
+
+	drainFor(t, w, func() bool { return len(w.order) == 0 })
+	// The roster still names the shell — the kill travels separately — and it
+	// must not put the tab back: the close was a dismissal, not a lost view.
+	w.reconcile(f.Hub().Sessions())
+	if len(w.order) != 0 {
+		t.Fatalf("a dismissed tab came back on the next roster: %d tabs", len(w.order))
 	}
 }
 

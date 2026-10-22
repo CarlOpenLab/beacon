@@ -36,8 +36,10 @@ type Handlers interface {
 	// the epoch input must carry.
 	Role(role, controller string, epoch uint64)
 	// Exit is the process ending; Closed is the session going away; Gone is the
-	// link itself going away, with the reason.
-	Exit(code int)
+	// link itself going away, with the reason. Dismiss says the tab goes with
+	// the process — the exit a tab close produces — rather than staying to show
+	// the last lines, which is what 结束 leaves behind.
+	Exit(code int, dismiss bool)
 	Closed()
 	Gone(reason string)
 	// Failed is an error frame about this session.
@@ -170,8 +172,12 @@ func (l *link) release(id string) {
 // client is the controller anyway. Sending the epoch this link happens to
 // remember makes the close fail in the case it is most needed — right after a
 // claim, before the role frame that moves the epoch has landed.
-func (l *link) closeSession(id string) {
-	l.sendMsg(protocol.Msg{T: protocol.CTClose, SessionID: id})
+//
+// dismiss tells the hub this is a tab being closed, not only a shell being
+// ended: the exit frame then asks every client to drop its tab too, which is
+// what keeps the machine the shell runs on from keeping a dead tab.
+func (l *link) closeSession(id string, dismiss bool) {
+	l.sendMsg(protocol.Msg{T: protocol.CTClose, SessionID: id, Dismiss: dismiss})
 }
 
 // input types into a session, at the epoch this window last saw. A window that
@@ -290,9 +296,9 @@ func (l *link) dispatch(m protocol.Msg) {
 			s.handlers.Role(m.Role, m.Controller, m.Epoch)
 		}
 	case protocol.STExit:
-		diag.Infof("link", "exit machine=%s session=%s code=%d", l.label(), m.SessionID, m.ExitCode)
+		diag.Infof("link", "exit machine=%s session=%s code=%d dismiss=%t", l.label(), m.SessionID, m.ExitCode, m.Dismiss)
 		s.end()
-		s.handlers.Exit(m.ExitCode)
+		s.handlers.Exit(m.ExitCode, m.Dismiss)
 	case protocol.STClosed:
 		s.handlers.Closed()
 	case protocol.STError:

@@ -341,8 +341,38 @@ func TestCloseTellsTheKillerTheSameExit(t *testing.T) {
 	if m.SessionID != "s1" {
 		t.Fatalf("exit is for %q, want s1", m.SessionID)
 	}
+	// 结束 keeps the tab: no dismiss, so the last output stays on every screen.
+	if m.Dismiss {
+		t.Error("a 结束 close told the killer to drop its tab; the last lines are the reason the tab is kept")
+	}
 	// And so does the watcher.
 	b.waitFor("exit", func(msg protocol.Msg) bool { return msg.T == protocol.STExit })
+}
+
+// A tab close carries dismiss, and the exit the hub broadcasts repeats it: that
+// is how the machine the shell runs on — and every other watcher — learns the
+// tab goes with the process, instead of keeping a 已退出 pane nobody closed.
+func TestDismissCloseTellsEveryWatcherToDropTheTab(t *testing.T) {
+	ts := newTestHub(t)
+	a := dialTest(t, ts)
+	a.create("s1")
+	a.waitFor("role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleController
+	})
+	b := dialTest(t, ts)
+	b.send(protocol.Msg{T: protocol.CTAttach, SessionID: "s1", Cursor: 0})
+	b.waitFor("viewer role", func(m protocol.Msg) bool {
+		return m.T == protocol.STRole && m.Role == protocol.RoleViewer
+	})
+
+	a.send(protocol.Msg{T: protocol.CTClose, SessionID: "s1", Dismiss: true})
+
+	for name, c := range map[string]*conn{"the killer": a, "the watcher": b} {
+		m := c.waitFor(name+" exit", func(msg protocol.Msg) bool { return msg.T == protocol.STExit })
+		if !m.Dismiss {
+			t.Errorf("%s got an exit without dismiss; its tab would sit there saying 已退出", name)
+		}
+	}
 }
 
 // A client that only watches may still end the session it is looking at, by

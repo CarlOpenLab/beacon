@@ -146,6 +146,11 @@ export interface Msg {
   message?: string
 
   exitCode?: number
+  /**
+   * A tab close rather than 结束: the tab goes with the process on every client,
+   * so this one removes its tab instead of keeping the shell's last lines.
+   */
+  dismiss?: boolean
 }
 
 /** Decode the base64 `data` field into raw bytes for xterm. */

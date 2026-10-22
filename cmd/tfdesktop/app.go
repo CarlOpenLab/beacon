@@ -1134,13 +1134,17 @@ func (w *window) kill(tb *tab) {
 	if tb == nil {
 		return
 	}
-	w.killSessionOn(tb.machine, tb.id)
+	w.killSessionOn(tb.machine, tb.id, false)
 }
 
 // killSessionOn ends a shell this window may only be watching: a row of the
 // panel, with no tab behind it. It is the same act as kill, addressed by machine
 // and session id rather than by a tab.
-func (w *window) killSessionOn(machine, sessionID string) {
+//
+// dismiss is the difference between 结束 and 关闭标签: a close that dismisses
+// asks the hub to tell every client to drop the tab too, so the machine this
+// shell runs on does not keep a dead tab after another device closed it.
+func (w *window) killSessionOn(machine, sessionID string, dismiss bool) {
 	if sessionID == "" {
 		return
 	}
@@ -1149,7 +1153,7 @@ func (w *window) killSessionOn(machine, sessionID string) {
 		return
 	}
 	if tb := w.tabOf(machine, sessionID); tb != nil && tb.held() {
-		l.closeSession(sessionID)
+		l.closeSession(sessionID, dismiss)
 		return
 	}
 	// Not holding it, or no tab at all: claim first. The steal is decided by who
@@ -1161,7 +1165,7 @@ func (w *window) killSessionOn(machine, sessionID string) {
 		steal = w.remoteHolder(machine, sessionID) != ""
 	}
 	l.claim(sessionID, steal)
-	l.closeSession(sessionID)
+	l.closeSession(sessionID, dismiss)
 }
 
 // remoteHolder is who the hub last said controls a shell on another machine.
@@ -1592,7 +1596,9 @@ func (w *window) closeTab(tb *tab) {
 		return
 	}
 	if tb.id != "" && tb.alive {
-		w.kill(tb)
+		// dismiss: the tab goes on every client, not only on this one. 结束 is
+		// the close that leaves the tab behind to show the last lines.
+		w.killSessionOn(tb.machine, tb.id, true)
 	}
 	w.removeTab(tb)
 }
@@ -1808,8 +1814,21 @@ func (h tabHandlers) Role(role, controller string, epoch uint64) {
 	})
 }
 
-func (h tabHandlers) Exit(code int) {
+func (h tabHandlers) Exit(code int, dismiss bool) {
 	w := h.w
+	if dismiss {
+		// The tab close ended the process and said the tab goes with it: this
+		// window was only watching, so there is no last output to keep on its
+		// behalf — the person who closed the tab read it there. The killer's own
+		// tab is already off the strip, so its handler finds nothing to remove.
+		w.update(func() {
+			if tb := h.tab(); tb != nil {
+				w.removeTab(tb)
+			}
+			w.invalidate()
+		})
+		return
+	}
 	// The line goes straight to the terminal: the hub has already flushed the
 	// shell's last output, and this is the window's own word on the end.
 	// The marker is one message in both languages, escape bytes and all: the
@@ -1829,7 +1848,7 @@ func (h tabHandlers) Exit(code int) {
 // An older daemon still sends it, and removing the tab on it would take that
 // output away, so it is read as the exit it stands for.
 func (h tabHandlers) Closed() {
-	h.Exit(0)
+	h.Exit(0, false)
 }
 
 func (h tabHandlers) Gone(reason string) {
