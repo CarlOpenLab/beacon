@@ -4,6 +4,17 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.5
+
+**Beacon: a remote paste is this keyboard's, and a watched screen fits — Beacon：远程粘贴用本机剪贴板，观看屏幕适配窗格**
+
+- **Ctrl+V at another machine's shell pastes this machine's clipboard.** The terminal used to send `^V` to the far end, where a Windows console or Claude Code read it as "paste the clipboard here" — the panel that opened belonged to the other machine, not the person typing. Remote tabs now bind `Ctrl+V` / `Ctrl+Shift+V` to the local clipboard (a performable binding: an empty clipboard still reaches the program as `^V`), and local shells keep their platform's keys untouched. The browser client also routes a paste made over the terminal into the composer instead of losing it in xterm's display-only textarea.
+  — 控制其他机器时按 Ctrl+V 现在粘贴的是本机剪贴板。之前远端标签会把 `^V` 发给对端，Windows 控制台或 Claude Code 会把它当成“粘贴那边的剪贴板”，弹出的面板属于另一台机器。远程标签现在把 Ctrl+V / Ctrl+Shift+V 绑成本机粘贴（剪贴板为空时仍把 `^V` 交给程序），本机 shell 的按键不变；浏览器端在终端上粘贴也会进入 composer，不再被 xterm 的只读输入框吞掉。
+- **A watched shell lays out at its own size, and can be scaled to fit the pane.** A viewer used to fit the replay to its own pane, so a full-screen program's lines wrapped here and not on the machine that wrote them, and every later cursor move landed a row off. Both clients now keep the shell's reported columns and rows (the replay is written for that screen) and, with the new 观看时缩放适配 / “Fit while watching” switch, shrink the text just enough to put the whole screen inside the pane; controlling is never scaled. The switch is on by default, skips screens that almost fit (under ~10% off), and stops at a readable 7.5 pt — a pane smaller than that still clips. Desktop: 设置 → 终端; browser: the gear's popover, remembered per device.
+  — 观看端现在按远端 shell 上报的行列排版（重放就是按那块屏幕写的），并用新增的「观看时缩放适配」开关把字号缩到整屏刚好放进窗格；控制时永不缩放。开关默认开启，差距小于约 10% 时不缩，字号下限 7.5 pt，再小仍会裁切。桌面端在设置 → 终端，浏览器在齿轮菜单里，按设备记住选择。此前按本机窗格重排会导致全屏程序换行位置不同、之后每次光标移动都偏一行。
+- **The read-only sentence lives in the card's header.** On the desktop, taking or releasing the lease used to add a 34 px strip under the header; the strip took its height out of the terminal, so the same shell lost its last rows just because control had moved. The sentence and its button now share the header row — replacing the descriptive chips while it shows — and the terminal keeps the same rectangle in both states.
+  — 桌面端把只读横幅并进卡片头，替代原来的 34px 独立横条；控制/释放不再改变终端高度，同一块屏幕不会因为控制权变化而少掉最后几行。
+
 ## 0.6.4
 
 **Beacon: the session list is dragged like a sortable list — Beacon：侧栏会话改成 sortable 式拖动**
