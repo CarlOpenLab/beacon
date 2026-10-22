@@ -132,6 +132,8 @@
   "settings_font": "Font",
   "settings_font_size": "Size",
   "settings_font_note": "The font and size apply to the terminals already open in this window too.",
+  "settings_viewer_fit": "Fit while watching",
+  "settings_viewer_fit_note": "While watching another machine's terminal read-only, shrink its whole screen to fit the pane instead of cutting off the right edge. Controlling is never scaled.",
   "settings_font_system": "System monospaced",
   "settings_language": "Language",
   "settings_language_note": "The interface language applies at once; what language your programs use is their own business.",

@@ -12,7 +12,7 @@ import { Fleet, type ConnState, type FleetHandlers } from './fleet'
 import { DirectConnector, type Connector } from './link'
 import { ERR, PROTOCOL_VERSION, ROLE, type Host, type Role, type Summary } from './protocol'
 import { RelayConnection, relayURLFromLocation, type RelayState } from './relay'
-import { applyTerminalTheme, createTerminal, type TerminalBundle } from './term'
+import { applyTerminalTheme, BASE_FONT_SIZE, createTerminal, type TerminalBundle } from './term'
 import { mountTouchKeys } from './touchkeys'
 import type { TunnelMachine } from './tunnel'
 
@@ -26,6 +26,19 @@ interface Tab {
   pane: HTMLElement
   role: Role | null
   alive: boolean
+  /**
+   * The shell's own screen, as the machine last reported it. A viewer lays the
+   * terminal out at this size and scales its text to fit the pane, so the same
+   * bytes land in the same cells here as on the machine that drives it. Zero
+   * until a frame has named a size.
+   */
+  remoteCols: number
+  remoteRows: number
+  /** The font scale the viewer fit last applied: 1 is the settings' size. */
+  fitScale: number
+  /** The size this controller last sent, so a session-list echo is not a loop. */
+  sentCols: number
+  sentRows: number
   /** The code the shell exited with, for the tab's tooltip. */
   exit?: number
   /** Composer contents kept while another tab is in front. */
@@ -93,6 +106,31 @@ const MOD_LABEL = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ct
 
 /** Where the sidebar's dragged order is kept, per machine. */
 const ORDER_KEY = 'beacon.session-order.v1'
+
+/**
+ * Whether a viewer shrinks its text until the watched screen fits the pane.
+ * It is this device's choice, like the theme, so it lives beside it.
+ */
+const VIEWER_FIT_KEY = 'beacon.viewer-fit.v1'
+
+/** The smallest text the fit draws, in CSS pixels; past it the pane clips. */
+const MIN_VIEWER_FONT = 7.5
+
+function loadViewerFit(): boolean {
+  try {
+    return localStorage.getItem(VIEWER_FIT_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+function saveViewerFit(on: boolean): void {
+  try {
+    localStorage.setItem(VIEWER_FIT_KEY, on ? 'on' : 'off')
+  } catch {
+    /* a browser without storage still gets the session's choice */
+  }
+}
 
 /**
  * The machine serving this page. Its shells are the ones this client can open
@@ -371,6 +409,8 @@ export class App {
 
   private observer?: ResizeObserver
   private fitTimer?: number
+  /** This device's choice for the viewer fit; see loadViewerFit. */
+  private viewerFit = loadViewerFit()
 
   constructor(container: HTMLElement, opts: AppOptions) {
     this.root = container
@@ -378,6 +418,7 @@ export class App {
     this.order = loadOrder()
     this.build()
     this.bindKeys()
+    this.bindPaste()
 
     if (opts.mode === 'relay') {
       if (!opts.token) {
@@ -562,12 +603,19 @@ export class App {
           // The hub owns the title — a rename anywhere, or a clear, is what
           // this says — so the card reads it rather than keeping its own copy.
           tab.title = summary.title
+          // A viewer lays its screen out at the size the shell reports; the
+          // list is where another window's resize becomes visible here.
+          if (summary.cols > 0 && summary.rows > 0) {
+            tab.remoteCols = summary.cols
+            tab.remoteRows = summary.rows
+          }
         }
         this.renderCard()
         this.renderFleet()
         this.renderBanner()
         this.renderInspect()
         this.syncComposer()
+        this.sizeCurrent()
       },
       created: (sessionId) => {
         const tab = this.pendingTab(machineId)
@@ -583,9 +631,14 @@ export class App {
         if (!session) return
         tab.alive = session.alive
         tab.title = session.title || basename(session.cwd) || sessionId
+        if (session.cols > 0 && session.rows > 0) {
+          tab.remoteCols = session.cols
+          tab.remoteRows = session.rows
+        }
         this.renderCard()
         this.renderFleet()
         this.syncComposer()
+        this.fitTab(tab)
         if (truncated) {
           // The ring buffer no longer holds everything we missed; the screen we
           // would repaint from is a guess, so start from a clean slate instead.
@@ -609,6 +662,9 @@ export class App {
           // before is no longer the state of anything.
           const mv = this.machine(machineId)
           if (mv) mv.controlOff = false
+          // Taking the lease means putting this pane's size on the shell,
+          // whatever this tab last told the hub as a viewer.
+          tab.sentCols, tab.sentRows = 0, 0
         }
         this.renderCard()
         this.renderFleet()
@@ -616,6 +672,7 @@ export class App {
         this.renderStatus()
         this.renderInspect()
         this.syncComposer()
+        if (tab.key === this.activeKey) this.fitTab(tab)
         if (role === ROLE.controller) this.composer.focus()
         else if (controller && !this.letGo.delete(sessionId)) {
           this.toast(`已被接管（${controller}），你现在是只读`, 'info')
@@ -935,11 +992,25 @@ export class App {
       return row
     }
     const light = document.documentElement.dataset.theme === 'light'
+    const fitOn = this.viewerFit
     pop.append(
       item(light ? '切换到深色' : '切换到浅色', undefined, () => {
         this.opts.onToggleTheme?.()
         this.syncTerminalThemes()
         this.scheduleFit()
+      }),
+      item(`${fitOn ? '✓ ' : ''}观看时缩放适配`, undefined, () => {
+        this.viewerFit = !fitOn
+        saveViewerFit(this.viewerFit)
+        // Every terminal goes back to the settings' font; the next layout
+        // applies the new choice to the pane on screen, and a pane opened
+        // later starts from the same place.
+        for (const tab of this.tabs) {
+          tab.fitScale = 1
+          tab.bundle.term.options.fontSize = BASE_FONT_SIZE
+        }
+        this.scheduleFit()
+        this.toast(this.viewerFit ? '观看时缩放适配已开启' : '观看时缩放适配已关闭：跟随远端尺寸', 'info')
       }),
       item('会话检视栏', undefined, () => this.toggleInspect()),
       item('刷新会话与机器', undefined, () => this.refreshAll()),
@@ -2077,6 +2148,11 @@ export class App {
       pane,
       role: null,
       alive: true,
+      remoteCols: 0,
+      remoteRows: 0,
+      fitScale: 1,
+      sentCols: 0,
+      sentRows: 0,
       draft: '',
       history: [],
       histIdx: 0,
@@ -2315,7 +2391,75 @@ export class App {
     mv.fleet.closeSession(session.sessionId)
   }
 
+  /**
+   * Lay a tab out for its role.
+   *
+   * A controller is the pane: the terminal grid is fitted to the box and the
+   * size is sent to the shell, which is what makes typing here fill this
+   * window. A viewer is a window onto a screen that already has a size: the
+   * grid takes the shell's columns and rows, so the bytes written for that
+   * screen land in the same cells here, and — when the viewer fit is on — the
+   * text is scaled down until the whole screen is inside the pane. Fitting a
+   * viewer's grid to its own pane instead is what wrapped lines the machine's
+   * window shows whole and put later cursor moves a row off.
+   */
   private fitTab(tab: Tab): { cols: number; rows: number } {
+    // Until the role frame arrives, a tab is laid out at the shell's size:
+    // the attach's replay is already on its way and was written for that
+    // screen. A controller's pane fit comes with the role frame.
+    const viewer = tab.alive && tab.role !== ROLE.controller
+    if (!viewer) {
+      return this.fitController(tab, true)
+    }
+    const remote = this.remoteSizeOf(tab)
+    if (!remote) {
+      // No size from the hub yet: there is nothing to lay out against, so the
+      // pane stays usable as a plain fitted terminal until the frame arrives.
+      return this.fitController(tab, false)
+    }
+
+    const term = tab.bundle.term
+    if (term.cols !== remote.cols || term.rows !== remote.rows) {
+      term.resize(remote.cols, remote.rows)
+    }
+
+    let scale = 1
+    if (this.viewerFit && tab.role === ROLE.viewer) {
+      const proposal = tab.bundle.fit.proposeDimensions()
+      if (proposal && proposal.cols > 0 && proposal.rows > 0) {
+        // The proposal is the pane at the font it is drawn at now; multiplying
+        // by that font's scale gives the pane at the settings' own size, which
+        // is what the remote screen must be compared with. Scaling from the
+        // pane alone would chase its own last step every frame.
+        const current = tab.fitScale || 1
+        const baseCols = proposal.cols * current
+        const baseRows = proposal.rows * current
+        scale = Math.min(baseCols / remote.cols, baseRows / remote.rows, 1)
+        if (scale >= 0.9) scale = 1
+        const floor = MIN_VIEWER_FONT / BASE_FONT_SIZE
+        if (scale < floor) scale = floor
+      } else {
+        scale = tab.fitScale || 1
+      }
+    }
+
+    if (Math.abs(scale - (tab.fitScale || 1)) > 0.02) {
+      tab.fitScale = scale
+      term.options.fontSize = BASE_FONT_SIZE * scale
+      // A font change moves the cell metrics; the grid stays the shell's size.
+      term.resize(remote.cols, remote.rows)
+    }
+    return { cols: term.cols, rows: term.rows }
+  }
+
+  /** The controller's fit: the grid follows the pane and the shell hears it. */
+  private fitController(tab: Tab, send: boolean): { cols: number; rows: number } {
+    // A viewer fit may have left this terminal smaller; control gets the
+    // settings' own size back before the grid is fitted to the pane.
+    if (tab.fitScale !== 1) {
+      tab.fitScale = 1
+      tab.bundle.term.options.fontSize = BASE_FONT_SIZE
+    }
     try {
       tab.bundle.fit.fit()
     } catch {
@@ -2327,10 +2471,34 @@ export class App {
     // there is no session on the other end of the frame, and the daemon answers
     // one with no_session, which this client shows as an error toast: a red
     // toast raised by the act of reading a shell's last lines.
-    if (tab.sessionId && tab.alive && tab.role === ROLE.controller) {
-      this.machine(tab.machineId)?.fleet.resize(tab.sessionId, cols, rows)
+    if (send && tab.sessionId && tab.alive && tab.role === ROLE.controller) {
+      // The hub broadcasts the session list after every resize, and fitting on
+      // that broadcast must not send the same size back: a controller that did
+      // would resize, hear about it, and resize again for as long as the tab
+      // stayed open.
+      if (cols !== tab.sentCols || rows !== tab.sentRows) {
+        tab.sentCols, tab.sentRows = cols, rows
+        this.machine(tab.machineId)?.fleet.resize(tab.sessionId, cols, rows)
+      }
     }
     return { cols, rows }
+  }
+
+  /** The shell's own screen size, from the list or from the attach that named it. */
+  private remoteSizeOf(tab: Tab): { cols: number; rows: number } | null {
+    const summary = tab.sessionId
+      ? this.machine(tab.machineId)?.sessions.find((s) => s.sessionId === tab.sessionId)
+      : undefined
+    const cols = summary?.cols || tab.remoteCols
+    const rows = summary?.rows || tab.remoteRows
+    return cols > 0 && rows > 0 ? { cols, rows } : null
+  }
+
+  private sizeCurrent(): void {
+    const tab = this.current()
+    if (!tab) return
+    this.fitTab(tab)
+    this.renderStatus()
   }
 
   private scheduleFit(): void {
@@ -2459,6 +2627,54 @@ export class App {
     )
     chip.style.top = `${top}px`
     chip.style.left = `${left}px`
+  }
+
+  /**
+   * Paste is this device's clipboard, wherever the pointer is.
+   *
+   * The terminal is a display surface with stdin off, so a paste the browser
+   * hands to xterm's hidden textarea goes nowhere — the text is on the local
+   * clipboard, and the shell never sees it. Put such a paste in the composer
+   * instead, where every other keystroke is composed. A paste into a real input
+   * (the composer, the filter, the connect form) is left to the browser.
+   */
+  private bindPaste(): void {
+    document.addEventListener(
+      'paste',
+      (ev) => {
+        const target = ev.target as HTMLElement | null
+        const inTerminal = !!target?.closest('.xterm')
+        const editable = target?.closest('input, textarea, [contenteditable="true"]')
+        if (editable && !inTerminal) return
+        if (!inTerminal && target && target !== document.body && !target.closest('.tf-panes')) return
+        const text = ev.clipboardData?.getData('text/plain') ?? ''
+        if (!text || !this.current()) return
+        ev.preventDefault()
+        ev.stopPropagation()
+        this.pasteIntoComposer(text)
+      },
+      { capture: true },
+    )
+  }
+
+  /** Put pasted text where the caret is in the composer, and keep it focused. */
+  private pasteIntoComposer(text: string): void {
+    const tab = this.current()
+    if (!tab) return
+    if (this.composer.disabled) {
+      this.toast('只读：取得控制权后才能粘贴', 'warn')
+      return
+    }
+    this.composer.focus()
+    const start = this.composer.selectionStart ?? this.composer.value.length
+    const end = this.composer.selectionEnd ?? start
+    const before = this.composer.value.slice(0, start)
+    const after = this.composer.value.slice(end)
+    this.composer.value = before + text + after
+    const caret = (before + text).length
+    this.composer.setSelectionRange(caret, caret)
+    // The input listener keeps the tab's draft and the box's height in step.
+    this.composer.dispatchEvent(new Event('input', { bubbles: true }))
   }
 
   private bindKeys(): void {

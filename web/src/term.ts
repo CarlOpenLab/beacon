@@ -66,10 +66,13 @@ export function applyTerminalTheme(term: Terminal): void {
   term.options.theme = terminalTheme()
 }
 
+/** The settings' terminal size, in CSS pixels. The viewer fit scales it. */
+export const BASE_FONT_SIZE = 12.5
+
 const BASE: ITerminalOptions = {
   fontFamily:
     '"SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace',
-  fontSize: 12.5,
+  fontSize: BASE_FONT_SIZE,
   lineHeight: 1.4,
   letterSpacing: 0,
   cursorBlink: true,

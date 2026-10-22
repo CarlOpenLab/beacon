@@ -1896,6 +1896,34 @@ func (msgs Messages) SettingsFontNote() string {
 	return Catalog.Format(msgs.locale, "settings_font_note", nil)
 }
 
+// SettingsViewerFit says "观看时缩放适配"
+// in the language the app shows.
+//
+// The terminal pane's viewer-fit switch.
+func SettingsViewerFit() string { return In(i18n.Locale()).SettingsViewerFit() }
+
+// SettingsViewerFit says "观看时缩放适配"
+// in the language of msgs.
+//
+// The terminal pane's viewer-fit switch.
+func (msgs Messages) SettingsViewerFit() string {
+	return Catalog.Format(msgs.locale, "settings_viewer_fit", nil)
+}
+
+// SettingsViewerFitNote says "…"
+// in the language the app shows.
+//
+// The terminal pane's note under the viewer-fit switch.
+func SettingsViewerFitNote() string { return In(i18n.Locale()).SettingsViewerFitNote() }
+
+// SettingsViewerFitNote says "…"
+// in the language of msgs.
+//
+// The terminal pane's note under the viewer-fit switch.
+func (msgs Messages) SettingsViewerFitNote() string {
+	return Catalog.Format(msgs.locale, "settings_viewer_fit_note", nil)
+}
+
 // SettingsFontSystem says "系统等宽"
 // in the language the app shows.
 //

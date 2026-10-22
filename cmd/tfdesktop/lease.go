@@ -6,11 +6,11 @@ package main
 // has this" state needs no new channel: the tab's role frame carries it. Two
 // pieces of chrome say it, and each has a job the other cannot do:
 //
-//   - a strip under the card's header naming who holds the shell on screen — or
-//     that nobody does — with the way back. It is a row of its own rather than a
-//     chip in the header, because the sentence has to name a holder and the
-//     header is already carrying the shell's name and what it is running. Every
-//     other pane of a split says 只读 (or 已退出) in its own header instead;
+//   - a banner in the card's header naming who holds the shell on screen — or
+//     that nobody does — with the way back. It shares the header row rather
+//     than taking a strip of its own, so taking or releasing the lease never
+//     re-fits the terminal under it: the same shell stays the same rectangle.
+//     Every other pane of a split says 只读 (or 已退出) in its own header instead;
 //   - a panel under the top of the pane saying what holding it means, and that
 //     pressing the button will end the other client's typing.
 //

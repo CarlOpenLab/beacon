@@ -2,9 +2,8 @@ package main
 
 // The window's frame: macOS keeps its traffic lights and the view lays out
 // around the room they report; Windows and Linux take the system's buttons away
-// and the view draws its own at the top-right. The takeover strip is laid out
-// under the card's header, where the sentence belongs, rather than under any
-// controls.
+// and the view draws its own at the top-right. The takeover sentence lives in
+// the card's header, so it never takes a row away from the terminal.
 
 import (
 	"testing"
@@ -113,36 +112,46 @@ func TestTheChromeClearsTheSystemsLights(t *testing.T) {
 	}
 }
 
-// TestTheTakeoverStripStaysUnderTheHeader is the layout the report was about:
-// the sentence about who holds the shell, and the button that takes it back,
-// must be under the card's header rather than inside it.
-func TestTheTakeoverStripStaysUnderTheHeader(t *testing.T) {
+// TestTheTakeoverBannerStaysInTheHeader is the layout the report was about:
+// taking or releasing the lease used to add a strip under the header, and the
+// strip took its height out of the terminal — the same shell re-fitted and lost
+// its last rows just because control had moved. The sentence and the button are
+// in the header now, and the terminal keeps the same rectangle in both states.
+func TestTheTakeoverBannerStaysInTheHeader(t *testing.T) {
 	w, _ := controlsTestWindow(t)
-	w.tabs[1].setLease(protocol.RoleViewer, "c1", 4)
 
-	tt := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
-	tt.Frame()
-
-	take, ok := tt.Find(locales.ActionTakeBack())
+	controlling := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
+	controlling.Frame()
+	before, ok := controlling.Find("Terminal")
 	if !ok {
-		t.Fatalf("the takeover button is not on screen: texts = %v", tt.Texts())
+		t.Fatalf("the terminal is not on screen: texts = %v", controlling.Texts())
 	}
-	// The strip starts under the header, where the window's controls are.
-	if top := float32(uitokens.CardGap + uitokens.HeaderH); take.Y < top {
-		t.Errorf("the takeover button is at y=%v, inside the header (top %v)", take.Y, top)
+
+	w.tabs[1].setLease(protocol.RoleViewer, "c1", 4)
+	taken := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
+	taken.Frame()
+
+	take, ok := taken.Find(locales.ActionTakeBack())
+	if !ok {
+		t.Fatalf("the takeover button is not on screen: texts = %v", taken.Texts())
+	}
+	// Inside the header band, not on a strip under it.
+	if bottom := float32(uitokens.CardGap + uitokens.HeaderH); take.Y+take.H > bottom {
+		t.Errorf("the takeover button reaches y=%v, past the header (bottom %v)", take.Y+take.H, bottom)
 	}
 	if right := take.X + take.W; right > float32(frameTestWidth-uitokens.CardGap-10) {
 		t.Errorf("the takeover button reaches x=%v, past the card's inset", right)
 	}
 
-	// The header's own last chip ends within the card, where the window's own
-	// controls are no longer drawn over it.
-	chip, ok := tt.Find("claude")
+	// The terminal is the same rectangle whether this window holds the shell or
+	// watches it: no row appears above it and none is taken away.
+	after, ok := taken.Find("Terminal")
 	if !ok {
-		t.Fatalf("the program chip is not on screen: texts = %v", tt.Texts())
+		t.Fatalf("the terminal is not on screen while watching: texts = %v", taken.Texts())
 	}
-	if right := chip.X + chip.W; right > float32(frameTestWidth-uitokens.CardGap-10) {
-		t.Errorf("the header's chip ends at x=%v, past the card's inset", right)
+	if before.Y != after.Y || before.H != after.H {
+		t.Errorf("the terminal moved from y=%v h=%v to y=%v h=%v when the lease left",
+			before.Y, before.H, after.Y, after.H)
 	}
 }
 

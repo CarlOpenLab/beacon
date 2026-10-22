@@ -244,7 +244,6 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 		}
 		card.Children(func() {
 			w.cardHeader(c, pal, tb, focused, corner)
-			w.takeoverBar(c, tb, focused)
 			// The terminal fills the card under the header. It draws its own
 			// background, so a full-screen program's color reaches the edges.
 			ui.Box(c).Grow(1).MinHeight(0).Children(func() {
@@ -295,7 +294,9 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 // cardHeader is a card's title row: the state, the shell's name, where it
 // stands, what it is running, and — while the pointer is there — the controls
 // that act on the card. A pane the window is not in says 只读 or 已退出 here; the
-// pane on screen has the sentence and the button in takeoverBar instead.
+// pane on screen has the sentence and the button in the same row, in place of
+// the chips that describe it, so the terminal under the header keeps the same
+// rectangle when the lease moves.
 func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool,
 	corner bool) {
 	left := w.headerLead(c)
@@ -310,6 +311,17 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 	hovered := h.Hovered()
 	h.DragWindow()
 
+	// A banner in the header rather than a strip under it. The strip used to
+	// take its height out of the terminal, so taking or releasing the lease
+	// re-fitted the pane and hid the shell's last rows — the same shell, drawn
+	// differently because control had changed hands. The header is the same
+	// height with the sentence in it, so the terminal is the same rectangle
+	// whether this window drives the shell or only watches it.
+	banner, action, tone, run := "", "", c.Theme().TextMuted, func() {}
+	if focused && w.activeTab() == tb {
+		banner, action, tone, run = w.bannerState(c)
+	}
+
 	name := tb.name()
 	h.Children(func() {
 		state := w.leaseColor(c.Theme(), tb.machine, tb.id, tb.holder(), tb.alive)
@@ -318,26 +330,34 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 		if !focused {
 			title.TextColor(pal.TextMuted)
 		}
-		if dir := shortDir(tb.cwd); dir != "" && dir != name {
-			ui.Text(c, dir).FontSize(13).TextColor(pal.TextFaint).SingleLine().Ellipsis("…").Shrink(2).MinWidth(0)
+		if banner != "" {
+			// The sentence takes the room the descriptive chips would have
+			// taken. The shell's name stays on its left, so the pane still says
+			// what it is while it says what it cannot do.
+			headerBanner(c, tone, banner, action, run)
+			ui.Spacer(c)
+		} else {
+			if dir := shortDir(tb.cwd); dir != "" && dir != name {
+				ui.Text(c, dir).FontSize(13).TextColor(pal.TextFaint).SingleLine().Ellipsis("…").Shrink(2).MinWidth(0)
+			}
+			// What it is doing, when that is worth saying: the message a program
+			// gave, or how far along it is.
+			w.attentionChip(c, pal, tb)
+			// What is running in the pane, when it is a program rather than the shell
+			// itself: a chip, and the answer to "which of these is the agent".
+			if sum, ok := w.summaryOf(tb.machine, tb.id); ok && !isShellName(sum.Process) {
+				chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+					ui.Text(c, sum.Process).FontSize(12).SingleLine().Ellipsis("…").MaxWidth(160)
+				})
+			}
+			// Where it runs, when that is not this machine: a chip naming the machine.
+			if tb.machine != machineLocal {
+				chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+					ui.Text(c, w.machineName(tb.machine)).FontSize(12).SingleLine().Ellipsis("…")
+				})
+			}
+			ui.Spacer(c)
 		}
-		// What it is doing, when that is worth saying: the message a program
-		// gave, or how far along it is.
-		w.attentionChip(c, pal, tb)
-		// What is running in the pane, when it is a program rather than the shell
-		// itself: a chip, and the answer to "which of these is the agent".
-		if sum, ok := w.summaryOf(tb.machine, tb.id); ok && !isShellName(sum.Process) {
-			chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
-				ui.Text(c, sum.Process).FontSize(12).SingleLine().Ellipsis("…").MaxWidth(160)
-			})
-		}
-		// Where it runs, when that is not this machine: a chip naming the machine.
-		if tb.machine != machineLocal {
-			chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
-				ui.Text(c, w.machineName(tb.machine)).FontSize(12).SingleLine().Ellipsis("…")
-			})
-		}
-		ui.Spacer(c)
 		if !focused {
 			// Every pane says what it is, not only the one on screen: a split
 			// whose other half is somebody else's shell says so in its own header.
@@ -358,6 +378,38 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 			}).Clicked() {
 				w.releaseLease(tb)
 			}
+		}
+	})
+}
+
+// headerBanner is the sentence about the shell on screen and the button that
+// answers it, drawn inside the header row. It reaches for the width it can get
+// and shortens itself rather than pushing the shell's name out: the full
+// sentence stays in the tooltip, and the button — the way out of the state —
+// never shrinks to an ellipsis.
+func headerBanner(c *ui.Context, tone ui.Color, text, action string, run func()) {
+	row := ui.Row(c).Key("pane-banner").Height(26).Padding(0, 8).Gap(7).
+		Radius(7).Shrink(1).MinWidth(0).AlignItems(ui.Center).
+		Background(tone.Alpha(0.10)).
+		BorderWidth(1).BorderColor(tone.Alpha(0.18)).
+		Label(text).Tooltip(text)
+	row.Children(func() {
+		ui.Box(c).Size(7, 7).Radius(3.5).Background(tone).Shrink(0)
+		ui.Text(c, text).FontSize(12).TextColor(tone).
+			SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+		if action == "" {
+			return
+		}
+		button := ui.Row(c).Key("banner-action").Height(20).Padding(0, 6).Radius(5).
+			AlignItems(ui.Center).Background(tone.Alpha(0.18)).Shrink(0)
+		if button.Hovered() {
+			button.Background(tone.Alpha(0.28))
+		}
+		button.Children(func() {
+			ui.Text(c, action).FontSize(11.5).FontWeight(600).TextColor(tone).SingleLine()
+		})
+		if button.Clicked() && run != nil {
+			run()
 		}
 	})
 }
@@ -383,58 +435,9 @@ func (w *window) emptyCardHeader(c *ui.Context) {
 		Padding(0, right, 0, 10).DragWindow()
 }
 
-// takeoverBar is the one sentence the window has to say about the shell on
-// screen — it ended, or it is not this window's to type into — with the button
-// that answers it, on a strip of its own under the card's header.
-//
-// It is a row rather than a chip in the header because it is about the whole
-// pane: the header already carries the shell's name, where it stands and what it
-// is running, and a sentence long enough to name a holder does not fit beside
-// them in a narrow window without becoming an ellipsis. The strip has the card's
-// whole width, so the sentence stays a sentence and the button stays where it is.
-func (w *window) takeoverBar(c *ui.Context, tb *tab, focused bool) {
-	if !focused {
-		return
-	}
-	text, action, tone, run := w.bannerState(c)
-	if text == "" || w.activeTab() != tb {
-		return
-	}
-	ui.Row(c).Key("pane-banner").Height(takeoverBarH).Shrink(0).AlignItems(ui.Center).
-		Padding(0, 12).Gap(8).
-		Background(tone.Alpha(0.10)).
-		BorderWidth(0, 0, 1, 0).BorderColor(tone.Alpha(0.16)).
-		Children(func() {
-			ui.Box(c).Size(7, 7).Radius(3.5).Background(tone).Shrink(0)
-			ui.Text(c, text).FontSize(12.5).TextColor(tone).
-				SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-			if action == "" {
-				return
-			}
-			button := ui.Row(c).Key("banner-action").Height(24).Padding(0, 10).Radius(7).
-				AlignItems(ui.Center).Background(tone.Alpha(0.16)).
-				BorderWidth(1).BorderColor(tone.Alpha(0.26)).Shrink(0)
-			if button.Pressed() {
-				button.Background(tone.Alpha(0.30))
-			} else if button.Hovered() {
-				button.Background(tone.Alpha(0.24))
-			}
-			button.Children(func() {
-				ui.Text(c, action).FontSize(12).FontWeight(600).TextColor(tone).SingleLine()
-			})
-			if button.Clicked() && run != nil {
-				run()
-			}
-		})
-}
-
-// takeoverBarH is the strip's height: a line of the chrome's small text with
-// room around it, short enough not to take a terminal row it does not need.
-const takeoverBarH = float32(34)
-
 // paneStateChip is the mark on a pane the window is not in, in its own header:
 // 只读 when another client drives that shell, 已退出 when it has ended. The pane
-// on screen has the sentence and the button instead (takeoverBar).
+// on screen has the sentence and the button in its header instead (headerBanner).
 func (w *window) paneStateChip(c *ui.Context, pal *uitokens.Palette, tb *tab) {
 	var text string
 	var tone ui.Color

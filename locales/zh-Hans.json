@@ -677,6 +677,14 @@
   "@settings_font_note": {
     "description": "The terminal pane's note."
   },
+  "settings_viewer_fit": "观看时缩放适配",
+  "@settings_viewer_fit": {
+    "description": "The terminal pane's viewer-fit switch."
+  },
+  "settings_viewer_fit_note": "只读观看其他机器的终端时，把整块远端屏幕缩小到窗格内，避免右边被裁掉；控制时不缩放。",
+  "@settings_viewer_fit_note": {
+    "description": "The terminal pane's note under the viewer-fit switch."
+  },
   "settings_font_system": "系统等宽",
   "@settings_font_system": {
     "description": "The font field's entry for the system monospaced font."

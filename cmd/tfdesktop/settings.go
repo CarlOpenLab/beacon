@@ -161,6 +161,10 @@ type settingsWindow struct {
 	// inverse of settings.ControlOff, because the switch reads better as the
 	// thing it allows.
 	control bool
+	// viewerFit is whether a watched shell's screen is scaled down until the
+	// whole of it fits the pane: the inverse of settings.ViewerFitOff, because
+	// the switch reads better as the thing it does.
+	viewerFit bool
 	// notifyWaiting, notifyDone, notifyError and dockBadge are the notification
 	// switches in the window's own terms: true means the notification happens,
 	// and commit writes the inverse into the fields that name what turns it off.
@@ -221,6 +225,7 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 		relayOn:       cur.RelayOn,
 		server:        !cur.ServerOff,
 		control:       !cur.ControlOff,
+		viewerFit:     !cur.ViewerFitOff,
 		notifyWaiting: !cur.NotifyWaitingOff,
 		notifyDone:    !cur.NotifyDoneOff,
 		notifyError:   !cur.NotifyErrorOff,
@@ -299,6 +304,7 @@ func (s *settingsWindow) draft() settings.Settings {
 	cur.RelayOn = s.relayOn
 	cur.ServerOff = !s.server
 	cur.ControlOff = !s.control
+	cur.ViewerFitOff = !s.viewerFit
 	cur.Language = normalizeLanguage(s.language)
 	cur.NotifyWaitingOff = !s.notifyWaiting
 	cur.NotifyDoneOff = !s.notifyDone
@@ -909,6 +915,13 @@ func (s *settingsWindow) terminalPane(c *ui.Context) {
 			ui.Field(c, locales.SettingsFontSize(), func() {
 				s.fontSizePopup(c, pal)
 			})
+			// Watching another machine's shell is a window onto a screen that
+			// already has a size; fitting it keeps the whole screen visible
+			// instead of cutting its right edge. It applies at once, like the
+			// other switches.
+			ui.Field(c, locales.SettingsViewerFit(), func() {
+				ui.Switch(c, &s.viewerFit).AlignSelf(ui.End).OnChange(func() { s.commit() })
+			}).Description(locales.SettingsViewerFitNote())
 			// The language applies on the click, like the switches: a person who
 			// picks another language wants to see it, not to look for 应用.
 			lang := languageIndex(s.language)
@@ -1253,6 +1266,7 @@ func (s *settingsWindow) restoreDefaults() {
 	s.relayOn = false
 	s.server = true
 	s.control = true
+	s.viewerFit = true
 	s.notifyWaiting = true
 	s.notifyDone = true
 	s.notifyError = true

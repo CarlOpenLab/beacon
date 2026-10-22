@@ -29,6 +29,14 @@ type Settings struct {
 	// which is DefaultFontSize.
 	FontSize float64 `json:"fontSize,omitempty"`
 
+	// ViewerFitOff stops a shell this window only watches from shrinking its
+	// text until the whole of the remote screen fits the pane. False — what a
+	// first run and a missing key both give — fits it, because a watched screen
+	// that is wider than the pane otherwise shows only its left edge. The
+	// shell's own size never changes either way: the PTY belongs to whoever
+	// holds the lease.
+	ViewerFitOff bool `json:"viewerFitOff,omitempty"`
+
 	// RelayURL is the relay's member endpoint, such as
 	// wss://relay.example/relay/agent. Empty disables the link.
 	RelayURL string `json:"relayUrl,omitempty"`

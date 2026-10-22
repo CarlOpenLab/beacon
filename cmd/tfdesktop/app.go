@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -632,6 +633,7 @@ func (w *window) view(c *ui.Context) {
 		w.selected = 0
 	}
 	w.followLease()
+	w.fitViewerFonts()
 
 	// The app's chrome, in the appearance the person chose; terminal ANSI keeps its
 	// own colors.
@@ -1328,6 +1330,27 @@ func (w *window) linkTo(machine string) *link {
 	return nil
 }
 
+// terminalKeybinds are the keys the terminal handles on this side of the link
+// instead of sending to the program.
+//
+// A remote shell is still this machine's keyboard and this machine's clipboard:
+// Ctrl+V typed at a shell two machines away would otherwise reach the program
+// as ^V, which Claude Code and other image-aware programs read as their own
+// "paste an image" key — so the panel that opens belongs to the other machine's
+// clipboard, not this one's. The binding is performable: with nothing on the
+// clipboard the key falls through to the program, as Control-V does in a
+// terminal. Local shells keep their platform's bindings untouched, where ^V is
+// quoted-insert and the terminal's own Cmd+V / Ctrl+Shift+V already paste.
+func terminalKeybinds(machine string) []terminal.Keybind {
+	if machine == machineLocal {
+		return nil
+	}
+	return []terminal.Keybind{
+		{Mods: ui.Ctrl, Key: ui.KeyV, Action: terminal.ActionPaste, Performable: true},
+		{Mods: ui.Ctrl | ui.Shift, Key: ui.KeyV, Action: terminal.ActionPaste, Performable: true},
+	}
+}
+
 // watchTab gives a tab its terminal and attaches it to sessionID over l. It is
 // what opening a tab does, and what re-attaching a tab does when the link it
 // was on has gone away: the hub replays the session's ring from byte 0, so a
@@ -1356,6 +1379,9 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 		// The shell's own colours, so the pane belongs to the window around it.
 		Theme:     terminalTheme(false),
 		DarkTheme: terminalTheme(true),
+		// A remote shell pastes this machine's clipboard on Ctrl+V; a local
+		// shell keeps Ctrl+V as the control character it has always been.
+		Keybinds: terminalKeybinds(machine),
 		// The screen lays out at the size the shell has, which is not always the
 		// size this pane is. A viewer is a window onto a screen that already
 		// exists: the replay it is fed was written for that screen's width, with
@@ -1443,6 +1469,85 @@ func (w *window) followServerSize(tb *tab, sum protocol.Summary) {
 func (w *window) followSizes(machine string, list []protocol.Summary) {
 	for i := range list {
 		w.followServerSize(w.tabOf(machine, list[i].SessionID), list[i])
+	}
+}
+
+// minViewerFont is the smallest text the watched-screen fit will draw, in DIPs.
+// Below this a 120-column screen in a narrow pane is technically whole and
+// practically unreadable, so the pane keeps the text legible and lets the
+// right edge fall outside instead.
+const minViewerFont = 7.5
+
+// viewerFitScale is the font scale that makes a shell's screen fit a pane.
+//
+// viewCols and viewRows are what the pane fits at the font it is drawn at now,
+// and current is the scale that font already carries. The pane's fit grows as
+// the text shrinks, so the size it would fit at the settings' own font is
+// view*current — the number the fit has to compare with the shell's screen.
+// Scaling from that number rather than from view alone is what makes the
+// answer stable across frames instead of chasing its own last step.
+func viewerFitScale(viewCols, viewRows, screenCols, screenRows int, current float64) float64 {
+	if viewCols <= 0 || viewRows <= 0 || screenCols <= 0 || screenRows <= 0 {
+		return 1
+	}
+	if current <= 0 {
+		current = 1
+	}
+	byWidth := float64(viewCols) * current / float64(screenCols)
+	byHeight := float64(viewRows) * current / float64(screenRows)
+	scale := math.Min(byWidth, byHeight)
+	// A screen that almost fits is left at the font settings chose: shrinking
+	// 13 pt to 12.3 pt to recover one row trades a readable screen for a whole
+	// one nobody wants to read. The fit is for a real mismatch.
+	if scale >= 0.9 {
+		return 1
+	}
+	if scale <= 0 {
+		return 1
+	}
+	return scale
+}
+
+// fitViewerFonts shrinks a watched shell's text until its whole screen fits the
+// pane, so watching shows the same screen the controller sees rather than the
+// left edge of it. It never touches the shell's size: the PTY belongs to the
+// controller, and a viewer saying how large it should be is exactly the reflow
+// this fit exists to avoid. A shell this window drives keeps the font from
+// settings, as it always did.
+func (w *window) fitViewerFonts() {
+	fit := w.store == nil || !w.store.Get().ViewerFitOff
+	for _, tb := range w.tabs {
+		if tb == nil || tb.term == nil || tb.conn == nil {
+			continue
+		}
+		scale := 1.0
+		if fit && !tb.held() && tb.known() {
+			if cols, rows := tb.term.Size(); cols > 0 && rows > 0 {
+				if vc, vr := tb.conn.viewSize(); vc > 0 && vr > 0 {
+					scale = viewerFitScale(vc, vr, cols, rows, tb.viewScale)
+				}
+			}
+		}
+		// Keep the text readable even when the screen cannot quite fit: the
+		// point is to read the shell, not to prove the arithmetic.
+		base := w.font.Size
+		if base <= 0 {
+			base = settings.DefaultFontSize
+		}
+		if floor := float64(minViewerFont) / float64(base); scale < floor {
+			scale = floor
+		}
+		current := tb.viewScale
+		if current <= 0 {
+			current = 1
+		}
+		if math.Abs(scale-current) < 0.02 {
+			continue
+		}
+		tb.viewScale = scale
+		f := w.font
+		f.Size = float32(float64(base) * scale)
+		tb.term.SetFont(f)
 	}
 }
 
@@ -1828,6 +1933,11 @@ type tab struct {
 	controller string
 	epoch      uint64
 
+	// viewScale is the font scale the viewer fit last gave this tab: 1 is the
+	// font settings chose, and less is a watched screen shrunk to fit the pane.
+	// Zero means it has never been scaled. See fitViewerFonts.
+	viewScale float64
+
 	// letGo is set while the window is giving the lease up on purpose, so the
 	// role frame that answers its own release is not mistaken for a machine
 	// taking the shell back — which would end the window's connection to it.
@@ -2117,6 +2227,9 @@ func (w *window) reletter(f terminal.Font) {
 		w.font = f
 		for _, tb := range w.tabs {
 			if tb.term != nil {
+				// The new font starts unscaled; the next frame's fit decides
+				// whether a watched screen needs shrinking again.
+				tb.viewScale = 1
 				tb.term.SetFont(f)
 			}
 		}

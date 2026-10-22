@@ -154,9 +154,9 @@ func paneEdgeLit(img *image.RGBA) bool {
 
 // A shell that has ended is marked on the sheet as well, and with its own word:
 // 只读 and 已退出 are different states and a person reading the pane has to be
-// able to tell which one they are looking at. The pane on screen says it on the
-// strip under its header, so the mark in a pane's own header is read on another
-// pane of a split.
+// able to tell which one they are looking at. The pane on screen says it in the
+// card's header, so the mark in a pane's own header is read on another pane of a
+// split.
 func TestAnEndedShellIsMarkedOnTheSheet(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
