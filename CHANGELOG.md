@@ -4,6 +4,23 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.3
+
+**Beacon: drag the fleet into your order, and let the terminal name itself — Beacon：把会话拖成自己的顺序，让标题自己说话**
+
+- **The project is called Beacon.** The window, the browser page, the relay's admin panel and the docs now say Beacon throughout, the desktop bundle is `dev.carl.beacon`, and the service files follow the new name. A settings directory that already exists under `term-fleet` is still the one used — an update is not a reason to lose a font, a relay or a shortcut — and `TERM_FLEET_CONFIG_HOME` still works beside the new `BEACON_CONFIG_HOME`. README has a Simplified Chinese edition.
+  — 项目正式改名为 Beacon：窗口、浏览器页面、中继管理页和文档统一换名，桌面 bundle 标识为 `dev.carl.beacon`，服务文件也跟着改。已有的 `term-fleet` 设置目录仍继续使用——升级不该弄丢字体、中继或快捷键；`TERM_FLEET_CONFIG_HOME` 与新的 `BEACON_CONFIG_HOME` 并存。README 补了简体中文版。
+- **Drag a session row into the order you want.** The sidebar of both clients was fixed to the daemon's oldest-first list; now the desktop and the browser each remember their own arrangement, per machine. A row dragged over another lands above or below it by which half of the row the pointer is on, with an accent line marking where it will go; dragging never picks the row, and a shell the order has not seen yet joins at the end. The desktop keeps it in `settings.json`, the browser in `localStorage`, and a filtered list moves rows without disturbing the ones it is hiding.
+  — 侧栏会话现在可以拖动排序：两个客户端原先都固定按 daemon 的最早优先顺序，现在桌面端和浏览器各自、按机器记住自己的排列。拖到另一行上半段就插在它前面、下半段插在它后面，强调色横线标出落点；拖动不会选中该行，顺序里没见过的会话排在末尾。桌面端写进 `settings.json`，浏览器写进 `localStorage`；筛选状态下拖动也不会打乱被隐藏的行。
+- **An agent names the shell by naming its terminal.** The daemon now reads the title a program sets with `OSC 0` / `OSC 2` and uses it as the session's name when nobody has renamed the shell — which is how Claude Code and other AI CLIs say which task they are on. The animated spinner in front is taken off, so the name does not flicker with every frame; an explicit rename still wins, and a program that clears its title gives the name back to the program and directory. A set title is broadcast like any other state change, so the phone, the browser and the desktop change together.
+  — AI 用「给终端起标题」来命名自己的任务：daemon 现在解析程序写入的 `OSC 0` / `OSC 2` 标题，在没人手动重命名时把它作为会话名——Claude Code 这类 AI CLI 正是这样说明当前任务的。标题前面的动画 spinner 会被去掉，名字不再逐帧闪动；显式重命名仍然优先，程序清空标题后名字回落到程序名与目录。标题变化会像状态一样广播，手机、浏览器和桌面一起更新。
+- **The browser client speaks the protocol the daemon speaks again.** 0.6.2's browser bundle still announced version 1 to a daemon that requires version 2, so the page could load and then fail to show a single session. It now sends 2 and names both versions if they ever disagree. While fixing the title feed, the scanner also stopped treating the byte `0x9D` as a C1 control: it is the middle byte of `❯`, so a prompt drawn with that arrow used to swallow every title and status report after it.
+  — 浏览器客户端重新说对协议版本：0.6.2 的前端仍向要求版本 2 的 daemon 声明版本 1，页面能加载却看不到任何会话。现在发送 2，真不一致时会把双方版本都写出来。修标题链路时也修了扫描器：它把字节 `0x9D` 当成 C1 控制符，而 `0x9D` 正是 `❯` 的中间字节，于是带这个提示符的终端会吞掉之后所有标题和状态报告。
+- **A shell started by the desktop has a UTF-8 locale.** A window-server launch passes no `LANG`, so zsh came up in the C locale: a Chinese name was echoed as reverse-video bytes and `cd 中文` said the directory did not exist. Sessions now name the user's own UTF-8 locale from the system preference, or `en_US.UTF-8` / `C.UTF-8` when the system has one; an environment that already names a locale — including an explicit `C` — is left alone, and Windows, whose console has no locale, is unchanged.
+  — 桌面端启动的 shell 现在有 UTF-8 locale：从窗口服务器启动时环境里没有 `LANG`，zsh 会进 C locale——中文文件名被回显成反色的字节串，`cd 中文` 还会说目录不存在。会话现在按系统偏好选择用户自己的 UTF-8 locale，系统没有时退到 `en_US.UTF-8` / `C.UTF-8`；环境里已经写明 locale（包括显式 `C`）就不覆盖，Windows 控制台没有 locale 概念，行为不变。
+- **macOS draws its own traffic lights.** The three dots are AppKit's now, on the same 30px line as the rest of the chrome, so they keep the system's shapes, spacing, inactive-window grey, double-click and window menu; full screen collapses them and the header around them. Windows and Linux keep the controls the view draws, now covered by tests that run on every platform.
+  — macOS 改用系统自己的红绿灯：三颗圆点由 AppKit 绘制，与其余 chrome 落在同一条 30px 线上，形状、间距、失焦灰色、双击与窗口菜单都是系统的；全屏时它们和围绕它们的标题区一起收起。Windows / Linux 继续使用界面绘制的按钮，并补上了在三大平台都运行的测试。
+
 ## 0.6.2
 
 **Desktop: the window's controls in the platform's corner, and a settings window that floats — 桌面端：窗口按钮回到平台该在的一角，设置改成浮窗**
