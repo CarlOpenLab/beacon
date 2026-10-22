@@ -46,8 +46,9 @@ type sideChrome struct {
 	headerPad float32 // a card header's left padding
 }
 
-// chromeFor is the layout at a point in the fold.
-func chromeFor(progress, width float32) sideChrome {
+// chromeFor is the layout at a point in the fold, around the room the system's
+// window controls report (bar) for as long as the column is folding away.
+func chromeFor(progress, width float32, bar ui.TitleBar) sideChrome {
 	round := func(v float32) float32 { return float32(math.Round(float64(v))) }
 	s := min(max(progress, 0), 1)
 	w := round(width * s)
@@ -58,7 +59,7 @@ func chromeFor(progress, width float32) sideChrome {
 	pad := round(uitokens.CardGap * (1 - shown))
 	// Where the header's title starts in the window, rounded once: after the
 	// column's buttons with it hidden, 16 into the card with it shown.
-	hidden, shownAt := cardTitleLead(), width+headerPadShown
+	hidden, shownAt := cardTitleLead(bar), width+headerPadShown
 	x := round(hidden + (shownAt-hidden)*shown)
 	return sideChrome{ready: true, shown: shown, width: w, mainPad: pad, headerPad: x - w - pad}
 }
@@ -66,13 +67,13 @@ func chromeFor(progress, width float32) sideChrome {
 // chromeNow is the layout the window is drawn with. A view that has not run the
 // fold yet — a panel drawn on its own in a test — is at the state the window
 // says it is in.
-func (w *window) chromeNow() sideChrome {
+func (w *window) chromeNow(c *ui.Context) sideChrome {
 	if w.chrome.ready {
 		return w.chrome
 	}
 	if w.sidebarHidden {
 		return sideChrome{shown: 0, width: 0, mainPad: uitokens.CardGap,
-			headerPad: cardTitleLead() - uitokens.CardGap}
+			headerPad: cardTitleLead(c.TitleBar()) - uitokens.CardGap}
 	}
 	return sideChrome{shown: 1, width: w.sideWidth(), headerPad: headerPadShown}
 }
@@ -89,11 +90,9 @@ func (w *window) sideWidth() float32 {
 // foot with the palette, the settings and how the fleet stands.
 func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 	bar := c.TitleBar()
-	topHeight := float32(uitokens.TopBar)
-	if bar.Height > topHeight {
-		topHeight = bar.Height
-	}
-	ch := w.chromeNow()
+	topHeight := max(float32(uitokens.TopBar), bar.Height)
+	lead := titleBarLead(bar)
+	ch := w.chromeNow(c)
 
 	// The column is as wide as the fold has it and clips what does not fit;
 	// its contents keep their full width and slide out under the clip, so the
@@ -106,7 +105,7 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 			if ch.shown > 0.99 {
 				w.resizeHandle(c, pal)
 			}
-			ui.Row(c).Height(topHeight).Shrink(0).Padding(0, 12, 0, windowLead()).Gap(2).
+			ui.Row(c).Height(topHeight).Shrink(0).Padding(0, 12, 0, lead).Gap(2).
 				AlignItems(ui.Center).DragWindow().Children(func() {
 				if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
 					w.sidebarHidden = true
@@ -130,7 +129,7 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 // with the column, so the pointer finds them where it left them, and they fade
 // as the card's own header takes over.
 func (w *window) sidebarPeek(c *ui.Context) {
-	ch := w.chromeNow()
+	ch := w.chromeNow(c)
 	// The column buttons slide out with the column; these take over before they
 	// leave, and stay where they were in the window as the card slides under
 	// them.
@@ -139,7 +138,7 @@ func (w *window) sidebarPeek(c *ui.Context) {
 		return
 	}
 	ui.Row(c).Key("sidebar-peek").Absolute().
-		Left(windowLead()).
+		Left(titleBarLead(c.TitleBar())).
 		Top((uitokens.TopBar - toolbarButton) / 2).
 		Height(toolbarButton).Gap(2).AlignItems(ui.Center).Opacity(alpha).Children(func() {
 		if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {

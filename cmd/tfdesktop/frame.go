@@ -3,13 +3,13 @@ package main
 // The window's frame: what mygo draws around the view, and the controls the view
 // draws itself.
 //
-// The title bar is hidden and the view draws the window's controls itself, in
-// the corner the platform keeps them in: on macOS the three dots that close,
-// minimize and zoom, at the top-left; on Windows and Linux Windows 11's flat
-// minimize, maximize or restore, and close, at the top-right. Drawing them rather than leaving
-// them to the system keeps one set, in one look, whatever the platform: the
-// system's buttons would be a second set on macOS, and elsewhere they are laid
-// over the top-right corner of whatever the window draws.
+// The title bar is hidden. On macOS the system's traffic lights are kept, moved
+// onto the same 30px line the rest of the chrome centres on, and the view gives
+// them the room c.TitleBar reports instead of drawing anything there: the three
+// dots are AppKit's, down to their glyphs and their grey in an inactive window.
+// On Windows and Linux the system's buttons are taken away, and the view draws
+// Windows 11's minimize, maximize or restore, and close at the top-right, where
+// those platforms keep them.
 
 import (
 	"runtime"
@@ -22,13 +22,13 @@ import (
 )
 
 const (
-	// The controls are three dots on the line the top bar's contents center on.
-	trafficLightSize = float32(12)
-	trafficLightGap  = float32(8)
-	trafficLightLeft = float32(14)
-
-	// trafficLightsW is the room the three take.
-	trafficLightsW = 3*trafficLightSize + 2*trafficLightGap
+	// trafficLightX and trafficLightY place macOS's traffic lights: the close
+	// button's top-left corner, 18 DIPs in from the window's corner, with the
+	// lights' centre on the line the top bar's contents centre on. MyGo puts
+	// them a DIP above the position, and the buttons are 14 tall, which leaves
+	// a top bar 60 tall, like the sidebar's own.
+	trafficLightX = 18
+	trafficLightY = uitokens.TopBar/2 - 7
 
 	// The window's controls on Windows and Linux are three flat buttons at the
 	// right end of the same line, where Windows 11 keeps its own.
@@ -43,36 +43,44 @@ const (
 	windowButtonsRoom = windowButtonsW + 8
 )
 
-// controlsAtRight reports whether the window's controls sit at the top-right
-// corner, as Windows and Linux keep them, rather than in macOS's top-left.
-// It is a variable so a test can draw the other platform's corner.
+// controlsAtRight reports whether the view draws the window's controls at the
+// top-right corner, as Windows and Linux keep them, rather than leaving them to
+// the system at macOS's top-left. It is a variable so a test can draw either.
 var controlsAtRight = runtime.GOOS != "darwin"
 
-// windowLead is the room the controls take at the window's left edge before its
-// content starts: the traffic lights on macOS, and only a margin where they are
-// at the right instead.
-func windowLead() float32 {
+// framedWindow applies the window's frame before it is created: a hidden title
+// bar under the view's own top bar, the system's controls only where the view
+// does not draw its own, and a menu bar that hides until Alt, as it does in a
+// window whose chrome the app draws.
+func framedWindow(o mygo.WindowOptions) mygo.WindowOptions {
+	o.AutoHideMenuBar = true
 	if controlsAtRight {
-		return 12
+		o.TitleBarStyle = mygo.TitleBarHidden
+		o.HideWindowButtons = true
+		return o
 	}
-	return trafficLightLeft + trafficLightsW + 8
+	// macOS keeps its traffic lights: they are moved onto the line the chrome
+	// centres on, and the view lays out around what c.TitleBar reports.
+	o.TitleBarStyle = mygo.TitleBarHiddenInset
+	o.TrafficLightPosition = &mygo.Point{X: trafficLightX, Y: trafficLightY}
+	return o
+}
+
+// titleBarLead is where content begins after the room the system's window
+// controls report at the top-left, plus a gap: the traffic lights on macOS, and
+// only a margin where the view draws the controls at the right instead.
+func titleBarLead(bar ui.TitleBar) float32 {
+	if bar.Left > 0 {
+		return bar.Left + 8
+	}
+	return 12
 }
 
 // cardTitleLead is where a card header's title starts with the sidebar folded
-// away: after the window's controls and the column's own button, which the card
-// header takes over with it hidden.
-func cardTitleLead() float32 {
-	return windowLead() + toolbarButton + 8
-}
-
-// framedWindow applies the window's frame before it is created: a hidden title
-// bar under the view's own top bar, no system buttons, and a menu bar that hides
-// until Alt, as it does in a window whose chrome the app draws.
-func framedWindow(o mygo.WindowOptions) mygo.WindowOptions {
-	o.TitleBarStyle = mygo.TitleBarHidden
-	o.HideWindowButtons = true
-	o.AutoHideMenuBar = true
-	return o
+// away: after that room and the column's own button, which the card header
+// takes over with it hidden.
+func cardTitleLead(bar ui.TitleBar) float32 {
+	return titleBarLead(bar) + toolbarButton + 8
 }
 
 // windowFrame is the part of a window the controls act on. mygo.Window satisfies
@@ -103,63 +111,14 @@ var (
 		`<path d="M6 15H5.5A1.5 1.5 0 0 1 4 13.5v-8A1.5 1.5 0 0 1 5.5 4h8A1.5 1.5 0 0 1 15 5.5V6"/>`)
 )
 
-// trafficLightColors are the three dots' colors. They are the platform's, not
-// the palette's: a red light is red in the light appearance and the dark one.
-var (
-	trafficClose    = ui.Hex("#ff5f57")
-	trafficMinimize = ui.Hex("#febc2e")
-	trafficZoom     = ui.Hex("#28c840")
-)
-
-// windowControls draws the window's close, minimize and maximize or restore in
-// the corner the platform keeps them in. They are drawn in an overlay, so that
-// they stay where a window's controls belong: over a dialog, above a split, and
-// there even when no shell is open.
+// windowControls draws the window's own controls, and only on Windows and Linux:
+// macOS's traffic lights are the system's, so there is nothing to draw there.
 func (w *window) windowControls(c *ui.Context) {
-	if w.frameOf() == nil {
+	if !controlsAtRight || w.frameOf() == nil {
 		return
 	}
 	ui.Overlay(c, func() {
-		if controlsAtRight {
-			w.windowButtons(c)
-			return
-		}
-		w.trafficLights(c)
-	})
-}
-
-// trafficLights draws close, minimize and zoom in the window's top-left corner:
-// three dots, with their glyphs while the pointer is over them, as macOS draws
-// them.
-func (w *window) trafficLights(c *ui.Context) {
-	frame := w.frameOf()
-	if frame == nil {
-		return
-	}
-	row := ui.Row(c).Key("window-controls").Absolute().
-		Left(trafficLightLeft).
-		Top((uitokens.TopBar - trafficLightSize) / 2).
-		Gap(trafficLightGap).AlignItems(ui.Center)
-	hovered := row.Hovered()
-	row.Children(func() {
-		trafficLight(c, "window-close", trafficClose, iconClose,
-			locales.WindowClose(), hovered, frame.Close)
-
-		trafficLight(c, "window-minimize", trafficMinimize, iconMinimize,
-			locales.WindowMinimize(), hovered, frame.Minimize)
-
-		maximized := frame.IsMaximized()
-		icon, label := iconMaximize, locales.WindowMaximize()
-		if maximized {
-			icon, label = iconRestore, locales.WindowRestore()
-		}
-		trafficLight(c, "window-maximize", trafficZoom, icon, label, hovered, func() {
-			if maximized {
-				frame.Unmaximize()
-			} else {
-				frame.Maximize()
-			}
-		})
+		w.windowButtons(c)
 	})
 }
 
@@ -227,24 +186,6 @@ func windowButton(c *ui.Context, pal *uitokens.Palette, key string, icon *ui.SVG
 	b.Children(func() {
 		ui.Icon(c, icon).Size(16, 16).TextColor(col)
 	})
-	if b.Clicked() {
-		run()
-	}
-}
-
-// trafficLight is one of the window's dots. The glyph is drawn only while the
-// pointer is over any of the three, as on the platform: a row of dots with a
-// permanent ×, − and + in them reads as buttons rather than as a window's corner.
-func trafficLight(c *ui.Context, key string, color ui.Color, icon *ui.SVG,
-	label string, hovered bool, run func()) {
-	b := ui.Box(c).Key(key).Size(trafficLightSize, trafficLightSize).
-		Radius(trafficLightSize / 2).Center().Background(color).
-		Cursor(ui.CursorPointer).Label(label).Tooltip(label)
-	if hovered {
-		b.Children(func() {
-			ui.Icon(c, icon).Size(7, 7).TextColor(ui.RGBA(0, 0, 0, 0.55))
-		})
-	}
 	if b.Clicked() {
 		run()
 	}

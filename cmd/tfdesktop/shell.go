@@ -298,7 +298,7 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 // pane on screen has the sentence and the button in takeoverBar instead.
 func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focused bool,
 	corner bool) {
-	left := w.headerLead()
+	left := w.headerLead(c)
 	right := float32(10)
 	if corner && controlsAtRight {
 		// The window's controls are drawn over this card's corner on Windows and
@@ -365,8 +365,8 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 // headerLead is where a card's header starts: its own inset while the sidebar is
 // shown, and after the traffic lights and the sidebar's buttons while it is
 // folded away.
-func (w *window) headerLead() float32 {
-	return w.chromeNow().headerPad
+func (w *window) headerLead(c *ui.Context) float32 {
+	return w.chromeNow(c).headerPad
 }
 
 // emptyCardHeader is the header of the card a window with no shell shows. It has

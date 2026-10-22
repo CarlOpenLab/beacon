@@ -1,8 +1,10 @@
 package main
 
-// The window's frame: the system's buttons are off, and the view draws its own,
-// as macOS draws its traffic lights. The takeover strip is laid out under the
-// card's header, where the sentence belongs, rather than under any controls.
+// The window's frame: macOS keeps its traffic lights and the view lays out
+// around the room they report; Windows and Linux take the system's buttons away
+// and the view draws its own at the top-right. The takeover strip is laid out
+// under the card's header, where the sentence belongs, rather than under any
+// controls.
 
 import (
 	"testing"
@@ -31,27 +33,11 @@ func (f *fakeWindowFrame) Unmaximize()       { f.restored++; f.stillMaxed = fals
 func (f *fakeWindowFrame) Close()            { f.closed++ }
 func (f *fakeWindowFrame) IsMaximized() bool { return f.stillMaxed }
 
-// frameTestWidth is the window the frame tests draw at.
-const frameTestWidth = 900
-
-// trafficLightCenter is where one of the three dots sits, from the constants the
-// layout is made of: close, minimize and zoom, left to right.
-func trafficLightCenter(i int) (x, y float32) {
-	x = trafficLightLeft + float32(i)*(trafficLightSize+trafficLightGap) + trafficLightSize/2
-	y = uitokens.TopBar / 2
-	return x, y
-}
-
-// macControls pins the controls to the top-left corner, where the frame tests
-// below read them. The suite runs on every platform, and these are about what
-// macOS shows: Windows and Linux draw the same three actions at the top-right,
-// which TestTheWindowButtonsSitAtTheTopRight covers.
-func macControls(t *testing.T) {
-	t.Helper()
-	previous := controlsAtRight
-	controlsAtRight = false
-	t.Cleanup(func() { controlsAtRight = previous })
-}
+// frameTestWidth and uiHeightForFrameTest are the window the frame tests draw at.
+const (
+	frameTestWidth       = 900
+	uiHeightForFrameTest = 600
+)
 
 // controlsTestWindow is a window with a shell on screen and a frame to count
 // what the controls do.
@@ -63,95 +49,67 @@ func controlsTestWindow(t *testing.T) (*window, *fakeWindowFrame) {
 	return w, f
 }
 
-func TestFramedWindowTurnsTheSystemsControlsOff(t *testing.T) {
-	o := framedWindow(mygo.WindowOptions{TitleBarStyle: mygo.TitleBarHidden})
-	if o.TitleBarStyle != mygo.TitleBarHidden {
-		t.Errorf("TitleBarStyle = %q, want the hidden one", o.TitleBarStyle)
-	}
-	if !o.HideWindowButtons {
-		t.Error("the window kept the system's controls, which would sit beside the drawn ones")
-	}
+// TestFramedWindowKeepsOneSetOfControls reads the frame options: the view's own
+// buttons on Windows and Linux, with the system's taken away, and the system's
+// traffic lights on macOS, moved onto the line the chrome centres on.
+func TestFramedWindowKeepsOneSetOfControls(t *testing.T) {
+	o := framedWindow(mygo.WindowOptions{})
 	if !o.AutoHideMenuBar {
-		t.Error("the window kept a menu bar under a title bar it draws itself")
+		t.Error("the window kept a menu bar under a hidden title bar")
+	}
+	if controlsAtRight {
+		if o.TitleBarStyle != mygo.TitleBarHidden {
+			t.Errorf("TitleBarStyle = %q, want %q", o.TitleBarStyle, mygo.TitleBarHidden)
+		}
+		if !o.HideWindowButtons {
+			t.Error("the window kept the system's buttons, which would sit beside the drawn ones")
+		}
+		if o.TrafficLightPosition != nil {
+			t.Errorf("TrafficLightPosition = %+v, want none where the view draws the controls", o.TrafficLightPosition)
+		}
+		return
+	}
+	if o.TitleBarStyle != mygo.TitleBarHiddenInset {
+		t.Errorf("TitleBarStyle = %q, want %q", o.TitleBarStyle, mygo.TitleBarHiddenInset)
+	}
+	if o.HideWindowButtons {
+		t.Error("the window hid its traffic lights, which are macOS's own")
+	}
+	if o.TrafficLightPosition == nil || o.TrafficLightPosition.X != trafficLightX || o.TrafficLightPosition.Y != trafficLightY {
+		t.Errorf("TrafficLightPosition = %+v, want %d,%d", o.TrafficLightPosition, trafficLightX, trafficLightY)
 	}
 }
 
-// TestTheWindowControlsActOnTheWindow presses all three where they are drawn.
-func TestTheWindowControlsActOnTheWindow(t *testing.T) {
-	macControls(t)
-	w, f := controlsTestWindow(t)
-	tt := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
-	tt.Frame()
-
-	minX, y := trafficLightCenter(1)
-	tt.ClickAt(minX, y)
-	tt.Frame()
-	if f.minimized != 1 {
-		t.Fatalf("the minimize control called Minimize %d times, want once", f.minimized)
+// TestTheChromeClearsTheSystemsLights is the macOS layout: the sidebar's own
+// buttons start after the room the traffic lights report, and the card header
+// takes the same room before its title when the sidebar is folded away.
+func TestTheChromeClearsTheSystemsLights(t *testing.T) {
+	for _, bar := range []ui.TitleBar{{Left: 68, Height: 60}, {}} {
+		if got := titleBarLead(bar); got < bar.Left+8 || got < 12 {
+			t.Errorf("titleBarLead(%+v) = %v, want the lights' room plus a gap", bar, got)
+		}
+		if bar.Left == 0 {
+			if got := titleBarLead(bar); got != 12 {
+				t.Errorf("titleBarLead(%+v) = %v, want a margin with no controls", bar, got)
+			}
+		}
+	}
+	if got, want := cardTitleLead(ui.TitleBar{Left: 68}), float32(68+8)+toolbarButton+8; got != want {
+		t.Errorf("cardTitleLead = %v, want %v", got, want)
 	}
 
-	maxX, _ := trafficLightCenter(2)
-	tt.ClickAt(maxX, y)
-	tt.Frame()
-	if f.maximized != 1 || !f.stillMaxed {
-		t.Fatalf("the zoom control did not maximize: %+v", f)
-	}
-	tt.ClickAt(maxX, y)
-	tt.Frame()
-	if f.restored != 1 || f.stillMaxed {
-		t.Fatalf("the zoom control did not restore a maximized window: %+v", f)
-	}
-
-	closeX, _ := trafficLightCenter(0)
-	tt.ClickAt(closeX, y)
-	tt.Frame()
-	if f.closed != 1 {
-		t.Fatalf("the close control called Close %d times, want once", f.closed)
-	}
-}
-
-const uiHeightForFrameTest = 600
-
-// TestAnEmptyWindowStillHasItsControls draws the window with no shell: the
-// controls belong to the frame, not to a terminal, and a window with no way to
-// close is worse than an empty one.
-func TestAnEmptyWindowStillHasItsControls(t *testing.T) {
-	macControls(t)
 	w, _ := newTestShellWindow(t)
 	w.fleet = newTestFleet(t)
-	f := &fakeWindowFrame{}
-	w.frameStub = f
-
 	tt := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
+	tt.SetTitleBar(ui.TitleBar{Left: 68, Height: 60})
 	tt.Frame()
-	x, y := trafficLightCenter(0)
-	tt.ClickAt(x, y)
-	tt.Frame()
-	if f.closed != 1 {
-		t.Fatalf("an empty window has no close control: %+v", f)
+
+	show, ok := tt.Find(locales.ActionToggleSidebar())
+	if !ok {
+		t.Fatalf("the sidebar's toggle is not on screen; texts = %v", tt.Texts())
 	}
-}
-
-// TestTheControlsSitInTheTopLeft reads the corner off the layout: the three dots
-// start at the window's edge, on the top bar's center line, and their labels are
-// the window's own.
-func TestTheControlsSitInTheTopLeft(t *testing.T) {
-	macControls(t)
-	w, _ := controlsTestWindow(t)
-	tt := ui.NewTester(w.view, frameTestWidth, uiHeightForFrameTest)
-	tt.Frame()
-
-	for _, label := range []string{locales.WindowClose(), locales.WindowMinimize()} {
-		rect, ok := tt.Find(label)
-		if !ok {
-			t.Fatalf("%q is not on screen; texts = %v", label, tt.Texts())
-		}
-		if rect.X >= float32(frameTestWidth)/2 {
-			t.Errorf("%q is at x=%v, not in the window's left corner", label, rect.X)
-		}
-		if center := rect.Y + rect.H/2; center < uitokens.TopBar/2-2 || center > uitokens.TopBar/2+2 {
-			t.Errorf("%q is centered at y=%v, not on the top bar's line %v", label, center, uitokens.TopBar/2)
-		}
+	if show.X < 68+8 {
+		t.Errorf("the sidebar's toggle is at x=%v, inside the traffic lights' room", show.X)
 	}
 }
 

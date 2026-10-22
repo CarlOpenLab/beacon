@@ -639,7 +639,7 @@ func (w *window) view(c *ui.Context) {
 	backdrop(c, pal, row, w.store.Get().Background)
 	// The column's fold: one progress drives the sidebar's width, the cards'
 	// left padding and the header's inset, so the three move as one surface.
-	ch := chromeFor(row.AnimateTo("sidebar", b2f(!w.sidebarHidden), sidebarMotion), w.sideWidth())
+	ch := chromeFor(row.AnimateTo("sidebar", b2f(!w.sidebarHidden), sidebarMotion), w.sideWidth(), c.TitleBar())
 	w.chrome = ch
 	row.Children(func() {
 		if ch.shown > 0.001 {
