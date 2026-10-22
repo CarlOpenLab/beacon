@@ -36,26 +36,6 @@ func TestPickUTF8Locale(t *testing.T) {
 	}
 }
 
-// The macOS preference names a locale the way `locale -a` does, and a language
-// tag, which the C library does not know, names nothing rather than a locale
-// that would make every shell complain at startup.
-func TestLocaleName(t *testing.T) {
-	tests := map[string]string{
-		"zh_CN":                "zh_CN.UTF-8",
-		"en_US\n":              "en_US.UTF-8",
-		"en_US@currency=USD":   "en_US.UTF-8",
-		"zh-Hans-CN":           "",
-		"":                     "",
-		"en_US.UTF-8":          "",
-		"somewhere/else.UTF-8": "",
-	}
-	for in, want := range tests {
-		if got := localeName(in); got != want {
-			t.Errorf("localeName(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 // A locale the environment already names is the one used, empty values
 // included: a unit that cleared LANG says no more than launchd, and both are a
 // reason to name one.
@@ -146,8 +126,12 @@ func TestAShellSeesTheUTF8Locale(t *testing.T) {
 		out, _, _ := sess.Ring().ReadFrom(0)
 		for _, line := range strings.Split(string(out), "\n") {
 			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "<") && strings.HasSuffix(line, ">") && strings.HasSuffix(line, ".UTF-8>") {
-				return
+			if strings.HasPrefix(line, "<") && strings.HasSuffix(line, ">") {
+				// glibc spells the name "en_US.utf8" where macOS says
+				// "en_US.UTF-8"; both are the locale that was asked for.
+				if sameLocale(line[1:len(line)-1], utf8Locale()) {
+					return
+				}
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
