@@ -36,12 +36,29 @@ func windowRadiusFor(goos string) float32 {
 	}
 }
 
-// cardRadiusFor is the card's corner: the window's, less the frame around it.
-// On Windows the arithmetic lands on 0 — an 8px card inset from an 8px corner
-// is square, and pretending otherwise would put the wedge back.
-func cardRadiusFor(goos string) float32 {
-	return max(0, windowRadiusFor(goos)-float32(uitokens.CardGap))
+// minCardRadius is the smallest corner a card keeps, and it exists because the
+// arithmetic alone gives Windows 0: an 8px window corner less an 8px frame is a
+// square card. Perfectly parallel, and it reads as no card at all — a square
+// panel inside a rounded window pinches the wash at the corner instead of
+// widening it, and the window's own rounding calls attention to it. Eight is
+// the window's own curvature, so the card is as round as the window even where
+// it cannot be parallel to it; the frame widens by a little over a pixel at the
+// corner, which the eye reads as a frame rather than as a mistake.
+const minCardRadius float32 = 8
+
+// cardRadiusForVersion is the card's corner: the window's, less the frame
+// around it, and never below minCardRadius. The version matters only on macOS,
+// where the window corner moved from 10 to 28 in 26.
+func cardRadiusForVersion(goos string, macMajor int) float32 {
+	win := windowRadiusFor(goos)
+	if goos == "darwin" && macMajor < 26 {
+		win = 10
+	}
+	return max(minCardRadius, win-float32(uitokens.CardGap))
 }
 
+// cardRadiusFor is the card's corner for a platform at its current version.
+func cardRadiusFor(goos string) float32 { return cardRadiusForVersion(goos, 26) }
+
 // cardRadius is the workspace card's corner on this machine.
-func cardRadius() float32 { return cardRadiusFor(runtime.GOOS) }
+func cardRadius() float32 { return cardRadiusForVersion(runtime.GOOS, macMajorVersion()) }

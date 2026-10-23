@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.2
+
+**Beacon 0.7.2: Windows 的卡片保留圆角 — Windows keeps its card corners**
+
+- **A card never goes square.** 0.7.1 made the card `window − 8`, which is exactly parallel; on Windows the window rounds at 8, so that is 0 — a square card inside a rounded window, which reads as no card at all and pinches the wash at the corner instead of widening it. The card now keeps a floor of 8: as round as the window itself, with the frame widening by a little over a pixel at the corner rather than the card losing its shape. Linux (12 − 8 = 4) comes up to the same floor.
+  — 0.7.1 让卡片取 `窗口 − 8`，严格平行；Windows 的窗口圆角是 8，于是算出 0 —— 圆角窗口里一张方角卡片，看着像没有卡片，而且转角处的留白被挤窄而不是变宽。现在卡片有 8 的下限：和窗口本身一样圆，角上的留白只宽一像素多一点，而不是把卡片的形状去掉。Linux（12 − 8 = 4）同样抬到这条下限。
+- **macOS is asked which version it is.** The window corner moved from 10 (macOS 15 and earlier) to 28 (26, Tahoe); 0.7.1 hard-coded the modern one, which would over-round the card on an older Mac. The version is read from the kernel at startup, so Tahoe still gets 20 and older releases get the floor of 8 instead of a card rounder than its window.
+  — macOS 的窗口圆角从 10（15 及更早）变成了 28（26，Tahoe）；0.7.1 写死的是新值，在旧系统上会把卡片做得比窗口还圆。现在启动时向内核读系统版本：Tahoe 仍是 20，旧版本落到 8 的下限，而不是一张比窗口更圆的卡片。
+
 ## 0.7.1
 
 **Beacon 0.7.1: 卡片重新圆回来，并按窗口的圆角对齐 — Cards keep their rounding, sized to the window's corner**
