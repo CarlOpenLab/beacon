@@ -51,6 +51,10 @@
   "@app_refreshed_machines": {
     "description": "The status bar, after asking the relay for its roster."
   },
+  "app_session_gone": "这个会话已经不在了：它在别处结束了，标签已关闭。",
+  "@app_session_gone": {
+    "description": "The status bar, when a tab was opened for a session that no longer exists."
+  },
   "app_service_start_failed": "本机服务没能启动（{reason}）：浏览器和手机连不进来。窗口里的终端不受影响。",
   "@app_service_start_failed": {
     "description": "The status bar, when the local service could not listen at startup.",

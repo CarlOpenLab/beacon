@@ -160,6 +160,22 @@ func (msgs Messages) AppRefreshedMachines() string {
 	return Catalog.Format(msgs.locale, "app_refreshed_machines", nil)
 }
 
+// AppSessionGone says "这个会话已经不在了：它在别处结束了，标签已关闭。"
+// in the language the app shows.
+//
+// The status bar, when a tab was opened for a session that no longer
+// exists.
+func AppSessionGone() string { return In(i18n.Locale()).AppSessionGone() }
+
+// AppSessionGone says "这个会话已经不在了：它在别处结束了，标签已关闭。"
+// in the language of msgs.
+//
+// The status bar, when a tab was opened for a session that no longer
+// exists.
+func (msgs Messages) AppSessionGone() string {
+	return Catalog.Format(msgs.locale, "app_session_gone", nil)
+}
+
 // AppServiceStartFailed says "本机服务没能启动（{reason}）：浏览器和手机连不进来。窗口里的终端不受影响。"
 // in the language the app shows.
 //

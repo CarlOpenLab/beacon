@@ -478,6 +478,11 @@ func (w *window) rosterArrived(machines []tunnel.Machine) {
 
 // remoteSessionsArrived is a remote machine's hub reporting what it runs.
 func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) {
+	// A stale row is what a click on a gone session is made of, and the list is
+	// the only thing that can keep one on screen. Counted here so a report of
+	// "the row would not go" can be read off the log: the machine pushed, or it
+	// did not.
+	diag.Debugf("link", "session list machine=%s count=%d", machine, len(list))
 	w.update(func() {
 		w.refreshLanded(machine)
 		w.remoteSessions[machine] = list
@@ -1644,6 +1649,35 @@ func (w *window) removeTab(tb *tab) {
 	w.syncSplit()
 }
 
+// forgetSession drops a session from the list the panel draws, for one the hub
+// has just answered no_session: the panel would otherwise keep offering a row
+// nobody can open, and a click on it is what opened a tab for a shell that was
+// already gone. The hub's next list is the authority and arrives on its own.
+func (w *window) forgetSession(machine, id string) {
+	if id == "" {
+		return
+	}
+	if machine == machineLocal || machine == "" {
+		kept := w.live[:0]
+		for _, s := range w.live {
+			if s.SessionID != id {
+				kept = append(kept, s)
+			}
+		}
+		w.live = kept
+		delete(w.dismissed, id)
+		return
+	}
+	list := w.remoteSessions[machine]
+	kept := list[:0]
+	for _, s := range list {
+		if s.SessionID != id {
+			kept = append(kept, s)
+		}
+	}
+	w.remoteSessions[machine] = kept
+}
+
 // tabOfSession is the tab a session belongs to, found through the session
 // rather than its id: a session the hub has just named has a tab whose id the
 // window is only now learning.
@@ -1740,6 +1774,9 @@ func (h tabHandlers) Attached(sum protocol.Summary, cursor int64, truncated bool
 		if tb == nil {
 			return
 		}
+		tb.mu.Lock()
+		tb.attached = true
+		tb.mu.Unlock()
 		tb.alive = sum.Alive
 		tb.setTitle(sum.Title)
 		if tb.program == "" && sum.Shell != "" {
@@ -1879,6 +1916,28 @@ func (h tabHandlers) Failed(code, message string) {
 			}
 			w.invalidate()
 		})
+	case protocol.ErrNoSession:
+		// The session this tab was opened for is gone. A row can outlive its
+		// shell — the panel draws the last list the machine pushed, and a click
+		// on one is the only thing that asks the hub — so a tab with no attach
+		// behind it is a view of nothing. It used to read as ended ("会话已退出，
+		// 最后几行仍可读取") over a blank pane, offering lines that do not exist;
+		// it goes now, and the stale row with it.
+		w.update(func() {
+			tb := h.tab()
+			if tb == nil || tb.everAttached() {
+				return
+			}
+			diag.Infof("term", "session was gone before the tab attached machine=%s session=%s", tb.machine, tb.id)
+			machine := tb.machine
+			w.removeTab(tb)
+			w.forgetSession(machine, tb.id)
+			w.setNotice(locales.AppSessionGone())
+			if machine != machineLocal {
+				w.ensureSessionList(machine)
+			}
+			w.invalidate()
+		})
 	case protocol.ErrControlOff:
 		// The machine said no: it allows other clients to watch and not to type.
 		// There is no holder to name, so this is not the popover — it is the line
@@ -1936,6 +1995,12 @@ type tab struct {
 	// arrives — see finish, which is the only place it is turned off and the
 	// reason it is not left to the session list.
 	alive bool
+
+	// attached is whether the hub ever answered this tab's attach. A tab that
+	// has not is a view of nothing — the session it was opened for may already
+	// be gone — and isEnded must not read its false alive as a shell that exited:
+	// that put "会话已退出，最后几行仍可读取" over a blank pane.
+	attached bool
 
 	mu    sync.Mutex
 	title string
@@ -2157,14 +2222,27 @@ func (t *tab) isPending() bool {
 	return t.id == ""
 }
 
-// isEnded reports whether this tab has finished/exited.
+// isEnded reports whether this tab has finished/exited. A tab that never
+// attached has nothing to have ended: its false alive is the state before the
+// hub's answer, not the shell's, and a session that turned out to be gone is
+// removed on the no_session error rather than dressed up as an exit.
 func (t *tab) isEnded() bool {
 	if t == nil {
 		return false
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.done || (t.id != "" && !t.alive)
+	return t.done || (t.attached && t.id != "" && !t.alive)
+}
+
+// everAttached reports whether the hub ever answered this tab's attach.
+func (t *tab) everAttached() bool {
+	if t == nil {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.attached
 }
 
 // programName turns the shell path a session reports into the short name shown
@@ -2202,8 +2280,10 @@ func (t *tab) close() {
 	// The link keeps a session object per id, and a closed tab's must not stay
 	// there: the next tab on the same shell would register itself behind a
 	// closed conn, and the replay would be written to a terminal nobody draws.
-	// See (*link).watch, which takes over the id for the same reason.
-	if t.sess != nil {
+	// See (*link).watch, which takes over the id for the same reason. A session
+	// with no link behind it is one a test made, or one whose machine went away
+	// before there was a link to unregister from.
+	if t.sess != nil && t.sess.link != nil {
 		t.sess.link.unwatchSession(t.sess)
 	}
 }

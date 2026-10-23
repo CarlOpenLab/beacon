@@ -9,6 +9,7 @@
   "app_refreshed_local": "This machine's sessions refreshed",
   "app_refreshed_machine": "{name}'s sessions refreshed",
   "app_refreshed_machines": "Machine list refreshed",
+  "app_session_gone": "That session is gone: it ended elsewhere, so its tab is closed.",
   "app_service_start_failed": "The local service failed to start ({reason}): browsers and phones cannot connect. The terminals in this window are unaffected.",
   "app_released_lease": "Control released: now watching read-only, {name} keeps running in the background",
   "app_control_off": "This machine does not allow other clients to control it: turn it on in its Settings → Service → Allow control.",
