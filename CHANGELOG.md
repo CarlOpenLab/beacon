@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.1
+
+**Beacon 0.7.1: 卡片重新圆回来，并按窗口的圆角对齐 — Cards keep their rounding, sized to the window's corner**
+
+- **The workspace card's corner is the window's minus the frame, at the window's real radius.** 0.7.0 fixed the alignment by assuming the window corner was 10 and shrinking the card to 4 — which is what a 10px window needs, and macOS 26 is not that window: it rounds at about 28. The card is 20 now (28 − 8), so it is rounder than the 14 it started with *and* the 8px wash keeps one width all the way round. Windows 11 (8) puts the card at 0 and Linux (12) at 4; the arithmetic is the same rule in all three. The card radius is no longer a standalone token, it is derived — so a future system change moves it instead of silently pinching the corner.
+  — 0.7.0 把窗口圆角当成 10、把卡片缩到 4，那是 10px 窗口该有的答案；macOS 26 不是那个窗口，它是约 28。现在卡片是 20（28 − 8），比最初的 14 还圆，同时 8px 留白在角上和边上一样宽。Windows 11（8）算出 0，Linux（12）算出 4，三处是同一条规则。卡片圆角不再是一个独立 token，而是推导出来的——系统以后变圆，它跟着走，而不是悄悄把角挤薄。
+- **A light card gets a 1px hard edge.** The window's own edge is a hard system line; a card lifted only by shadows reads as a soft grey smudge at the corner — right curve, wrong material. It is drawn as a zero-blur shadow rather than a border so it cannot take a pixel out of the card's inside.
+  — 浅色卡片补了 1px 硬边。窗口那圈是系统画的硬线，只靠阴影浮起来的卡片在角上是一团软灰——弧度对了、质感不对。用零模糊阴影而不是 Border，避免它像内边距一样把卡片内容挤进去 1px。
+
 ## 0.7.0
 
 **Beacon 0.7.0: 远程更接近本地 — paste images across machines, compress the wire, name every build — Beacon：图片能粘到对面，链路会压缩，每台机器的版本都看得见**

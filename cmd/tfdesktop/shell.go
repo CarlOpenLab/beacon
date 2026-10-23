@@ -204,7 +204,7 @@ func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 		// with nothing open is a card's worth of chrome, not a paragraph floating
 		// on the wash.
 		ui.Box(c).Fill().Children(func() {
-			card := ui.Column(c).Fill().Radius(uitokens.CardRadiusEdge).Clip()
+			card := ui.Column(c).Fill().Radius(cardRadius()).Clip()
 			raised(card.Background(pal.Card), pal)
 			card.Children(func() {
 				// The card still has a header, even with no shell in it: it is
@@ -237,7 +237,7 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 		if multi && !focused {
 			bg = pal.CardDim
 		}
-		card := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Radius(uitokens.CardRadiusEdge).Clip()
+		card := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Radius(cardRadius()).Clip()
 		raised(card.Background(card.AnimateColor("bg", bg, ui.Animation{Duration: 140e6})), pal)
 		if focus != nil && card.Pressed() && !focused {
 			focus()

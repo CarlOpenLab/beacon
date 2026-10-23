@@ -16,7 +16,14 @@ func raised(e ui.Element, pal *uitokens.Palette) ui.Element {
 	if pal.Dark {
 		return darkShadow(litEdge(e, pal))
 	}
-	return e.Shadow(0, 1, 2, 0, pal.CardShadow).Shadow(0, 1, 6, 0, pal.CardShadow2)
+	// A light card gets a 1px hard edge too. The window's own edge is a hard
+	// line; a card lifted only by a shadow reads as a soft grey smudge, so the
+	// corner has the right curve and the wrong material. The edge is a
+	// zero-blur shadow rather than a Border because a border takes a pixel out
+	// of the card's inside and every 8px gap around it would be off by one.
+	return e.Shadow(0, 0, 0, 1, pal.CardBorder).
+		Shadow(0, 1, 2, 0, pal.CardShadow).
+		Shadow(0, 1, 6, 0, pal.CardShadow2)
 }
 
 // chosen lifts the chosen row of a list a hair: an even ring a shade darker than
