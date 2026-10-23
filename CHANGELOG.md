@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.6.8
+
+**Beacon: a tab for a session that is gone is closed, not called exited — Beacon：会话已经不在了的标签，直接关掉，而不是说它「已退出」**
+
+- **A tab opened on a session the hub no longer has is closed, with a sentence.** The panel draws the last session list its machine pushed, so a row can outlive its shell; clicking one opened a tab, the attach was answered `no_session`, and the window read the attach that never came as an exit — "会话已退出，最后几行仍可读取" over a blank pane, a sentence about a final line that does not exist. That tab is removed now, the stale row goes with it, the machine's list is asked for again, and the status bar says the session is gone. A tab that did watch a shell end keeps its banner and its output.
+  — 「会话」面板画的是一台机器最后一次推来的列表，所以一行可能比它的 shell 活得久：点它会开出一个标签，attach 得到 `no_session`，而窗口把「没有 attach」读成了「已经退出」，于是在一个空面板上写「会话已退出，最后几行仍可读取」——一句最后一行为空的话。现在这种标签会被关掉，过期的行也一起消失，并重新向那台机器要一次会话列表，状态栏说明这个会话已经不在了；真正看着 shell 结束的标签仍然保留横幅和最后输出。
+- **Session lists are counted in the diagnostic log.** Every list a machine pushes logs its machine and size, so a row that will not go can be told apart from a list that never arrived.
+  — 机器每次推来的会话列表都会在诊断日志里记下机器与条数，于是「行不肯消失」和「列表根本没来」可以区分开。
+
 ## 0.6.7
 
 **Beacon: a close closes the tab, even from an older client — Beacon：旧客户端发出的关闭，也不会再留下「已退出」**
