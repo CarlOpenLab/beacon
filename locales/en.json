@@ -548,5 +548,6 @@
   "paste_read_only": "Read-only: take control of this terminal first",
   "paste_unsupported": "The Beacon on this machine is too old to receive files",
   "paste_failed": "Paste failed: {reason}",
-  "paste_too_large": "Too large: {name} (32 MB limit)"
+  "paste_too_large": "Too large: {name} (32 MB limit)",
+  "attach_truncated": "You were away too long: the screen may be incomplete (latest output replayed)"
 }

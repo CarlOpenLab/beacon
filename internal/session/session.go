@@ -23,7 +23,13 @@ var (
 
 // ringCapacity bounds the per-session scrollback kept for reconnecting
 // clients and for TUI applications that repaint the whole screen.
-const ringCapacity = 256 * 1024
+//
+// A megabyte rather than a quarter of one: a phone that slept through a build
+// log, or a laptop that closed its lid while an agent worked, otherwise comes
+// back to a replay whose first bytes are the middle of a line. The memory is
+// per live session and bounded, and the hub still sends it in 16 KiB frames,
+// so no single message grows with it.
+const ringCapacity = 1 << 20
 
 // Session owns one PTY process and the output history a client can rewind
 // into. It has no notion of clients: attach/detach lives in the hub, so a

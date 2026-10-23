@@ -112,3 +112,24 @@ func TestARemoteShellBindsBothPasteSpellings(t *testing.T) {
 		}
 	}
 }
+
+// A pasted file's path reaches the shell as one word, in the quoting the shell
+// on that machine reads: a screenshot into a directory with a space in it must
+// not become two arguments.
+func TestShellQuote(t *testing.T) {
+	cases := []struct {
+		path     string
+		platform string
+		want     string
+	}{
+		{"/tmp/beacon-paste/shot.png", "darwin", "'/tmp/beacon-paste/shot.png'"},
+		{"/tmp/it's here.png", "linux", `'/tmp/it'\''s here.png'`},
+		{`C:\Users\me\shot.png`, "windows", `'C:\Users\me\shot.png'`},
+		{`C:\it's.png`, "windows", `'C:\it''s.png'`},
+	}
+	for _, tc := range cases {
+		if got := shellQuote(tc.path, tc.platform); got != tc.want {
+			t.Errorf("shellQuote(%q, %q) = %q, want %q", tc.path, tc.platform, got, tc.want)
+		}
+	}
+}

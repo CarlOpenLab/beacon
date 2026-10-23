@@ -121,13 +121,17 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p stage
           ext=""
           if [ "$GOOS" = windows ]; then ext=".exe"; fi
-          go build -trimpath -ldflags "-s -w" -o "stage/tfd$ext" ./cmd/tfd
-          go build -trimpath -ldflags "-s -w" -o "stage/tfrelay$ext" ./cmd/tfrelay
+          # The version is stamped in: a machine's roster entry names the build
+          # it answers as, and "devel" on every row answers nothing.
+          ldflags="-s -w -X github.com/CarlOpenLab/term-fleet/internal/diag.buildVersion=${VERSION}"
+          go build -trimpath -ldflags "$ldflags" -o "stage/tfd$ext" ./cmd/tfd
+          go build -trimpath -ldflags "$ldflags" -o "stage/tfrelay$ext" ./cmd/tfrelay
           cp README.md stage/
 
       - name: Package and upload

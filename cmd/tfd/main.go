@@ -22,6 +22,20 @@ import (
 )
 
 func main() {
+	// The service subcommand is not this daemon's flags but a way to install
+	// it as one: it runs before flag.Parse, because the flags after it belong to
+	// the service it writes, not to this invocation.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "service":
+			serviceCommand(os.Args[2:])
+			return
+		case "version", "--version", "-version":
+			fmt.Println("tfd " + diag.BuildVersion())
+			return
+		}
+	}
+
 	addr := flag.String("addr", "127.0.0.1:7678",
 		"address to listen on; loopback unless you mean it (off loopback requires -token)")
 	token := flag.String("token", "",
@@ -43,9 +57,14 @@ func main() {
 		"let other clients (a browser, a phone, another machine) drive the shells here; -allow-control=false leaves them read-only")
 	logLevel := flag.String("log-level", "info",
 		"diagnostic log level: error, warn, info or debug; debug records every attach and replay")
+	version := flag.Bool("version", false, "print the version and exit")
 	logDir := flag.String("log-dir", "",
 		"where diagnostic logs are written (default: <settings dir>/logs)")
 	flag.Parse()
+	if *version {
+		fmt.Println("tfd " + diag.BuildVersion())
+		return
+	}
 
 	// This machine's daemon is the one a blank pane is usually blamed on, and
 	// it is often started by init/launchd/Windows service with no console at

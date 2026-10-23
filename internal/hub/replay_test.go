@@ -37,7 +37,7 @@ func (c *conn) recvSized() (protocol.Msg, int) {
 
 // TestLargeReplayArrivesInPeerSizedFrames is the white pane as a test.
 //
-// A session's ring holds 256 KiB, and a client that attaches at cursor 0 is
+// A session's ring holds a megabyte, and a client that attaches at cursor 0 is
 // sent all of it. As one frame that is several times the 32 KiB default that
 // coder/websocket gives a socket, and the peer is disconnected with
 // StatusMessageTooBig before a byte of the replay is used — which reads on the
@@ -56,7 +56,7 @@ func TestLargeReplayArrivesInPeerSizedFrames(t *testing.T) {
 	// More than the ring can hold, so the replay a reconnecting client asks for
 	// is the largest one possible and is flagged truncated.
 	a.send(protocol.Msg{T: protocol.CTInput, SessionID: "s1",
-		Data: []byte("head -c 300000 /dev/zero | tr '\\0' 'x'; echo; printf 'REPLAY_%d_TAIL\n' 7717\n")})
+		Data: []byte("head -c 1300000 /dev/zero | tr '\\0' 'x'; echo; printf 'REPLAY_%d_TAIL\n' 7717\n")})
 	a.waitOutput("REPLAY_7717_TAIL")
 
 	b := dialTest(t, ts)

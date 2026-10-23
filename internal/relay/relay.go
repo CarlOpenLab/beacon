@@ -228,6 +228,22 @@ func (r *Relay) snapshot() []tunnel.Machine {
 	return out
 }
 
+// snapshotFor is the roster one credential may see: a named token limited to a
+// few machines does not learn the rest exist.
+func (r *Relay) snapshotFor(g Grant) []tunnel.Machine {
+	all := r.snapshot()
+	if len(g.Machines) == 0 {
+		return all
+	}
+	out := all[:0]
+	for _, m := range all {
+		if g.Allows(m.ID) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 func (r *Relay) memberByID(id string) *member {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -378,20 +394,21 @@ func (r *Relay) headerToken(rq *http.Request) string {
 // frame must be an auth frame; anything else — including silence past the
 // deadline — closes the socket. The token never travels in the URL, so it
 // cannot leak through access logs or browser history.
-func (r *Relay) authenticateClient(ctx context.Context, conn *websocket.Conn) (bool, string) {
+func (r *Relay) authenticateClient(ctx context.Context, conn *websocket.Conn) (Grant, string) {
 	authCtx, cancel := context.WithTimeout(ctx, tunnel.AuthTimeoutMS*time.Millisecond)
 	defer cancel()
 	f, err := readFrame(authCtx, conn)
 	if err != nil {
-		return false, "no credential"
+		return Grant{}, "no credential"
 	}
 	if f.T != tunnel.TAuth {
-		return false, "expected auth frame, got " + f.T
+		return Grant{}, "expected auth frame, got " + f.T
 	}
-	if !r.tokenOK(f.Token) {
-		return false, "bad token"
+	g, ok := r.token.Grant(f.Token)
+	if !ok {
+		return Grant{}, "bad token"
 	}
-	return true, ""
+	return g, ""
 }
 
 // ---------------------------------------------------------------- endpoints
@@ -439,6 +456,29 @@ func (r *Relay) ServeAgent(w http.ResponseWriter, rq *http.Request) {
 		_ = writeFrame(ctx, conn, tunnel.Frame{T: tunnel.TError, Code: tunnel.ErrBadRequest,
 			Message: "unsupported tunnel version"})
 		return
+	}
+
+	// The same running daemon reached under two enrolled ids is one machine,
+	// not two: its sessions would otherwise appear twice and each copy could
+	// be driven as if it were the other. The later link is refused and names
+	// the one already online, which is what a person needs to remove the
+	// duplicate enrollment rather than watch two rows fight.
+	if instance := hello.Host.Instance; instance != "" {
+		r.mu.Lock()
+		duplicate := ""
+		for otherID, other := range r.members {
+			if otherID != id && other.host.Instance == instance {
+				duplicate = otherID
+				break
+			}
+		}
+		r.mu.Unlock()
+		if duplicate != "" {
+			r.log.Printf("relay: member %s is the same daemon as %s; refusing the second link", id, duplicate)
+			_ = writeFrame(ctx, conn, tunnel.Frame{T: tunnel.TError, Code: tunnel.ErrBadRequest,
+				Message: "same as " + duplicate})
+			return
+		}
 	}
 
 	m := &member{
@@ -517,12 +557,17 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 	// upgrade, so a caller gets an honest 401 instead of an accepted socket that
 	// closes a moment later. Browsers cannot set headers, so they authenticate
 	// in the first frame instead.
+	var grant Grant
 	header := r.headerToken(rq)
-	if header != "" && !r.tokenOK(header) {
-		r.lim.fail(ip)
-		r.log.Printf("relay: rejected client from %s: bad header token", ip)
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
+	if header != "" {
+		g, ok := r.token.Grant(header)
+		if !ok {
+			r.lim.fail(ip)
+			r.log.Printf("relay: rejected client from %s: bad header token", ip)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		grant = g
 	}
 	conn, err := websocket.Accept(w, rq, &websocket.AcceptOptions{OriginPatterns: r.cfg.OriginPatterns})
 	if err != nil {
@@ -536,14 +581,15 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 	ctx := rq.Context()
 	viaFrame := false
 	if header == "" {
-		ok, why := r.authenticateClient(ctx, conn)
-		if !ok {
+		g, why := r.authenticateClient(ctx, conn)
+		if why != "" {
 			r.lim.fail(ip)
 			r.log.Printf("relay: rejected client from %s: %s", ip, why)
 			_ = writeFrame(ctx, conn, errFrame(tunnel.ErrUnauthorized, "authentication required", 0))
 			_ = conn.Close(websocket.StatusPolicyViolation, "unauthorized")
 			return
 		}
+		grant = g
 		viaFrame = true
 	}
 	r.lim.ok(ip)
@@ -553,6 +599,7 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 		conn:    conn,
 		out:     make(chan tunnel.Frame, outboundQueue),
 		done:    make(chan struct{}),
+		grant:   grant,
 		streams: map[uint32]*stream{},
 	}
 
@@ -586,7 +633,7 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 	r.roster[c] = struct{}{}
 	r.rosterMu.Unlock()
 
-	c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshot()})
+	c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshotFor(grant)})
 
 	go r.writeLoop(ctx, conn, c.out, c.done, func() { c.close("write failed") })
 
@@ -603,7 +650,7 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 		case tunnel.TClose:
 			r.handleClientClose(c, f)
 		case tunnel.TMachines:
-			c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshot()})
+			c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshotFor(grant)})
 		default:
 			c.send(errFrame(tunnel.ErrBadRequest, "unexpected frame "+f.T, f.Stream))
 		}
@@ -614,6 +661,13 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 func (r *Relay) handleOpen(c *clientConn, f tunnel.Frame) {
 	if f.Machine == "" || f.Stream == 0 {
 		c.send(errFrame(tunnel.ErrBadRequest, "open needs a machine and a nonzero stream", f.Stream))
+		return
+	}
+	if !c.grant.Allows(f.Machine) {
+		// The same answer an offline machine gets: a credential limited to one
+		// machine should not be able to enumerate the others by watching which
+		// errors differ.
+		c.send(errFrame(tunnel.ErrNoMachine, "no such machine", f.Stream))
 		return
 	}
 	m := r.memberByID(f.Machine)
@@ -703,16 +757,32 @@ func (r *Relay) Machines(w http.ResponseWriter, rq *http.Request) {
 }
 
 func (r *Relay) broadcastMachines() {
-	snap := r.snapshot()
 	r.rosterMu.Lock()
 	cs := make([]*clientConn, 0, len(r.roster))
 	for c := range r.roster {
 		cs = append(cs, c)
 	}
 	r.rosterMu.Unlock()
+	// Each viewer gets the roster it may see: a named token limited to a phone's
+	// machine is not shown the rest of the fleet.
+	snap := r.snapshot()
 	for _, c := range cs {
-		c.send(tunnel.Frame{T: tunnel.TMachines, Machines: snap})
+		if len(c.grant.Machines) == 0 {
+			c.send(tunnel.Frame{T: tunnel.TMachines, Machines: snap})
+			continue
+		}
+		c.send(tunnel.Frame{T: tunnel.TMachines, Machines: filterMachines(snap, c.grant)})
 	}
+}
+
+func filterMachines(all []tunnel.Machine, g Grant) []tunnel.Machine {
+	out := make([]tunnel.Machine, 0, len(all))
+	for _, m := range all {
+		if g.Allows(m.ID) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // ---------------------------------------------------------------- plumbing
@@ -870,11 +940,12 @@ type stream struct {
 }
 
 type clientConn struct {
-	r    *Relay
-	conn *websocket.Conn
-	out  chan tunnel.Frame
-	done chan struct{}
-	once sync.Once
+	r     *Relay
+	conn  *websocket.Conn
+	out   chan tunnel.Frame
+	done  chan struct{}
+	once  sync.Once
+	grant Grant
 
 	mu      sync.Mutex
 	streams map[uint32]*stream

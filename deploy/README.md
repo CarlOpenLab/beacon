@@ -225,9 +225,49 @@ credential.
 
 ### Member as a service
 
-`deploy/tfmember.service` runs `tfd` as a user service. By default the member
-binds its loopback port so a browser on the same LAN can skip the relay
-entirely; the relay path is what makes it reachable from outside.
+A member that is not already running when the phone reaches for it is a machine
+that is offline. Install it as the machine's own service, with the same
+enrollment flags you would have typed:
+
+```sh
+tfd service install \
+  -relay wss://relay.example.com/relay/agent \
+  -device-id <id> -device-secret <secret>
+tfd service status
+```
+
+That writes a systemd user unit on Linux (and enables linger, so it survives
+logout), a launchd agent on macOS, or a logon task on Windows — whichever this
+machine has — and starts it. `tfd service restart` restarts it (its sessions end
+with it), and `tfd service uninstall` removes it. The credential lives in that
+service file at mode 0600; keep it as private as the `tfd` invocation itself.
+
+Re-running `install` with a newer binary replaces it and restarts the service.
+
+### Install without a checkout
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/CarlOpenLab/beacon/main/scripts/install-member.sh \
+  | sh -s -- -relay wss://relay.example.com/relay/agent \
+             -device-id <id> -device-secret <secret>
+```
+
+It downloads the latest `beacon-cli` release for this OS and architecture into
+`~/.local/bin`, then runs `tfd service install` with the flags after `--`. Run
+the same line again to update; the enrollment is unchanged. On Windows use
+`scripts/install-member.ps1` (see its header for the parameters).
+
+By default the member also binds its loopback port, so a browser on the same LAN
+can skip the relay entirely; the relay path is what makes it reachable from
+outside.
+
+### Checking which build a machine runs
+
+`tfd version` prints the build. The desktop window names it in the machine
+panel's tooltip, and the relay's roster carries it, so a machine that is behind
+is visible before it is a problem. Updating is the same install line as above:
+the relay and its members do not have to be upgraded together, because features
+are negotiated rather than versioned into the handshake.
 
 ## 5. Verify
 

@@ -4197,3 +4197,13 @@ func PasteTooLarge(name string) string { return In(i18n.Locale()).PasteTooLarge(
 func (msgs Messages) PasteTooLarge(name string) string {
 	return Catalog.Format(msgs.locale, "paste_too_large", map[string]any{"name": name})
 }
+
+// AttachTruncated says "断线太久：画面可能不完整（已重放最近的输出）"
+// in the language the app shows.
+func AttachTruncated() string { return In(i18n.Locale()).AttachTruncated() }
+
+// AttachTruncated says "断线太久：画面可能不完整（已重放最近的输出）"
+// in the language of msgs.
+func (msgs Messages) AttachTruncated() string {
+	return Catalog.Format(msgs.locale, "attach_truncated", nil)
+}

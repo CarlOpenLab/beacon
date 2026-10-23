@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -168,10 +169,22 @@ func (w *watch) renew(now time.Time, ttl time.Duration) {
 	w.deadline = now.Add(ttl)
 }
 
+// instanceSeq tells two hubs in one process apart. In production a process
+// hosts one hub, so the process itself is the instance; a test that runs two
+// machines side by side is the reason a hub needs its own number.
+var instanceSeq atomic.Uint64
+
 func New(opts Options) *Hub {
 	idle := opts.IdleTimeout
 	if idle <= 0 {
 		idle = DefaultIdleController
+	}
+	// The instance names this running hub, not the process that started it: two
+	// links that reach the same hub are one machine even when they were enrolled
+	// twice, and two hubs are two machines even when a test put them in one
+	// process.
+	if opts.Host.Instance == "" {
+		opts.Host.Instance = fmt.Sprintf("%s/%d", diag.Instance(), instanceSeq.Add(1))
 	}
 	origins := opts.OriginPatterns
 	if len(origins) == 0 {

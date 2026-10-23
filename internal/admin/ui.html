@@ -458,6 +458,30 @@
             <div class="note" id="t-note" hidden>Generating a new token signs everyone out. Open viewers must paste the new one.</div>
             <div class="err" id="t-err"></div>
           </div>
+
+          <div class="divider"></div>
+          <div class="section-head"><h2>Tokens for people</h2></div>
+          <p class="hint">A credential for one person or device, limited to the machines you name and expiring on its own. Revoking it disturbs nobody else.</p>
+          <div class="field">
+            <label for="n-label">Name</label>
+            <div class="control-row">
+              <input id="n-label" placeholder="alice's phone">
+              <select id="n-ttl">
+                <option value="1d">1 day</option>
+                <option value="7d" selected>7 days</option>
+                <option value="30d">30 days</option>
+                <option value="90d">90 days</option>
+              </select>
+            </div>
+            <label for="n-machines" style="margin-top:10px">Machines</label>
+            <input id="n-machines" class="mono" placeholder="all machines — or ids separated by commas">
+            <div class="control-row" style="margin-top:10px">
+              <button class="btn" id="n-mint" type="button">Mint token</button>
+            </div>
+            <div class="note" id="n-new" hidden></div>
+            <div class="err" id="n-err"></div>
+            <div id="tokens"></div>
+          </div>
         </section>
 
         <section class="page" id="page-connect" hidden>
@@ -715,6 +739,74 @@
       (b.defaultTTLSeconds > 0 ? humanDur(b.defaultTTLSeconds) : "Never expires") + " (default)";
   }
 
+  // ── tokens for people ───────────────────────────────────────────────────
+  function renderTokens(tokens) {
+    var box = $("tokens");
+    box.textContent = "";
+    if (!tokens.length) {
+      var p = document.createElement("div");
+      p.className = "empty";
+      p.textContent = "No tokens for people yet.";
+      box.appendChild(p);
+      return;
+    }
+    tokens.forEach(function (t) {
+      var row = document.createElement("div");
+      row.className = "row-item";
+      var grow = document.createElement("div");
+      grow.className = "grow";
+      var title = document.createElement("div");
+      title.className = "row-title";
+      title.textContent = t.label;
+      var sub = document.createElement("div");
+      sub.className = "row-sub";
+      var scope = (t.machines && t.machines.length) ? t.machines.join(", ") : "all machines";
+      sub.textContent = scope + "  ·  expires " + new Date(t.expiresAt).toLocaleString();
+      grow.appendChild(title);
+      grow.appendChild(sub);
+      var end = document.createElement("div");
+      end.className = "row-end";
+      var rm = document.createElement("button");
+      rm.className = "danger";
+      rm.type = "button";
+      rm.textContent = "Revoke";
+      rm.onclick = function () {
+        if (!confirm("Revoke the token for " + t.label + "?")) return;
+        api("tokens/revoke", { method: "POST", body: JSON.stringify({ token: t.token }) })
+          .then(loadTokens).catch(function (e) { text($("n-err"), e.message); });
+      };
+      end.appendChild(rm);
+      row.appendChild(grow);
+      row.appendChild(end);
+      box.appendChild(row);
+    });
+  }
+
+  function loadTokens() {
+    return api("tokens").then(function (b) { renderTokens(b.tokens || []); });
+  }
+
+  function mintToken() {
+    var label = $("n-label").value.trim();
+    if (!label) { text($("n-err"), "Give the token a name first."); return; }
+    var machines = $("n-machines").value.split(",")
+      .map(function (s) { return s.trim(); })
+      .filter(function (s) { return s; });
+    api("tokens", {
+      method: "POST",
+      body: JSON.stringify({ label: label, ttl: $("n-ttl").value, machines: machines }),
+    }).then(function (b) {
+      $("n-mint").onclick = mintToken;
+      var note = $("n-new");
+      note.hidden = false;
+      note.textContent = "Give this to " + b.label + ": " + b.token + "  (shown now; the list keeps it)";
+      $("n-label").value = "";
+      $("n-machines").value = "";
+      text($("n-err"), "");
+      loadTokens();
+    }).catch(function (e) { text($("n-err"), e.message); });
+  }
+
   // ── logs ────────────────────────────────────────────────────────────────
   function relTime(iso) {
     if (!iso) return "";
@@ -867,6 +959,8 @@
     refresh().catch(function (e) { text($("d-err"), e.message); });
     api("token").then(showToken)
       .catch(function (e) { text($("t-err"), e.message); });
+    $("n-mint").onclick = mintToken;
+    loadTokens().catch(function (e) { text($("n-err"), e.message); });
   }
 
   function updateCmd() {

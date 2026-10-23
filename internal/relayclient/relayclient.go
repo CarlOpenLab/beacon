@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
+
 	"github.com/coder/websocket"
 
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
@@ -68,6 +70,12 @@ type Handlers interface {
 }
 
 // Client is the desktop's connection to a relay as a client.
+// sendQueue bounds frames waiting to go out on the relay socket. A queue that
+// fills means the relay is not reading, and dropping a frame would silently
+// lose terminal bytes the cursor says were delivered — so a full queue ends
+// the link instead, and the reconnect resumes from the client's own cursor.
+const sendQueue = 256
+
 type Client struct {
 	url        string
 	token      string
@@ -90,6 +98,12 @@ type Client struct {
 	machines  []tunnel.Machine
 	closed    bool
 	backoff   time.Duration
+
+	// out is the socket's one writer queue; see startWriter. outDone ends the
+	// writer of a socket that is going away, and out is nil between sockets.
+	outMu   sync.Mutex
+	out     chan tunnel.Frame
+	outDone chan struct{}
 }
 
 // Options configure a client's transport.
@@ -216,6 +230,7 @@ func (c *Client) Close() {
 	c.byMachine = map[string]*Stream{}
 	c.byStream = map[uint32]*Stream{}
 	c.mu.Unlock()
+	c.stopWriter()
 
 	if ws != nil {
 		_ = ws.Close(websocket.StatusNormalClosure, "client closing")
@@ -247,6 +262,7 @@ func (c *Client) connect(ctx context.Context) error {
 	c.mu.Lock()
 	c.ws = ws
 	c.mu.Unlock()
+	c.startWriter(ws)
 
 	// The token travels in the first frame, never in the URL: a query string
 	// ends up in access logs, proxy logs and browser history.
@@ -330,6 +346,7 @@ func (c *Client) linkDown(ws *websocket.Conn, reason string) {
 		s.rename(0)
 	}
 	c.mu.Unlock()
+	c.stopWriter()
 
 	for _, s := range streams {
 		s.end(reason)
@@ -430,20 +447,75 @@ func (c *Client) streamOf(id uint32) *Stream {
 	return c.byStream[id]
 }
 
+// startWriter gives the socket one writer. Every frame, from any stream and any
+// goroutine, goes through this queue: the window's own thread never waits on a
+// relay that has stopped reading, and the order the frames were decided in is
+// the order they travel in.
+func (c *Client) startWriter(ws *websocket.Conn) {
+	out := make(chan tunnel.Frame, sendQueue)
+	done := make(chan struct{})
+	c.outMu.Lock()
+	c.out, c.outDone = out, done
+	c.outMu.Unlock()
+
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case f := <-out:
+				b, err := json.Marshal(f)
+				if err != nil {
+					continue
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				err = ws.Write(ctx, websocket.MessageText, b)
+				cancel()
+				if err != nil {
+					c.linkDown(ws, "中继写入失败")
+					return
+				}
+			}
+		}
+	}()
+}
+
+// stopWriter retires the queue of a socket that is going away. Frames left in
+// it belong to that socket and are not sent on the next one: the streams are
+// reopened with fresh numbers, and a stale attach would name a stream the relay
+// no longer has.
+func (c *Client) stopWriter() {
+	c.outMu.Lock()
+	if c.outDone != nil {
+		close(c.outDone)
+		c.outDone = nil
+	}
+	c.out = nil
+	c.outMu.Unlock()
+}
+
 func (c *Client) raw(f tunnel.Frame) bool {
-	c.mu.Lock()
-	ws := c.ws
-	c.mu.Unlock()
-	if ws == nil {
+	c.outMu.Lock()
+	out, done := c.out, c.outDone
+	c.outMu.Unlock()
+	if out == nil {
 		return false
 	}
-	b, err := json.Marshal(f)
-	if err != nil {
+	select {
+	case <-done:
+		return false
+	case out <- f:
+		return true
+	default:
+		diag.Warnf("relay", "send queue full; ending the link so it can resume by cursor")
+		c.mu.Lock()
+		ws := c.ws
+		c.mu.Unlock()
+		if ws != nil {
+			go c.linkDown(ws, "发送队列已满")
+		}
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return ws.Write(ctx, websocket.MessageText, b) == nil
 }
 
 func (c *Client) setState(s State, detail string) {

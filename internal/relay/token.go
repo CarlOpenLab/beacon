@@ -48,6 +48,17 @@ type TokenStore struct {
 	// and each remembers which machine asked, so an operator can see who was
 	// handed one.
 	minted map[string]mintedToken
+
+	// named are credentials minted for people or devices that are not enrolled
+	// machines. They are memory only on purpose; see NamedToken.
+	named map[string]namedEntry
+}
+
+// namedEntry is a named credential as the store holds it.
+type namedEntry struct {
+	label     string
+	machines  []string
+	expiresAt time.Time
 }
 
 // mintedToken is one credential handed to an enrolled machine.
@@ -130,23 +141,8 @@ func (s *TokenStore) Get() string {
 // enrolled machine. Comparisons are constant time, so a caller cannot learn a
 // token one byte at a time.
 func (s *TokenStore) Accept(got string) bool {
-	if got == "" {
-		return false
-	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	now := time.Now()
-	if s.token != "" && (s.expiresAt.IsZero() || now.Before(s.expiresAt)) {
-		if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
-			return true
-		}
-	}
-	for token, m := range s.minted {
-		if now.Before(m.expiresAt) && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
-			return true
-		}
-	}
-	return false
+	_, ok := s.Grant(got)
+	return ok
 }
 
 // Mint issues a credential to the machine named device, good for ttl (a ttl
@@ -277,4 +273,134 @@ func (s *TokenStore) Rotate(ttl time.Duration) (string, error) {
 		return "", err
 	}
 	return t, nil
+}
+
+// Grant is what a presented credential may reach. The shared token and the
+// short-lived credentials minted to an enrolled machine reach every machine;
+// a named token may be limited to a few, which is what lets one person be
+// given a phone's access without being given the fleet's.
+type Grant struct {
+	// Label is who the credential is for, for logs and the roster.
+	Label string
+	// Machines limits the machines it may open; empty means all of them.
+	Machines []string
+}
+
+// Allows reports whether the grant reaches machine id.
+func (g Grant) Allows(id string) bool {
+	if len(g.Machines) == 0 {
+		return true
+	}
+	for _, m := range g.Machines {
+		if m == id {
+			return true
+		}
+	}
+	return false
+}
+
+// NamedToken is a credential minted for a person or a device that is not
+// enrolled in the fleet: a phone, a colleague, a CI box. It is listed with its
+// label so an operator can tell whose access to take away, and it is kept in
+// memory only — a restart signs every named viewer out, which is the failure
+// that costs a paste rather than the one that costs a fleet.
+type NamedToken struct {
+	Label     string    `json:"label"`
+	Token     string    `json:"token"`
+	Machines  []string  `json:"machines,omitempty"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+
+// Grant answers what a credential reaches. Comparisons are constant time, and
+// an expired credential reaches nothing.
+func (s *TokenStore) Grant(got string) (Grant, bool) {
+	if got == "" {
+		return Grant{}, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := time.Now()
+	if s.token != "" && (s.expiresAt.IsZero() || now.Before(s.expiresAt)) {
+		if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
+			return Grant{Label: "shared"}, true
+		}
+	}
+	for token, m := range s.minted {
+		if now.Before(m.expiresAt) && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
+			return Grant{Label: "machine:" + m.device}, true
+		}
+	}
+	for token, n := range s.named {
+		if now.Before(n.expiresAt) && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
+			return Grant{Label: n.label, Machines: append([]string(nil), n.machines...)}, true
+		}
+	}
+	return Grant{}, false
+}
+
+// MintNamed issues a credential for label, good for ttl and limited to
+// machines (empty for every machine).
+func (s *TokenStore) MintNamed(label string, ttl time.Duration, machines []string) (NamedToken, error) {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return NamedToken{}, fmt.Errorf("relay: a named token needs a label")
+	}
+	if ttl <= 0 {
+		ttl = 7 * 24 * time.Hour
+	}
+	secret, err := newSecret()
+	if err != nil {
+		return NamedToken{}, err
+	}
+	n := NamedToken{
+		Label:     label,
+		Token:     secret,
+		Machines:  append([]string(nil), machines...),
+		ExpiresAt: time.Now().Add(ttl),
+	}
+	s.mu.Lock()
+	if s.named == nil {
+		s.named = map[string]namedEntry{}
+	}
+	now := time.Now()
+	for t, e := range s.named {
+		if !now.Before(e.expiresAt) {
+			delete(s.named, t)
+		}
+	}
+	s.named[secret] = namedEntry{label: label, machines: append([]string(nil), machines...), expiresAt: n.ExpiresAt}
+	s.mu.Unlock()
+	return n, nil
+}
+
+// Named lists the live named credentials, soonest expiry first.
+func (s *TokenStore) Named() []NamedToken {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	now := time.Now()
+	out := make([]NamedToken, 0, len(s.named))
+	for token, e := range s.named {
+		if !now.Before(e.expiresAt) {
+			continue
+		}
+		out = append(out, NamedToken{
+			Label:     e.label,
+			Token:     token,
+			Machines:  append([]string(nil), e.machines...),
+			ExpiresAt: e.expiresAt,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ExpiresAt.Before(out[j].ExpiresAt) })
+	return out
+}
+
+// RevokeNamed drops one named credential by its token.
+func (s *TokenStore) RevokeNamed(token string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.named[token]; !ok {
+		return false
+	}
+	delete(s.named, token)
+	return true
 }

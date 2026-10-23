@@ -77,7 +77,6 @@ func New(opts Options) (*Server, error) {
 				Platform: runtime.GOOS,
 				Arch:     runtime.GOARCH,
 				Version:  diag.BuildVersion(),
-				Instance: diag.Instance(),
 			},
 			Token:          opts.Token,
 			OriginPatterns: opts.OriginPatterns,

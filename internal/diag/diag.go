@@ -392,11 +392,19 @@ func Debugf(category, format string, args ...any) {
 // line — a session's size, say, which costs a lock to read.
 func DebugEnabled() bool { return Default().Enabled(Debug) }
 
+// buildVersion is set by the release build with -ldflags -X, because a binary
+// built from a checkout has no version in its build info that anybody wants to
+// read on another machine's roster.
+var buildVersion string
+
 // BuildVersion is the version the binary was built as, for the first line of a
 // log: "devel" for a `go run`, and the module's version for a release build.
 // A bug report that starts with a different build than the tree it is read
 // against is worth catching there rather than three questions later.
 func BuildVersion() string {
+	if buildVersion != "" {
+		return buildVersion
+	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok || info.Main.Version == "" {
 		return "devel"

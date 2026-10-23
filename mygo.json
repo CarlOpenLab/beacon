@@ -1,7 +1,7 @@
 {
   "name": "Beacon",
   "identifier": "dev.carl.beacon",
-  "version": "0.6.8",
+  "version": "0.7.0",
   "main": "./cmd/tfdesktop",
   "buildCommand": "pnpm run build:web",
   "icon": "resources/icon.png",

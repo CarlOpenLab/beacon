@@ -1389,5 +1389,6 @@
   "paste_read_only": "只读：先取得这个终端的控制权",
   "paste_unsupported": "这台机器上的 Beacon 版本还不支持接收文件",
   "paste_failed": "粘贴失败：{reason}",
-  "paste_too_large": "文件太大：{name}（上限 32 MB）"
+  "paste_too_large": "文件太大：{name}（上限 32 MB）",
+  "attach_truncated": "断线太久：画面可能不完整（已重放最近的输出）"
 }

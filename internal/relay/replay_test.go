@@ -15,7 +15,7 @@ import (
 //
 // Every socket in this test keeps coder/websocket's default 32 KiB read limit,
 // which is what the desktop and the relay had when the bug was reported. The
-// replay is 256 KiB, so before output was chunked the first frame was several
+// replay is a megabyte, so before output was chunked the first frame was several
 // times the limit: the relay closed the agent link with StatusMessageTooBig
 // ("read limited at 32769 bytes"), the desktop saw "machine closed the stream",
 // and the pane stayed blank forever. A pass here means the replay arrives whole
@@ -38,11 +38,11 @@ func TestReattachReplaysLargeRing(t *testing.T) {
 	c.awaitInner(stream, "created", func(m protocol.Msg) bool { return m.T == protocol.STCreated })
 	c.awaitInner(stream, "attached", func(m protocol.Msg) bool { return m.T == protocol.STAttached })
 
-	// Continue past the 256 KiB ring so the replay a reconnecting viewer asks
-	// for is both truncated and as large as it can be.
+	// Continue past the ring so the replay a reconnecting viewer asks for is
+	// both truncated and as large as it can be.
 	c.inner(stream, protocol.Msg{
 		T: protocol.CTInput, SessionID: "s1",
-		Data: []byte("head -c 300000 /dev/zero | tr '\\0' 'x'; echo; printf 'REPLAY_%d_TAIL\n' 7717\n"),
+		Data: []byte("head -c 1300000 /dev/zero | tr '\\0' 'x'; echo; printf 'REPLAY_%d_TAIL\n' 7717\n"),
 	})
 	c.awaitOutput(stream, "REPLAY_7717_TAIL")
 

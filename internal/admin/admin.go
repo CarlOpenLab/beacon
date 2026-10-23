@@ -100,6 +100,9 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+b+"/api/devices/revoke", a.handleRevoke)
 	mux.HandleFunc("GET "+b+"/api/token", a.handleToken)
 	mux.HandleFunc("POST "+b+"/api/token/rotate", a.handleRotate)
+	mux.HandleFunc("GET "+b+"/api/tokens", a.handleNamedTokens)
+	mux.HandleFunc("POST "+b+"/api/tokens", a.handleMintNamed)
+	mux.HandleFunc("POST "+b+"/api/tokens/revoke", a.handleRevokeNamed)
 	mux.HandleFunc("GET "+b+"/api/logs", a.handleLogs)
 	mux.HandleFunc("GET "+b+"/api/logs/view", a.handleLogView)
 	mux.HandleFunc("GET "+b+"/api/logs/download", a.handleLogDownload)
@@ -482,6 +485,107 @@ func (a *Admin) tokenView() map[string]any {
 		v["expiresInSeconds"] = int(st.TTL().Seconds())
 	}
 	return v
+}
+
+// handleNamedTokens lists the credentials minted for people rather than
+// machines: a phone, a colleague, a CI box. The token itself is included
+// because the operator hands it out; the list is behind the admin login.
+func (a *Admin) handleNamedTokens(w http.ResponseWriter, r *http.Request) {
+	if !a.guard(w, r) {
+		return
+	}
+	type view struct {
+		Label     string   `json:"label"`
+		Token     string   `json:"token"`
+		Machines  []string `json:"machines,omitempty"`
+		ExpiresAt string   `json:"expiresAt"`
+		Seconds   int      `json:"expiresInSeconds"`
+	}
+	list := a.opts.Relay.ClientToken().Named()
+	out := make([]view, 0, len(list))
+	for _, n := range list {
+		out = append(out, view{
+			Label:     n.Label,
+			Token:     n.Token,
+			Machines:  n.Machines,
+			ExpiresAt: n.ExpiresAt.UTC().Format(time.RFC3339),
+			Seconds:   int(time.Until(n.ExpiresAt).Seconds()),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tokens": out})
+}
+
+// handleMintNamed mints one named credential. The lifetime defaults to a week:
+// access given to somebody else is the one thing worth an expiry by default.
+func (a *Admin) handleMintNamed(w http.ResponseWriter, r *http.Request) {
+	if !a.guard(w, r) {
+		return
+	}
+	var body struct {
+		Label    string   `json:"label"`
+		TTL      string   `json:"ttl"`
+		Machines []string `json:"machines"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	label := strings.TrimSpace(body.Label)
+	if label == "" {
+		a.fail(w, http.StatusBadRequest, "a name is needed to tell whose token it is")
+		return
+	}
+	ttl, err := parseTokenTTL(body.TTL, 7*24*time.Hour)
+	if err != nil {
+		a.fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if ttl <= 0 {
+		a.fail(w, http.StatusBadRequest, "a token for someone else must expire")
+		return
+	}
+	known := map[string]bool{}
+	for _, e := range a.opts.Relay.Devices().Entries() {
+		known[e.ID] = true
+	}
+	for _, m := range body.Machines {
+		if !known[m] {
+			a.fail(w, http.StatusBadRequest, "no machine named "+m)
+			return
+		}
+	}
+	n, err := a.opts.Relay.ClientToken().MintNamed(label, ttl, body.Machines)
+	if err != nil {
+		a.opts.Log.Printf("admin: mint named token: %v", err)
+		a.fail(w, http.StatusInternalServerError, "could not mint the token")
+		return
+	}
+	a.opts.Log.Printf("admin: token for %q minted (machines=%v, expires in %s)", label, body.Machines, ttl)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"label":     n.Label,
+		"token":     n.Token,
+		"machines":  n.Machines,
+		"expiresAt": n.ExpiresAt.UTC().Format(time.RFC3339),
+	})
+}
+
+// handleRevokeNamed takes one named credential away. Unlike rotating the shared
+// token it disturbs nobody else.
+func (a *Admin) handleRevokeNamed(w http.ResponseWriter, r *http.Request) {
+	if !a.guard(w, r) {
+		return
+	}
+	var body struct {
+		Token string `json:"token"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if !a.opts.Relay.ClientToken().RevokeNamed(strings.TrimSpace(body.Token)) {
+		a.fail(w, http.StatusNotFound, "no such token")
+		return
+	}
+	a.opts.Log.Printf("admin: named token revoked")
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (a *Admin) handleToken(w http.ResponseWriter, r *http.Request) {

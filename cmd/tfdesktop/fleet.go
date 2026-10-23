@@ -109,7 +109,6 @@ func newFleet(ctx context.Context, log *log.Logger) *fleet {
 		Platform: runtime.GOOS,
 		Arch:     runtime.GOARCH,
 		Version:  versionOf(),
-		Instance: diag.Instance(),
 	}
 	h := hub.New(hub.Options{Host: host})
 	go h.Run(ctx)

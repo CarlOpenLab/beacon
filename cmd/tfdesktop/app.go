@@ -1789,6 +1789,13 @@ func (h tabHandlers) Attached(sum protocol.Summary, cursor int64, truncated bool
 		tb.attached = true
 		tb.mu.Unlock()
 		tb.alive = sum.Alive
+		if truncated {
+			// The ring no longer holds everything this tab missed, so the
+			// screen it paints is a best effort. Say so where the person is
+			// looking, instead of letting a full-screen program look merely
+			// broken.
+			w.setNotice(locales.AttachTruncated())
+		}
 		tb.setTitle(sum.Title)
 		if tb.program == "" && sum.Shell != "" {
 			tb.program = programName(sum.Shell)

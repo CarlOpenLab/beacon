@@ -4,6 +4,27 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.0
+
+**Beacon 0.7.0: 远程更接近本地 — paste images across machines, compress the wire, name every build — Beacon：图片能粘到对面，链路会压缩，每台机器的版本都看得见**
+
+- **An image or a file on the clipboard becomes a file on the machine the shell runs on.** The terminal used to hand a paste to the program as text, which is nothing at all when the clipboard holds a screenshot: a shell does not read the clipboard protocol, so the paste silently died. Both clients now take an image or a file, upload it over `file.put`/`file.chunk`/`file.done` into a private temp directory on that machine (32 MB ceiling, name sanitized, one upload in flight), and paste the returned path quoted for that machine's shell — POSIX or PowerShell. The desktop hooks the terminal's `OnPaste`; the browser reads clipboard files. A read-only pane says why instead of swallowing the paste.
+  — 剪贴板里是截图时，终端原来把粘贴当文本交给程序，而普通 shell 不读剪贴板协议，于是这次粘贴静悄悄地消失了。现在两端都会取出图片或文件，用 `file.put`/`file.chunk`/`file.done` 传到那台机器的私有临时目录（上限 32 MB、文件名清洗、同一时刻一个上传），再把返回的路径按那台机器的 shell 加引号粘进去（POSIX 或 PowerShell）；桌面端挂在终端 `OnPaste` 上，浏览器读取剪贴板文件；只读窗格会说明原因，而不是吞掉。
+- **The wire is compressed when both ends know how.** Every Data field worth more than a few hundred bytes is zlib-compressed, negotiated in the hello and only ever sent to a peer that named `deflate`. Terminal output is the bulk of a fleet's traffic and it repeats itself; a megabyte replay that used to cost about 1.8× its bytes after two layers of base64 now costs a fraction of that. An old hub and an old client keep the exact wire they had.
+  — 超过几百字节的 Data 现在都做 zlib 压缩，在 hello 里协商，且只发给声明了 `deflate` 的对端。终端输出是流量的大头且高度重复，一次原本因两层 base64 膨胀到约 1.8 倍的重放，现在只占其中一小部分；旧 hub 与旧客户端仍然走完全相同的帧。
+- **Every machine says which build it runs, and the same daemon enrolled twice is refused.** The handshake, the relay roster and the machine tooltip now carry the version and an instance id (hostname, pid, start). A machine that is behind is visible where you act on it; a second enrollment of the same running daemon is rejected at the relay with the id it duplicates, instead of showing one machine's sessions twice.
+  — 握手、中继名册和机器提示现在都带版本与实例 id（hostname、pid、启动时间）。落后的机器在你要动手的地方就能看见；同一个运行中的 daemon 被登记两次时，中继会用已在线的那台机器的 id 拒绝第二条链路，而不是把一台机器的会话列两遍。
+- **`tfd service install` registers the daemon with the OS, and one line installs it.** systemd user unit on Linux (with linger), a launchd agent on macOS, a logon task on Windows; `uninstall`, `restart` and `status` alongside. `scripts/install-member.sh` / `.ps1` download the latest `beacon-cli` release and run it, so a machine joins in one command and updates by running the same one again. Released binaries now carry their version (`tfd version`).
+  — Linux 用 systemd 用户单元（并开启 linger），macOS 用 launchd agent，Windows 用登录任务；另有 `uninstall`、`restart`、`status`。`scripts/install-member.sh` / `.ps1` 下载最新 `beacon-cli` 后调用它，一台机器一条命令加入，重跑同一条命令即更新；发行二进制现在带有版本号（`tfd version`）。
+- **The scrollback a reconnecting client replays is four times larger, and truncation is said out loud.** The per-session ring is 1 MiB; when a client was away longer than it holds, the desktop now says the screen may be incomplete instead of leaving a full-screen program looking merely broken (the browser already said so). The relay client also has one bounded writer queue: the window's thread never waits on a relay that stopped reading, and a queue that fills ends the link so the next one resumes from the cursor rather than losing bytes silently.
+  — 每个会话的环形缓冲提升到 1 MiB；离开太久时桌面端现在会提示画面可能不完整，而不是让全屏程序看起来只是坏了（浏览器端原本就会提示）。中继客户端也只有一个有界发送队列：窗口线程不再等待一个停止读取的中继；队列满时结束链路，让下一条从游标续上，而不是静默丢字节。
+- **Tokens for people, scoped to machines and expiring on their own.** The relay can mint a named credential limited to a few machine ids with a lifetime, list it in the admin panel, and revoke just that one — so a phone or a colleague no longer needs the fleet-wide token, and taking access back does not sign everyone else out.
+  — 中继可以签发限定到几台机器、带有效期的具名凭据，在管理页列出、单独撤销——手机或同事不必再共用一个全舰队令牌，收回权限也不会把其他人一起踢下线。
+- **Corner radii line up at the window edge, and a remote notification names its machine.** Workspace cards inset 8 px from a window whose corner is the system's now use a radius concentric with it, so the frame between the two curves keeps the same width at the corners as along the edges. A notification about a shell on another machine says which one, so a remote program cannot read as a local one.
+  — 距离窗口边缘 8 px、而窗口圆角由系统绘制的工作区卡片，现在改用与窗口同心的半径，两条弧之间的留白在转角处和边上一样宽。来自另一台机器的通知会写明是哪台，远端程序无法冒充本机。
+- **Not in this release.** A member is not updated automatically — run the install line again, or `tfd service install` with the new binary (its sessions end with it). The reattach fix for a truncated replay is a bigger ring and an honest sentence, not a server-side screen snapshot; remote paths still open on the machine you are sitting at, not on the far machine.
+  — 本版不含：成员不会自动更新（重跑安装命令，或用新二进制再执行 `tfd service install`，会话会随之结束）；截断重放的修法是更大的环形缓冲加一句实话，而不是服务端画面快照；远端路径仍在本地机器打开，而不是在那台远端机器上。
+
 ## 0.6.8
 
 **Beacon: a tab for a session that is gone is closed, not called exited — Beacon：会话已经不在了的标签，直接关掉，而不是说它「已退出」**
