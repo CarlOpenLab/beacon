@@ -238,6 +238,11 @@ func (c *Client) connect(ctx context.Context) error {
 		c.retry("无法连接中继：" + err.Error())
 		return err
 	}
+	// A re-attach replays the session's ring, which can be a quarter of a
+	// megabyte in one message. The library default of 32 KiB would close this
+	// socket with StatusMessageTooBig and leave the pane blank, which is exactly
+	// the failure this limit exists to prevent.
+	ws.SetReadLimit(protocol.MaxMessageBytes)
 
 	c.mu.Lock()
 	c.ws = ws

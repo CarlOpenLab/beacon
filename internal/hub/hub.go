@@ -339,6 +339,10 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	// Outbound replay is chunked (see sendOutput), but inbound is not: a paste
+	// into a browser client arrives as one input frame, and a large one would
+	// hit the library's 32 KiB default and close the socket.
+	conn.SetReadLimit(protocol.MaxMessageBytes)
 	h.serve(wsTransport{conn})
 }
 
@@ -551,13 +555,7 @@ func (h *Hub) attach(c *client, s *session.Session, cursor int64) {
 		Truncated: truncated,
 	})
 	if len(data) > 0 {
-		c.send(protocol.Msg{
-			T:         protocol.STOutput,
-			SessionID: s.ID,
-			Cursor:    next,
-			Data:      data,
-			Resync:    truncated,
-		})
+		sendOutput(c, s.ID, from, data, truncated)
 	}
 	role := roleMsg(s.ID, w.roleOf(c), w.controllerID(), w.epoch)
 	var peers []*client
@@ -871,15 +869,50 @@ func (h *Hub) flush(s *session.Session) {
 		}
 		next := from + int64(len(data))
 		c.setCursor(s.ID, next)
-		c.send(protocol.Msg{
-			T:         protocol.STOutput,
-			SessionID: s.ID,
-			Cursor:    next,
-			Data:      data,
-			Resync:    truncated,
-		})
+		sendOutput(c, s.ID, from, data, truncated)
 	}
 	h.mu.Unlock()
+}
+
+// sendOutput hands c the session output starting at from, split into frames no
+// larger than protocol.MaxOutputChunk.
+//
+// The split is not cosmetic. coder/websocket kills a socket whose message is
+// over its read limit — 32768 bytes by default — and a peer's limit is not ours
+// to assume: a full ring replay is 256 KiB, several times that as one frame,
+// and the shutdown it causes reads at the other end as "the machine closed the
+// stream" with no bytes delivered. Small frames also let builds from before the
+// limits were raised keep working, which matters when a relay is updated before
+// every desktop is.
+//
+// Each piece carries the cursor for the byte just after it, so a client that
+// drops mid-replay resumes at the last piece it saw rather than at the start.
+// Resync rides only on the first piece, where the screen reset belongs.
+func sendOutput(c *client, sessionID string, from int64, data []byte, resync bool) {
+	if len(data) == 0 {
+		// A truncation with no bytes after the offset still has to reset the
+		// screen: what the client holds is no longer a prefix of the stream.
+		if resync {
+			c.send(protocol.Msg{T: protocol.STOutput, SessionID: sessionID, Cursor: from, Resync: true})
+		}
+		return
+	}
+	for len(data) > 0 {
+		n := len(data)
+		if n > protocol.MaxOutputChunk {
+			n = protocol.MaxOutputChunk
+		}
+		from += int64(n)
+		c.send(protocol.Msg{
+			T:         protocol.STOutput,
+			SessionID: sessionID,
+			Cursor:    from,
+			Data:      data[:n],
+			Resync:    resync,
+		})
+		resync = false
+		data = data[n:]
+	}
 }
 
 func (h *Hub) onSessionExit(s *session.Session) {

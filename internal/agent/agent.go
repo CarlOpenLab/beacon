@@ -244,6 +244,10 @@ func (a *Agent) serveOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
+	// The relay may hand back a session's whole ring on a re-attach, and this
+	// socket must be able to read it: the library's 32 KiB default would close
+	// the link with StatusMessageTooBig instead of delivering the bytes.
+	conn.SetReadLimit(protocol.MaxMessageBytes)
 	defer conn.CloseNow()
 
 	s := &session{

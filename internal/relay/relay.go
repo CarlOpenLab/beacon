@@ -419,6 +419,11 @@ func (r *Relay) ServeAgent(w http.ResponseWriter, rq *http.Request) {
 	if err != nil {
 		return
 	}
+	// A member's hub may send a session's whole ring in one message on a
+	// re-attach. coder/websocket's 32 KiB default would kill the link with
+	// StatusMessageTooBig — the "read limited at 32769 bytes" that a viewer
+	// sees as the machine dropping the stream, with the pane left blank.
+	conn.SetReadLimit(protocol.MaxMessageBytes)
 	defer conn.CloseNow()
 
 	ctx := rq.Context()
@@ -523,6 +528,9 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 	if err != nil {
 		return
 	}
+	// The same replay travels to the viewer, and a browser client may send a
+	// large paste as one frame. Both are larger than the library default.
+	conn.SetReadLimit(protocol.MaxMessageBytes)
 	defer conn.CloseNow()
 
 	ctx := rq.Context()

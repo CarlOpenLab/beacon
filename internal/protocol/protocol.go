@@ -8,6 +8,30 @@ package protocol
 // Version is the protocol version carried by the hello handshake.
 const Version = 2
 
+// MaxMessageBytes bounds one WebSocket message, in bytes as they go on the
+// wire: a JSON object with its Data base64ed, and for a frame travelling
+// through the relay, base64ed once more inside the tunnel frame.
+//
+// It exists because coder/websocket has a default read limit of 32768 bytes and
+// a frame over it does not arrive clipped — the socket dies with
+// StatusMessageTooBig, which a reconnecting client reads as "the machine closed
+// the stream". The bound has to be generous enough for a whole 256 KiB ring
+// replay (see internal/session.ringCapacity), which in a tunnel frame is
+// roughly 466 KiB, while still leaving a hard ceiling that stops a wedged or
+// malicious peer from making the process allocate without limit.
+const MaxMessageBytes = 1 << 20
+
+// MaxOutputChunk is how many bytes of PTY output one output frame may carry
+// before the hub splits the rest into further frames.
+//
+// It is deliberately far below MaxMessageBytes: peers older than this constant
+// — a relay or a desktop build from before the read limits were raised — still
+// refuse anything over 32768 bytes, and a replay that fits in one small frame
+// is accepted by them too. 16 KiB of output becomes about 22 KiB of JSON and
+// about 29 KiB inside a tunnel frame, which clears the old default with room
+// for the field names around it.
+const MaxOutputChunk = 16 * 1024
+
 // Client -> server discriminators.
 const (
 	CTHello   = "hello"
