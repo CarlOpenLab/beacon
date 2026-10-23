@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/CarlOpenLab/term-fleet/internal/diag"
@@ -29,8 +30,19 @@ type client struct {
 	// stands between a person and their own shell.
 	owner bool
 
+	// caps are what the client announced in its hello. A capability is only
+	// used when both ends named it, so an old client gets exactly the wire it
+	// always got.
+	capsMu sync.Mutex
+	capList []string
+	deflate atomic.Bool
+
 	mu      sync.Mutex
 	cursors map[string]int64
+	// up is the file a paste is currently writing, if any; upPath is where it
+	// is going, kept beside it so an abort can remove the partial file.
+	up     *upload
+	upPath string
 }
 
 func (h *Hub) newClient(tp Transport) *client {
@@ -59,6 +71,16 @@ func (h *Hub) ownerClient(tp Transport) *client {
 // send enqueues a frame. It never blocks the hub: a client that is not
 // draining its queue is dropped, and it can reconnect and resume by cursor.
 func (c *client) send(m protocol.Msg) {
+	// Compress the bulk here rather than at the call sites: every path that
+	// hands a viewer output — a live flush and an attach's replay alike — goes
+	// through this one function, so there is one place to get it right. The
+	// cursor is untouched: it counts the bytes the program wrote, not the
+	// bytes the frame carried.
+	if m.T == protocol.STOutput && c.deflate.Load() && protocol.WorthCompressing(m.Data) {
+		if z, err := protocol.Deflate(m.Data); err == nil && len(z) < len(m.Data) {
+			m.Data, m.Z = z, true
+		}
+	}
 	select {
 	case <-c.done:
 	case c.out <- m:
@@ -71,8 +93,25 @@ func (c *client) send(m protocol.Msg) {
 	}
 }
 
+// negotiated records what the client said it understands, and turns on the
+// features the hub shares with it.
+func (c *client) negotiated(caps []string) {
+	c.capsMu.Lock()
+	c.capList = append([]string(nil), caps...)
+	c.capsMu.Unlock()
+	c.deflate.Store(protocol.HasCap(caps, protocol.CapDeflate))
+}
+
+// caps is what the client announced.
+func (c *client) caps() []string {
+	c.capsMu.Lock()
+	defer c.capsMu.Unlock()
+	return append([]string(nil), c.capList...)
+}
+
 func (c *client) close(reason string) {
 	c.once.Do(func() {
+		c.abortUpload("connection closed")
 		close(c.done)
 		_ = c.tp.Close(reason)
 	})

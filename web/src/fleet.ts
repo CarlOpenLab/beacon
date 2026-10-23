@@ -4,8 +4,12 @@
 import {
   CT,
   ST,
+  CAP,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_CHUNK,
   PROTOCOL_VERSION,
   decodeData,
+  encodeBytes,
   encodeData,
   type Host,
   type Msg,
@@ -100,6 +104,16 @@ export class Fleet {
    */
   private epochs = new Map<string, number>()
   private flushTimer?: number
+  /** What the daemon answered it understands; empty until its hello. */
+  private caps: string[] = []
+  /** Output decodes in order even though zlib decompression is asynchronous. */
+  private tails = new Map<string, Promise<void>>()
+  /** Uploads waiting for their file.saved, keyed by request id. */
+  private uploads = new Map<
+    string,
+    { resolve: (path: string) => void; reject: (err: Error) => void; timer: number }
+  >()
+  private nextUpload = 0
 
   /** Set by the app layer when this Fleet belongs to a machine in a roster. */
   machineId = ''
@@ -145,6 +159,7 @@ export class Fleet {
     // A deliberate close is not a blip: nothing typed now is worth replaying
     // into a link the user asked to drop.
     this.pending.clear()
+    this.failUploads('the link was closed')
     this.link?.close()
     this.link = undefined
     this.setState('offline', '已断开')
@@ -161,7 +176,7 @@ export class Fleet {
       open: () => {
         this.backoff = MIN_BACKOFF
         this.setState('online')
-        this.send({ t: CT.hello, v: PROTOCOL_VERSION })
+        this.send({ t: CT.hello, v: PROTOCOL_VERSION, caps: this.wantedCaps() })
         // Resume before the user notices: re-attach everything with the cursor we
         // already consumed, so a reconnect replays only the gap.
         for (const [sessionId, intent] of this.intents) {
@@ -181,6 +196,7 @@ export class Fleet {
   }
 
   private retry(detail: string): void {
+    this.failUploads('the machine is not reachable')
     this.setState('offline', detail)
     const delay = this.backoff
     this.backoff = Math.min(this.backoff * 2, MAX_BACKOFF)
@@ -190,11 +206,101 @@ export class Fleet {
     this.timer = window.setTimeout(() => this.open(), wait)
   }
 
+  /** What this page can do, announced in the hello. Compression is only
+   * promised when the browser can decode it. */
+  private wantedCaps(): string[] {
+    const caps: string[] = [CAP.file]
+    if (typeof DecompressionStream === 'function') caps.push(CAP.deflate)
+    return caps
+  }
+
+  /** Whether the daemon said it shares a capability. */
+  private can(cap: string): boolean {
+    return this.caps.includes(cap)
+  }
+
+  /**
+   * Decode one compressed output frame, in order. Decompression is async while
+   * the frames arrive in order; a chain per session keeps the terminal from
+   * receiving a later frame's bytes before an earlier one's.
+   */
+  private queueInflate(
+    sessionId: string,
+    cursor: number,
+    data: Uint8Array,
+    resync: boolean,
+  ): void {
+    const prev = this.tails.get(sessionId) ?? Promise.resolve()
+    const next = prev
+      .then(async () => {
+        const out = await inflate(data)
+        this.handlers.output?.(sessionId, cursor, out, resync)
+      })
+      .catch(() => {
+        /* A frame that cannot be decoded is dropped, not fatal: the next attach
+           replays the screen. */
+      })
+    this.tails.set(sessionId, next)
+  }
+
+  /**
+   * Upload one file to the machine a session runs on and resolve with the path
+   * it landed at. The shell is then given that path, not the bytes.
+   */
+  async putFile(sessionId: string, name: string, data: Uint8Array): Promise<string> {
+    if (data.length === 0) throw new Error('empty file')
+    if (data.length > MAX_UPLOAD_BYTES) throw new Error('file is too large')
+    if (!this.can(CAP.file)) throw new Error('this machine is too old to receive files')
+
+    const reqId = `p${++this.nextUpload}`
+    const answer = new Promise<string>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        this.uploads.delete(reqId)
+        reject(new Error('upload timed out'))
+      }, 45000)
+      this.uploads.set(reqId, { resolve, reject, timer })
+    })
+
+    const head = this.send({
+      t: CT.filePut,
+      reqId,
+      sessionId,
+      name,
+      size: data.length,
+    })
+    if (!head) {
+      this.failUpload(reqId, 'connection is not open')
+      return answer
+    }
+    for (let off = 0; off < data.length; off += MAX_UPLOAD_CHUNK) {
+      const piece = data.subarray(off, Math.min(off + MAX_UPLOAD_CHUNK, data.length))
+      if (!this.send({ t: CT.fileChunk, reqId, sessionId, data: encodeBytes(piece) })) {
+        this.failUpload(reqId, 'connection closed during the upload')
+        break
+      }
+    }
+    this.send({ t: CT.fileDone, reqId, sessionId })
+    return answer
+  }
+
+  private failUpload(reqId: string, reason: string): void {
+    const pending = this.uploads.get(reqId)
+    if (!pending) return
+    this.uploads.delete(reqId)
+    clearTimeout(pending.timer)
+    pending.reject(new Error(reason))
+  }
+
+  private failUploads(reason: string): void {
+    for (const id of [...this.uploads.keys()]) this.failUpload(id, reason)
+  }
+
   private dispatch(msg: Msg): void {
     switch (msg.t) {
       case ST.hello: {
         this.host = msg.host
         this.version = msg.v ?? 0
+        this.caps = msg.caps ?? []
         this.sessions = msg.sessions ?? []
         this.handlers.hello?.(this.host ?? { hostname: '?', platform: '?', arch: '?' }, this.version)
         this.handlers.sessions?.(this.sessions)
@@ -224,7 +330,22 @@ export class Fleet {
         const intent = this.intents.get(sessionId)
         const cursor = msg.cursor ?? 0
         if (intent) intent.cursor = cursor
-        this.handlers.output?.(sessionId, cursor, decodeData(msg.data), msg.resync === true)
+        const data = decodeData(msg.data)
+        if (msg.z) {
+          this.queueInflate(sessionId, cursor, data, msg.resync === true)
+          break
+        }
+        this.handlers.output?.(sessionId, cursor, data, msg.resync === true)
+        break
+      }
+      case ST.fileSaved: {
+        const pending = msg.reqId ? this.uploads.get(msg.reqId) : undefined
+        if (!pending || !msg.reqId) break
+        this.uploads.delete(msg.reqId)
+        clearTimeout(pending.timer)
+        if (msg.code) pending.reject(new Error(msg.message || msg.code))
+        else if (msg.path) pending.resolve(msg.path)
+        else pending.reject(new Error('the machine sent no path'))
         break
       }
       case ST.role: {
@@ -377,4 +498,15 @@ export class Fleet {
   closeSession(sessionId: string, dismiss = false): void {
     this.send({ t: CT.close, sessionId, dismiss, keep: !dismiss })
   }
+}
+
+/**
+ * Inflate one zlib frame with the browser's own decoder. A browser that does
+ * not have DecompressionStream never advertised `deflate`, so a compressed
+ * frame cannot reach this function there.
+ */
+async function inflate(data: Uint8Array): Promise<Uint8Array> {
+  if (typeof DecompressionStream !== 'function') return data
+  const stream = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
 }

@@ -18,6 +18,9 @@ export const CT = {
   release: 'release',
   close: 'close',
   rename: 'rename',
+  filePut: 'file.put',
+  fileChunk: 'file.chunk',
+  fileDone: 'file.done',
 } as const
 
 /** Server -> client frame kinds. */
@@ -31,7 +34,22 @@ export const ST = {
   output: 'output',
   role: 'role',
   error: 'error',
+  fileSaved: 'file.saved',
 } as const
+
+/**
+ * Capabilities a hello may announce. A feature that changes the wire is only
+ * used when both ends named it, so an old daemon and a new page still talk.
+ */
+export const CAP = {
+  deflate: 'deflate',
+  file: 'file.put',
+} as const
+
+/** The largest file a paste may carry; the daemon enforces the same ceiling. */
+export const MAX_UPLOAD_BYTES = 32 << 20
+/** How much raw data one file.chunk frame carries. */
+export const MAX_UPLOAD_CHUNK = 256 << 10
 
 export const ROLE = {
   controller: 'controller',
@@ -57,6 +75,10 @@ export interface Host {
   hostname: string
   platform: string
   arch: string
+  /** The build the daemon answers as; empty from one older than this field. */
+  version?: string
+  /** This running daemon's identity: hostname, pid and start time. */
+  instance?: string
 }
 
 export interface Summary {
@@ -106,6 +128,8 @@ export interface Msg {
   reqId?: string
   host?: Host
   reason?: string
+  /** Capabilities announced in a hello, in either direction. */
+  caps?: string[]
 
   sessionId?: string
   session?: Summary
@@ -129,6 +153,14 @@ export interface Msg {
   data?: string
   truncated?: boolean
   resync?: boolean
+  /** `data` is zlib-compressed. Only sent between peers that share `deflate`. */
+  z?: boolean
+
+  /** file.put / file.chunk / file.done / file.saved. */
+  name?: string
+  size?: number
+  /** Where the machine wrote an uploaded file: an absolute path. */
+  path?: string
 
   role?: Role
   controller?: string
@@ -173,7 +205,11 @@ const encoder = new TextEncoder()
 
 /** Encode terminal input bytes for the `data` field. */
 export function encodeData(text: string): string {
-  const bytes = encoder.encode(text)
+  return encodeBytes(encoder.encode(text))
+}
+
+/** Encode raw bytes (an upload's chunk, a compressed frame) for `data`. */
+export function encodeBytes(bytes: Uint8Array): string {
   let bin = ''
   const CHUNK = 0x8000
   for (let i = 0; i < bytes.length; i += CHUNK) {

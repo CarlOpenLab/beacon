@@ -544,5 +544,9 @@
   "settings_diag_save_failed": "Could not save: {reason}",
   "menu_diagnostics": "Diagnostic Log…",
   "app_machine_offline": "{name} is offline: its last sessions are still listed, and will open once it is back",
-  "app_terminal_unavailable": "The terminal view could not be created ({reason}); see the log under Settings → Diagnostics"
+  "app_terminal_unavailable": "The terminal view could not be created ({reason}); see the log under Settings → Diagnostics",
+  "paste_read_only": "Read-only: take control of this terminal first",
+  "paste_unsupported": "The Beacon on this machine is too old to receive files",
+  "paste_failed": "Paste failed: {reason}",
+  "paste_too_large": "Too large: {name} (32 MB limit)"
 }

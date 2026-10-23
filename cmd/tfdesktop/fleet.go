@@ -19,6 +19,12 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
+// versionOf is what this build reports about itself in the handshake, on the
+// relay's roster and in the first line of its log. The app bundle knows its
+// version and a `go run` does not, so main replaces this with the bundle's
+// answer before the window opens.
+var versionOf = func() string { return diag.BuildVersion() }
+
 // loopback is where the local service binds. Port 0 lets the OS choose, so the
 // shell never collides with a tfd the person already has running.
 const loopback = "127.0.0.1:0"
@@ -102,6 +108,8 @@ func newFleet(ctx context.Context, log *log.Logger) *fleet {
 		Hostname: hostname,
 		Platform: runtime.GOOS,
 		Arch:     runtime.GOARCH,
+		Version:  versionOf(),
+		Instance: diag.Instance(),
 	}
 	h := hub.New(hub.Options{Host: host})
 	go h.Run(ctx)

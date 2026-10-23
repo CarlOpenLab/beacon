@@ -6,6 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
 	"github.com/CarlOpenLab/term-fleet/locales"
@@ -403,9 +404,19 @@ func (w *window) machineTooltip(m tunnel.Machine) string {
 	state := machineState(m)
 	if m.ID == machineLocal {
 		name, meta := w.localMachine()
-		return name + " · " + meta + "\n" + state
+		return name + " · " + meta + versionSuffix(m.Host) + "\n" + state
 	}
-	return m.Name + " · " + m.ID + "\n" + state
+	return m.Name + " · " + m.ID + versionSuffix(m.Host) + "\n" + state
+}
+
+// versionSuffix names the build a machine runs, when it said. A machine too old
+// to answer with one says nothing rather than "unknown": the absence is the
+// fact, and the sentence around it already says the machine is reachable.
+func versionSuffix(h protocol.Host) string {
+	if h.Version == "" {
+		return ""
+	}
+	return " · v" + h.Version
 }
 
 // newTabOn opens a shell on a machine, picking it first: the panels and the new

@@ -4157,3 +4157,43 @@ func AppTerminalUnavailable(reason string) string {
 func (msgs Messages) AppTerminalUnavailable(reason string) string {
 	return Catalog.Format(msgs.locale, "app_terminal_unavailable", map[string]any{"reason": reason})
 }
+
+// PasteReadOnly says "只读：先取得这个终端的控制权"
+// in the language the app shows.
+func PasteReadOnly() string { return In(i18n.Locale()).PasteReadOnly() }
+
+// PasteReadOnly says "只读：先取得这个终端的控制权"
+// in the language of msgs.
+func (msgs Messages) PasteReadOnly() string {
+	return Catalog.Format(msgs.locale, "paste_read_only", nil)
+}
+
+// PasteUnsupported says "这台机器上的 Beacon 版本还不支持接收文件"
+// in the language the app shows.
+func PasteUnsupported() string { return In(i18n.Locale()).PasteUnsupported() }
+
+// PasteUnsupported says "这台机器上的 Beacon 版本还不支持接收文件"
+// in the language of msgs.
+func (msgs Messages) PasteUnsupported() string {
+	return Catalog.Format(msgs.locale, "paste_unsupported", nil)
+}
+
+// PasteFailed says "粘贴失败：{reason}"
+// in the language the app shows.
+func PasteFailed(reason string) string { return In(i18n.Locale()).PasteFailed(reason) }
+
+// PasteFailed says "粘贴失败：{reason}"
+// in the language of msgs.
+func (msgs Messages) PasteFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "paste_failed", map[string]any{"reason": reason})
+}
+
+// PasteTooLarge says "文件太大：{name}（上限 32 MB）"
+// in the language the app shows.
+func PasteTooLarge(name string) string { return In(i18n.Locale()).PasteTooLarge(name) }
+
+// PasteTooLarge says "文件太大：{name}（上限 32 MB）"
+// in the language of msgs.
+func (msgs Messages) PasteTooLarge(name string) string {
+	return Catalog.Format(msgs.locale, "paste_too_large", map[string]any{"name": name})
+}

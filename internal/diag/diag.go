@@ -403,3 +403,23 @@ func BuildVersion() string {
 	}
 	return info.Main.Version
 }
+
+var (
+	instanceOnce sync.Once
+	instanceName string
+)
+
+// Instance names this running process: the hostname, the pid and the second it
+// started. It is what tells two links that reach the same daemon — a machine
+// enrolled twice, a route added later — from two machines, and it changes when
+// the daemon restarts, which is exactly when its sessions changed too.
+func Instance() string {
+	instanceOnce.Do(func() {
+		host, _ := os.Hostname()
+		if host == "" {
+			host = "unknown"
+		}
+		instanceName = fmt.Sprintf("%s/%d/%d", host, os.Getpid(), time.Now().Unix())
+	})
+	return instanceName
+}

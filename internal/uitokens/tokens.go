@@ -172,8 +172,16 @@ const (
 	MaxSidebar   = 440
 
 	CardRadius = 14
-	RowRadius  = 8
-	PaneGap    = CardGap
+	// CardRadiusEdge is the radius of a card whose corners meet the window's.
+	// The window's own corner is the system's (about 10 on macOS), and a card
+	// inset by CardGap from it is concentric only when its radius is the
+	// difference — about 2. Two would read as square, so four keeps a hint of
+	// the corner language while the frame between the two curves stays the same
+	// width all the way round. A card that does not touch the window's edge (a
+	// dialog, the palette) keeps CardRadius.
+	CardRadiusEdge = 4
+	RowRadius      = 8
+	PaneGap        = CardGap
 )
 
 // Wash is one of the window's backgrounds: a vertical gradient in four stops,

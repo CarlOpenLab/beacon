@@ -40,6 +40,11 @@ const (
 	DefaultIdleController = 30 * time.Minute
 )
 
+// hubCaps is what this daemon can do beyond the original wire. It is answered
+// in the hello, and a client uses only what it also announced: a build that
+// knows neither sees exactly the frames it always did.
+var hubCaps = []string{protocol.CapFile, protocol.CapDeflate}
+
 // Options configures a Hub.
 type Options struct {
 	// Host is reported to clients in the handshake.
@@ -186,6 +191,11 @@ func New(opts Options) *Hub {
 
 // Manager exposes the session set, mainly so a caller can shut it down.
 func (h *Hub) Manager() *session.Manager { return h.mgr }
+
+// Host is what this hub reports about the machine in the handshake: the same
+// value every client receives, and the one the relay's member link announces so
+// the roster can say which build a machine runs.
+func (h *Hub) Host() protocol.Host { return h.host }
 
 // ControlAllowed reports whether a client that is not this machine's own window
 // may be given a shell's lease.
@@ -395,6 +405,17 @@ func (h *Hub) serveClient(c *client) {
 
 // handle routes one decoded frame.
 func (h *Hub) handle(c *client, m protocol.Msg) {
+	// A compressed frame is unpacked before anything reads it, so each frame
+	// handler below sees the bytes it always saw. The limit is a ceiling on what
+	// one frame may expand to, not on what a paste may be: chunks are small.
+	if m.Z && len(m.Data) > 0 {
+		data, err := protocol.Inflate(m.Data, protocol.MaxDataInflate)
+		if err != nil {
+			c.fail(protocol.ErrBadRequest, "compressed frame: "+err.Error(), m.SessionID)
+			return
+		}
+		m.Data, m.Z = data, false
+	}
 	switch m.T {
 	case protocol.CTHello:
 		if m.V != 0 && m.V != protocol.Version {
@@ -402,11 +423,13 @@ func (h *Hub) handle(c *client, m protocol.Msg) {
 				"protocol version %d is not supported (this daemon speaks %d)", m.V, protocol.Version), "")
 			return
 		}
+		c.negotiated(m.Caps)
 		host := h.host
 		c.send(protocol.Msg{
 			T:        protocol.STHello,
 			V:        protocol.Version,
 			Host:     &host,
+			Caps:     hubCaps,
 			Sessions: h.listSummaries(),
 		})
 	case protocol.CTList:
@@ -433,6 +456,12 @@ func (h *Hub) handle(c *client, m protocol.Msg) {
 		h.handleClose(c, m.SessionID, m.Epoch, m.Keep)
 	case protocol.CTRename:
 		h.handleRename(c, m.SessionID, m.Title)
+	case protocol.CTFilePut:
+		h.handleFilePut(c, m)
+	case protocol.CTFileChunk:
+		h.handleFileChunk(c, m)
+	case protocol.CTFileDone:
+		h.handleFileDone(c, m)
 	case "":
 		c.fail(protocol.ErrProtocol, "frame has no type field", "")
 	default:

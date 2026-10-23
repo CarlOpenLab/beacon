@@ -6,7 +6,43 @@
 package protocol
 
 // Version is the protocol version carried by the hello handshake.
+//
+// It stays 2 while features are negotiated by Cap — a client and a hub that do
+// not both know a capability simply do not use it, which keeps a new window
+// able to drive an old machine and an old window able to watch a new one. A
+// version bump is for a change that cannot be avoided by a peer that lacks it.
 const Version = 2
+
+// Capabilities are the optional features a peer announces in its hello and the
+// other end answers with the ones it shares. A feature that changes the wire is
+// only used when both sides named it, so a mixed fleet keeps working.
+const (
+	// CapDeflate compresses the Data of a frame with zlib when it is worth it.
+	// Both ends must know it; an old peer never sees a compressed frame.
+	CapDeflate = "deflate"
+	// CapFile is the file.put upload used to paste an image or a file into a
+	// shell that runs on the far machine: see CTFilePut.
+	CapFile = "file.put"
+)
+
+// Upload limits. A paste is a screenshot or a file dragged from the desktop,
+// not a disk image: the ceiling is what a shell can be handed without turning
+// the tunnel into a file server.
+const (
+	// MaxUploadBytes bounds one file.
+	MaxUploadBytes = 32 << 20
+	// MaxUploadChunk is the most raw bytes one file.chunk frame carries. It is
+	// chosen so the frame stays well under MaxMessageBytes after base64 twice
+	// (once in the frame, once in the tunnel envelope).
+	MaxUploadChunk = 256 << 10
+	// MaxDataInflate bounds what one compressed frame may expand to, so a
+	// hostile peer cannot make the process allocate without limit.
+	MaxDataInflate = 8 << 20
+)
+
+// minCompress is the smallest Data that is worth a zlib wrapper: below it the
+// header and the adapter cost more than the bytes saved.
+const minCompress = 256
 
 // MaxMessageBytes bounds one WebSocket message, in bytes as they go on the
 // wire: a JSON object with its Data base64ed, and for a frame travelling
@@ -45,6 +81,16 @@ const (
 	CTRelease = "release"
 	CTClose   = "close"
 	CTRename  = "rename"
+
+	// The upload a paste of an image or a file uses when the shell runs on the
+	// far machine: file.put names it and its session, file.chunk carries it a
+	// piece at a time, and file.done asks where it landed. All three carry the
+	// same ReqID, and the answer is STFileSaved. The path comes back, not the
+	// bytes, because the shell that will read it is on the machine that wrote
+	// it.
+	CTFilePut   = "file.put"
+	CTFileChunk = "file.chunk"
+	CTFileDone  = "file.done"
 )
 
 // Server -> client discriminators. STHello deliberately shares the string
@@ -59,6 +105,9 @@ const (
 	STOutput   = "output"
 	STRole     = "role"
 	STError    = "error"
+	// STFileSaved is the answer to file.done: Path is the absolute path on the
+	// machine that owns the shell, or Code/Message say why there is none.
+	STFileSaved = "file.saved"
 )
 
 // Roles. A session has at most one controller; everyone else is a viewer.
@@ -96,10 +145,11 @@ type Msg struct {
 	T string `json:"t"`
 
 	// Handshake and listing.
-	V      int    `json:"v,omitempty"`
-	ReqID  string `json:"reqId,omitempty"`
-	Host   *Host  `json:"host,omitempty"`
-	Reason string `json:"reason,omitempty"`
+	V      int      `json:"v,omitempty"`
+	ReqID  string   `json:"reqId,omitempty"`
+	Host   *Host    `json:"host,omitempty"`
+	Reason string   `json:"reason,omitempty"`
+	Caps   []string `json:"caps,omitempty"`
 
 	// Session addressing.
 	SessionID string    `json:"sessionId,omitempty"`
@@ -126,6 +176,17 @@ type Msg struct {
 	Data      []byte `json:"data,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 	Resync    bool   `json:"resync,omitempty"`
+	// Z says Data is zlib-compressed. It is only ever set by a peer that heard
+	// CapDeflate from the other end, so such a frame never reaches an old
+	// client or an old hub.
+	Z bool `json:"z,omitempty"`
+
+	// file.put / file.chunk / file.done / file.saved. Name is what the file
+	// was called on the client, Size its length as declared, and Path where the
+	// machine wrote it — an absolute path, since that is what a shell can open.
+	Name string `json:"name,omitempty"`
+	Size int64  `json:"size,omitempty"`
+	Path string `json:"path,omitempty"`
 
 	// role
 	Role       string `json:"role,omitempty"`
@@ -174,6 +235,15 @@ type Host struct {
 	Hostname string `json:"hostname"`
 	Platform string `json:"platform"`
 	Arch     string `json:"arch"`
+	// Version is the build the daemon answers as, so a client can tell a
+	// machine that is behind from one that is merely old, and say so where the
+	// person can act on it. Empty from a daemon older than this field.
+	Version string `json:"version,omitempty"`
+	// Instance names this running daemon: hostname, pid and the moment it
+	// started. It is what tells two links to the same daemon — a machine
+	// enrolled twice, or reached by a route added later — from two machines,
+	// and it changes when the daemon restarts.
+	Instance string `json:"instance,omitempty"`
 }
 
 // Summary is one row of the session list. Clients render exactly one row per

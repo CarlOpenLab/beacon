@@ -13,6 +13,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/term-fleet/internal/diag"
@@ -310,7 +311,7 @@ func (w *window) reportStatuses(machine string, list []protocol.Summary) {
 				continue
 			}
 		}
-		title, body, ok := w.noticeFor(prev, s)
+		title, body, ok := w.noticeFor(machine, prev, s)
 		if !ok {
 			continue
 		}
@@ -322,7 +323,7 @@ func (w *window) reportStatuses(machine string, list []protocol.Summary) {
 // noticeFor is what a change is worth telling: a session that comes to need the
 // user, a program that reports a failure, and an agent that finishes while
 // nobody is looking. Everything else is the window's own business.
-func (w *window) noticeFor(prev string, s protocol.Summary) (title, body string, ok bool) {
+func (w *window) noticeFor(machine, prev string, s protocol.Summary) (title, body string, ok bool) {
 	set := w.store.Get()
 	switch {
 	case s.Status == "waiting" && !set.NotifyWaitingOff:
@@ -351,6 +352,12 @@ func (w *window) noticeFor(prev string, s protocol.Summary) (title, body string,
 		}
 	default:
 		return "", "", false
+	}
+	// A notification names the machine when it is not this one. The window's
+	// title bar says where you are; a banner over another app does not, and a
+	// remote program must not be able to read as a local one.
+	if machine != machineLocal {
+		title = title + " · " + w.machineName(machine)
 	}
 	return title, body, true
 }
@@ -1391,6 +1398,10 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 		// A remote shell pastes this machine's clipboard on Ctrl+V; a local
 		// shell keeps Ctrl+V as the control character it has always been.
 		Keybinds: terminalKeybinds(machine),
+		// An image or a file on the clipboard becomes a file on the machine the
+		// shell runs on, and its path is what the program receives. Text pastes
+		// are left to the terminal, exactly as before.
+		OnPaste: func(d transfer.Data) bool { return w.pasteInto(tb, d) },
 		// The screen lays out at the size the shell has, which is not always the
 		// size this pane is. A viewer is a window onto a screen that already
 		// exists: the replay it is fed was written for that screen's width, with

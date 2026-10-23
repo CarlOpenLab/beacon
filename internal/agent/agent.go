@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -261,12 +260,19 @@ func (a *Agent) serveOnce(ctx context.Context) error {
 	// Say hello and wait to be welcomed. Registering only after the relay has
 	// acknowledged means a rejected credential fails fast instead of looking
 	// like a silent, permanently empty fleet.
+	// What this machine says about itself comes from its hub, not from the
+	// process that dialled: the hub is what a client will be talking to, so its
+	// version and instance are the ones that belong on the roster.
+	hostInfo := a.cfg.Hub.Host()
+	if hostInfo.Hostname == "" {
+		hostInfo.Hostname = host
+	}
 	if !s.send(tunnel.Frame{
 		T:           tunnel.TAgentHello,
 		V:           tunnel.Version,
 		MachineID:   a.cfg.DeviceID,
 		MachineName: a.cfg.MachineName,
-		Host:        protocol.Host{Hostname: host, Platform: runtime.GOOS, Arch: runtime.GOARCH},
+		Host:        hostInfo,
 	}) {
 		return errors.New("handshake send failed")
 	}

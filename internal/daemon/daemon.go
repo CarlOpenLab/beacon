@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/hub"
 	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 	"github.com/CarlOpenLab/term-fleet/internal/web"
@@ -75,6 +76,8 @@ func New(opts Options) (*Server, error) {
 				Hostname: hostname,
 				Platform: runtime.GOOS,
 				Arch:     runtime.GOARCH,
+				Version:  diag.BuildVersion(),
+				Instance: diag.Instance(),
 			},
 			Token:          opts.Token,
 			OriginPatterns: opts.OriginPatterns,

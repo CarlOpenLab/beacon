@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/egoist/mygo"
@@ -68,6 +69,17 @@ func main() {
 	store := settings.Open(settings.Dir())
 	saved := store.Get()
 
+	// The bundle knows the app's version; a `go run` does not. Everything that
+	// reports this build — the handshake, the relay's roster, the log's first
+	// line — reads the same answer, so a machine's version on another screen is
+	// the version in the file it will be asked to send.
+	versionOf = func() string {
+		if v := strings.TrimSpace(mygo.App.Version()); v != "" {
+			return v
+		}
+		return diag.BuildVersion()
+	}
+
 	// The diagnostic log comes up before anything that could go wrong: a window
 	// with no visible console is exactly the program that needs a file to say
 	// what happened. Detailed is the default rather than something to turn on
@@ -94,14 +106,8 @@ func main() {
 		log.Printf("tfdesktop: diagnostics are off: %v", logErr)
 	} else {
 		defer func() { _ = logger.Close() }()
-		// The bundle knows the app's version; a `go build` does not, and a log
-		// that starts "version=" answers no question at all.
-		version := mygo.App.Version()
-		if version == "" {
-			version = diag.BuildVersion()
-		}
 		diag.Infof("app", "start version=%s %s/%s go=%s log=%s level=%s",
-			version, runtime.GOOS, runtime.GOARCH, runtime.Version(), logger.Path(), level)
+			versionOf(), runtime.GOOS, runtime.GOARCH, runtime.Version(), logger.Path(), level)
 	}
 
 	// startupErr is why the local service did not come up, if it did not. The

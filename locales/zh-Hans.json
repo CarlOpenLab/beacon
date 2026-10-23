@@ -1385,5 +1385,9 @@
   "settings_diag_save_failed": "保存失败：{reason}",
   "menu_diagnostics": "诊断日志…",
   "app_machine_offline": "{name} 当前离线：它上面还列着上次的会话，连上后再打开",
-  "app_terminal_unavailable": "终端视图没有创建成功（{reason}），详见 设置 → 诊断 的日志"
+  "app_terminal_unavailable": "终端视图没有创建成功（{reason}），详见 设置 → 诊断 的日志",
+  "paste_read_only": "只读：先取得这个终端的控制权",
+  "paste_unsupported": "这台机器上的 Beacon 版本还不支持接收文件",
+  "paste_failed": "粘贴失败：{reason}",
+  "paste_too_large": "文件太大：{name}（上限 32 MB）"
 }

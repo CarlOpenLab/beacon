@@ -86,10 +86,52 @@ type link struct {
 	// lets the log say it once and then summarise, rather than flood the file
 	// with the output of a shell being replayed into nowhere.
 	dropped map[string]int
+
+	// caps and host are what the hub said about itself in its hello: what it
+	// can do beyond the original wire, and which build it is. A link that has
+	// not been greeted yet knows neither, and therefore uses neither.
+	capsMu sync.Mutex
+	caps   []string
+	host   protocol.Host
+
+	// puts maps an upload's request id to the answer it is waiting for. The
+	// reader goroutine calls the waiter; the uploader waits on its own channel.
+	putMu   sync.Mutex
+	nextPut int
+	puts    map[string]func(m protocol.Msg)
 }
 
 func newLink() *link {
-	return &link{sessions: map[string]*session{}, dropped: map[string]int{}}
+	return &link{
+		sessions: map[string]*session{},
+		dropped:  map[string]int{},
+		puts:     map[string]func(m protocol.Msg){},
+	}
+}
+
+// setHost remembers what the handshake said, so the window can show the
+// machine's build and only use features both ends understand.
+func (l *link) setHost(h *protocol.Host, caps []string) {
+	l.capsMu.Lock()
+	l.caps = append([]string(nil), caps...)
+	if h != nil {
+		l.host = *h
+	}
+	l.capsMu.Unlock()
+}
+
+// Host is the machine as it last introduced itself.
+func (l *link) Host() protocol.Host {
+	l.capsMu.Lock()
+	defer l.capsMu.Unlock()
+	return l.host
+}
+
+// capable reports whether the hub named a capability in its hello.
+func (l *link) capable(capability string) bool {
+	l.capsMu.Lock()
+	defer l.capsMu.Unlock()
+	return protocol.HasCap(l.caps, capability)
 }
 
 // label is the machine this link speaks to, for a log line.
@@ -186,6 +228,12 @@ func (l *link) closeSession(id string, dismiss bool) {
 // does not hold the lease is refused by the hub, so the frame is sent
 // regardless and answered there: one place decides, for every client.
 func (l *link) input(id string, data []byte) {
+	if l.capable(protocol.CapDeflate) && protocol.WorthCompressing(data) {
+		if z, err := protocol.Deflate(data); err == nil && len(z) < len(data) {
+			l.sendMsg(protocol.Msg{T: protocol.CTInput, SessionID: id, Data: z, Z: true, Epoch: l.epochOf(id)})
+			return
+		}
+	}
 	l.sendMsg(protocol.Msg{T: protocol.CTInput, SessionID: id, Data: data, Epoch: l.epochOf(id)})
 }
 
@@ -263,12 +311,18 @@ func (l *link) dispatch(m protocol.Msg) {
 	}
 	switch m.T {
 	case protocol.STHello, protocol.STSessions:
+		if m.T == protocol.STHello {
+			l.setHost(m.Host, m.Caps)
+		}
 		if m.Sessions != nil && l.onSessions != nil {
 			l.onSessions(m.Sessions)
 		}
 		return
 	case protocol.STCreated:
 		l.adopt(m.SessionID)
+		return
+	case protocol.STFileSaved:
+		l.deliverFile(m)
 		return
 	}
 	s := l.session(m.SessionID)
@@ -290,7 +344,16 @@ func (l *link) dispatch(m protocol.Msg) {
 			diag.Warnf("link", "attached frame without a session machine=%s session=%s", l.label(), m.SessionID)
 		}
 	case protocol.STOutput:
-		s.handlers.Output(m.Data, m.Resync)
+		data := m.Data
+		if m.Z {
+			out, err := protocol.Inflate(m.Data, protocol.MaxDataInflate)
+			if err != nil {
+				diag.Warnf("link", "compressed output refused machine=%s session=%s: %v", l.label(), m.SessionID, err)
+				return
+			}
+			data = out
+		}
+		s.handlers.Output(data, m.Resync)
 	case protocol.STRole:
 		if m.Role != "" {
 			diag.Debugf("link", "role machine=%s session=%s role=%s epoch=%d", l.label(), m.SessionID, m.Role, m.Epoch)
@@ -420,6 +483,7 @@ func (l *link) close(reason string) {
 	l.mu.Unlock()
 
 	diag.Infof("link", "closed machine=%s reason=%q sessions=%d", l.label(), reason, len(sessions))
+	l.failPuts(reason)
 	l.setSend(nil)
 	if l.onGone != nil {
 		l.onGone(reason)

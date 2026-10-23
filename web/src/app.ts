@@ -2688,6 +2688,16 @@ export class App {
         const editable = target?.closest('input, textarea, [contenteditable="true"]')
         if (editable && !inTerminal) return
         if (!inTerminal && target && target !== document.body && !target.closest('.tf-panes')) return
+        const images = [...(ev.clipboardData?.files ?? [])].filter((f) =>
+          f.type.startsWith('image/'),
+        )
+        if (images.length > 0) {
+          if (!this.current()) return
+          ev.preventDefault()
+          ev.stopPropagation()
+          void this.pasteFiles(images)
+          return
+        }
         const text = ev.clipboardData?.getData('text/plain') ?? ''
         if (!text || !this.current()) return
         ev.preventDefault()
@@ -2696,6 +2706,37 @@ export class App {
       },
       { capture: true },
     )
+  }
+
+  /**
+   * A pasted image becomes a file on the machine the shell runs on, and the
+   * composer receives its path — the same thing a desktop terminal does when a
+   * screenshot is pasted into it. An image has no text, so without this the
+   * paste would simply do nothing.
+   */
+  private async pasteFiles(files: File[]): Promise<void> {
+    const tab = this.current()
+    if (!tab) return
+    if (this.composer.disabled) {
+      this.toast('只读：取得控制权后才能粘贴', 'warn')
+      return
+    }
+    const mv = this.machine(tab.machineId)
+    if (!mv) return
+    const paths: string[] = []
+    for (const file of files.slice(0, 8)) {
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const path = await mv.fleet.putFile(tab.sessionId, file.name || 'screenshot.png', bytes)
+        paths.push(path)
+      } catch (err) {
+        this.toast(`粘贴失败：${err instanceof Error ? err.message : String(err)}`, 'error')
+        return
+      }
+    }
+    if (paths.length === 0) return
+    const platform = mv.fleet.host?.platform ?? ''
+    this.pasteIntoComposer(paths.map((p) => shellQuote(p, platform)).join(' ') + ' ')
   }
 
   /** Put pasted text where the caret is in the composer, and keep it focused. */
@@ -2778,3 +2819,9 @@ export class App {
 }
 
 export { relayURLFromLocation }
+
+/** One path as one word for the shell on the far machine. */
+function shellQuote(path: string, platform: string): string {
+  if (platform === 'windows') return `'${path.replaceAll("'", "''")}'`
+  return `'${path.replaceAll("'", `'\\''`)}'`
+}
