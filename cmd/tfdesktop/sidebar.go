@@ -480,6 +480,10 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	selected := w.selectedMachine() == m.ID
 	collapsed := w.collapsed[m.ID]
 	entries := w.entriesFor(m.ID)
+	// Whether a hand asked for this fold is read before the header is drawn: the
+	// click that asks for it happens while the header is being drawn, and its
+	// fold is the one that starts on the next frame.
+	byHand := w.foldByHand[m.ID]
 
 	top := float32(6)
 	if first {
@@ -564,11 +568,15 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	// How far the rows are in the column: 1 open, 0 folded away. Only a hand on
 	// the header moves it; every other fold is a jump that lands at once.
 	foldAnim := groupFoldNow
-	if w.foldByHand[m.ID] {
+	if byHand {
 		foldAnim = groupFold
+	}
+	target := float32(b2f(!collapsed))
+	folded := hdr.AnimateTo("fold", target, foldAnim)
+	if byHand && folded == target {
+		// The fold has arrived: the next one is a jump unless a hand asks again.
 		delete(w.foldByHand, m.ID)
 	}
-	folded := hdr.AnimateTo("fold", float32(b2f(!collapsed)), foldAnim)
 	if collapsed && folded == 0 {
 		return
 	}

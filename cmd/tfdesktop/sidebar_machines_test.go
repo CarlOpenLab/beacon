@@ -314,3 +314,93 @@ func countText(texts []string, want string) int {
 	}
 	return n
 }
+
+// Folding a group by hand is movement, so a person who asked the system for
+// less motion gets the column where it lands in the first frame; and a click on
+// the header, the way a person makes it, is a fold by hand — the flag must not
+// be spent on the frame that draws the click.
+func TestFoldingAGroupByClickFollowsMotionPreferences(t *testing.T) {
+	for _, reduce := range []bool{false, true} {
+		w, _ := newTestShellWindow(t, "one")
+		w.fleet = newTestFleet(t)
+		w.collapsed = make(map[string]bool)
+		w.foldByHand = make(map[string]bool)
+		w.roster = []tunnel.Machine{{ID: "m2", Name: "second", Online: true}}
+		w.remoteSessions = map[string][]protocol.Summary{
+			"m2": {{SessionID: "r1", Title: "remote one", Alive: true}},
+		}
+
+		tt := drawNav(t, w)
+		if reduce {
+			tt.SetPreferences(ui.Preferences{ReduceMotion: true})
+		}
+		tt.Frame()
+		start, ok := tt.Find("second")
+		if !ok {
+			t.Fatalf("the second machine is not in the column; texts = %v", tt.Texts())
+		}
+
+		if err := tt.Click(w.machineName(machineLocal)); err != nil {
+			t.Fatal(err)
+		}
+		tt.Advance(16 * time.Millisecond)
+		tt.Frame()
+		early, ok := tt.Find("second")
+		if !ok {
+			t.Fatalf("reduce=%v: the second machine left the column", reduce)
+		}
+		tt.Advance(400 * time.Millisecond)
+		tt.Frame()
+		rest, ok := tt.Find("second")
+		if !ok {
+			t.Fatalf("reduce=%v: the second machine left the column", reduce)
+		}
+		if rest.Y >= start.Y {
+			t.Fatalf("reduce=%v: the group did not fold: rest y=%.1f, start y=%.1f", reduce, rest.Y, start.Y)
+		}
+		switch {
+		case reduce && early.Y != rest.Y:
+			t.Fatalf("less motion left the column moving: y=%.1f then %.1f", early.Y, rest.Y)
+		case !reduce && early.Y <= rest.Y:
+			t.Fatalf("the fold went in one frame though motion is allowed: y=%.1f then %.1f", early.Y, rest.Y)
+		}
+	}
+}
+
+// Folding a group by hand is movement, so a person who asked the system for
+// less motion gets the rows where they land, in the first frame: the framework
+// takes every animated value to its target under ReduceMotion, and this is the
+// group most likely to be folded a hundred times a day.
+func TestFoldingAGroupLandsAtOnceWithLessMotion(t *testing.T) {
+	for _, reduce := range []bool{false, true} {
+		w, _ := newTestShellWindow(t, "one")
+		w.fleet = newTestFleet(t)
+		w.collapsed = make(map[string]bool)
+		w.foldByHand = make(map[string]bool)
+
+		tt := drawNav(t, w)
+		if reduce {
+			tt.SetPreferences(ui.Preferences{ReduceMotion: true})
+			tt.Frame()
+		}
+		if err := tt.Click(w.machineName(machineLocal)); err != nil {
+			t.Fatal(err)
+		}
+		tt.Advance(20 * time.Millisecond)
+		tt.Frame()
+		mid := tt.HasText("one")
+		tt.Advance(400 * time.Millisecond)
+		tt.Frame()
+		end := tt.HasText("one")
+
+		if end {
+			t.Fatalf("reduce=%v: the group did not fold; texts = %v", reduce, tt.Texts())
+		}
+		if reduce && mid {
+			t.Fatalf("less motion left a frame with the rows still there")
+		}
+		if !reduce && !mid {
+			t.Fatalf("the fold went in one frame though motion is allowed")
+		}
+	}
+}
