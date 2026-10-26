@@ -6,6 +6,9 @@ on:
     paths:
       - "pages/**"
       - ".github/workflows/pages.yml"
+      - ".github/scripts/stamp-version.py"
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +29,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Stamp the release version onto the page
+        # The page names the version in three places; deriving it from the
+        # release keeps them from drifting apart (the page said v0.6.8 while
+        # the download button already served v0.7.3).
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/stamp-version.py pages
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
