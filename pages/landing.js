@@ -20,6 +20,13 @@
     if (node.dataset.zh === undefined) node.dataset.zh = node.innerHTML;
   });
 
+  // aria-labels can't ride the innerHTML swap, so they get their own pair.
+  var ariaNodes = Array.prototype.slice.call(document.querySelectorAll('[data-en-aria]'));
+  ariaNodes.forEach(function (node) {
+    if (node.dataset.zhAria === undefined) node.dataset.zhAria = node.getAttribute('aria-label') || '';
+  });
+
+  var titles = { zh: document.title, en: 'Beacon — one terminal fleet, controlled from anywhere' };
   var langBtn = document.getElementById('lang-toggle');
 
   function applyLang(lang) {
@@ -27,6 +34,10 @@
     langNodes.forEach(function (node) {
       node.innerHTML = isEN ? node.dataset.en : node.dataset.zh;
     });
+    ariaNodes.forEach(function (node) {
+      node.setAttribute('aria-label', isEN ? node.dataset.enAria : node.dataset.zhAria);
+    });
+    document.title = isEN ? titles.en : titles.zh;
     document.documentElement.lang = isEN ? 'en' : 'zh-CN';
     if (langBtn) {
       langBtn.textContent = isEN ? '中' : 'EN';
