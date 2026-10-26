@@ -24,7 +24,7 @@ export default defineConfig({
   },
   plugins: [
     {
-      name: 'term-fleet:keep-embed-dir',
+      name: 'beacon:keep-embed-dir',
       closeBundle() {
         writeFileSync(marker, '')
       },

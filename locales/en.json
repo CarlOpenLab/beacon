@@ -215,183 +215,183 @@
   },
   "action_jump_attention": "Jump to the session needing you",
   "@action_jump_attention": {
-    "description": "term-fleet UI: action jump attention"
+    "description": "Beacon UI: action jump attention"
   },
   "action_palette": "Command Palette",
   "@action_palette": {
-    "description": "term-fleet UI: action palette"
+    "description": "Beacon UI: action palette"
   },
   "action_sidebar_hide": "Hide Sidebar",
   "@action_sidebar_hide": {
-    "description": "term-fleet UI: action sidebar hide"
+    "description": "Beacon UI: action sidebar hide"
   },
   "action_sidebar_show": "Show Sidebar",
   "@action_sidebar_show": {
-    "description": "term-fleet UI: action sidebar show"
+    "description": "Beacon UI: action sidebar show"
   },
   "action_split_down": "Split Down",
   "@action_split_down": {
-    "description": "term-fleet UI: action split down"
+    "description": "Beacon UI: action split down"
   },
   "action_split_right": "Split Right",
   "@action_split_right": {
-    "description": "term-fleet UI: action split right"
+    "description": "Beacon UI: action split right"
   },
   "action_toggle_sidebar": "Show or Hide Sidebar",
   "@action_toggle_sidebar": {
-    "description": "term-fleet UI: action toggle sidebar"
+    "description": "Beacon UI: action toggle sidebar"
   },
   "bg_dusk": "Dusk",
   "@bg_dusk": {
-    "description": "term-fleet UI: bg dusk"
+    "description": "Beacon UI: bg dusk"
   },
   "bg_meadow": "Meadow",
   "@bg_meadow": {
-    "description": "term-fleet UI: bg meadow"
+    "description": "Beacon UI: bg meadow"
   },
   "bg_mist": "Mist",
   "@bg_mist": {
-    "description": "term-fleet UI: bg mist"
+    "description": "Beacon UI: bg mist"
   },
   "bg_plain": "Plain",
   "@bg_plain": {
-    "description": "term-fleet UI: bg plain"
+    "description": "Beacon UI: bg plain"
   },
   "bg_rex": "Petal",
   "@bg_rex": {
-    "description": "term-fleet UI: bg rex"
+    "description": "Beacon UI: bg rex"
   },
   "footer_done": "Done",
   "@footer_done": {
-    "description": "term-fleet UI: footer done"
+    "description": "Beacon UI: footer done"
   },
   "footer_needs_you": "Needs you",
   "@footer_needs_you": {
-    "description": "term-fleet UI: footer needs you"
+    "description": "Beacon UI: footer needs you"
   },
   "footer_working": "Working",
   "@footer_working": {
-    "description": "term-fleet UI: footer working"
+    "description": "Beacon UI: footer working"
   },
   "notify_done_title": "{name} finished",
   "@notify_done_title": {
-    "description": "term-fleet UI: notify done title"
+    "description": "Beacon UI: notify done title"
   },
   "notify_failed_title": "{name} failed",
   "@notify_failed_title": {
-    "description": "term-fleet UI: notify failed title"
+    "description": "Beacon UI: notify failed title"
   },
   "notify_needs_you_title": "{name} needs you",
   "@notify_needs_you_title": {
-    "description": "term-fleet UI: notify needs you title"
+    "description": "Beacon UI: notify needs you title"
   },
   "palette_commands": "Commands",
   "@palette_commands": {
-    "description": "term-fleet UI: palette commands"
+    "description": "Beacon UI: palette commands"
   },
   "palette_label": "Command palette",
   "@palette_label": {
-    "description": "term-fleet UI: palette label"
+    "description": "Beacon UI: palette label"
   },
   "palette_no_matches": "No matches",
   "@palette_no_matches": {
-    "description": "term-fleet UI: palette no matches"
+    "description": "Beacon UI: palette no matches"
   },
   "palette_placeholder": "Search sessions, machines or commands",
   "@palette_placeholder": {
-    "description": "term-fleet UI: palette placeholder"
+    "description": "Beacon UI: palette placeholder"
   },
   "palette_sessions": "Sessions",
   "@palette_sessions": {
-    "description": "term-fleet UI: palette sessions"
+    "description": "Beacon UI: palette sessions"
   },
   "session_mark_read": "Mark as read",
   "@session_mark_read": {
-    "description": "term-fleet UI: session mark read"
+    "description": "Beacon UI: session mark read"
   },
   "settings_background": "Window background",
   "@settings_background": {
-    "description": "term-fleet UI: settings background"
+    "description": "Beacon UI: settings background"
   },
   "settings_pane_appearance": "Appearance",
   "@settings_pane_appearance": {
-    "description": "term-fleet UI: settings pane appearance"
+    "description": "Beacon UI: settings pane appearance"
   },
   "settings_theme": "Theme",
   "@settings_theme": {
-    "description": "term-fleet UI: settings theme"
+    "description": "Beacon UI: settings theme"
   },
   "settings_translucent": "Translucent",
   "@settings_translucent": {
-    "description": "term-fleet UI: settings translucent"
+    "description": "Beacon UI: settings translucent"
   },
   "settings_translucent_note": "Let the desktop show through a little",
   "@settings_translucent_note": {
-    "description": "term-fleet UI: settings translucent note"
+    "description": "Beacon UI: settings translucent note"
   },
   "sidebar_machine_empty": "No sessions yet",
   "@sidebar_machine_empty": {
-    "description": "term-fleet UI: sidebar machine empty"
+    "description": "Beacon UI: sidebar machine empty"
   },
   "sidebar_machine_look": "Click to see its sessions",
   "@sidebar_machine_look": {
-    "description": "term-fleet UI: sidebar machine look"
+    "description": "Beacon UI: sidebar machine look"
   },
   "sidebar_no_sessions": "No sessions yet. Press + to open a terminal.",
   "@sidebar_no_sessions": {
-    "description": "term-fleet UI: sidebar no sessions"
+    "description": "Beacon UI: sidebar no sessions"
   },
   "sidebar_nothing_done": "Nothing has finished",
   "@sidebar_nothing_done": {
-    "description": "term-fleet UI: sidebar nothing done"
+    "description": "Beacon UI: sidebar nothing done"
   },
   "sidebar_nothing_needs_you": "Nothing needs you",
   "@sidebar_nothing_needs_you": {
-    "description": "term-fleet UI: sidebar nothing needs you"
+    "description": "Beacon UI: sidebar nothing needs you"
   },
   "sidebar_nothing_working": "Nothing is running",
   "@sidebar_nothing_working": {
-    "description": "term-fleet UI: sidebar nothing working"
+    "description": "Beacon UI: sidebar nothing working"
   },
   "status_done": "Done",
   "@status_done": {
-    "description": "term-fleet UI: status done"
+    "description": "Beacon UI: status done"
   },
   "status_exited": "Exited",
   "@status_exited": {
-    "description": "term-fleet UI: status exited"
+    "description": "Beacon UI: status exited"
   },
   "status_failed": "Failed",
   "@status_failed": {
-    "description": "term-fleet UI: status failed"
+    "description": "Beacon UI: status failed"
   },
   "status_has_question": "Has a question",
   "@status_has_question": {
-    "description": "term-fleet UI: status has question"
+    "description": "Beacon UI: status has question"
   },
   "status_idle": "Idle",
   "@status_idle": {
-    "description": "term-fleet UI: status idle"
+    "description": "Beacon UI: status idle"
   },
   "status_needs_permission": "Needs permission",
   "@status_needs_permission": {
-    "description": "term-fleet UI: status needs permission"
+    "description": "Beacon UI: status needs permission"
   },
   "status_needs_sign_in": "Needs sign-in",
   "@status_needs_sign_in": {
-    "description": "term-fleet UI: status needs sign in"
+    "description": "Beacon UI: status needs sign in"
   },
   "status_waiting": "Needs you",
   "@status_waiting": {
-    "description": "term-fleet UI: status waiting"
+    "description": "Beacon UI: status waiting"
   },
   "status_working": "Working",
   "@status_working": {
-    "description": "term-fleet UI: status working"
+    "description": "Beacon UI: status working"
   },
   "tab_restart": "Restart",
   "@tab_restart": {
-    "description": "term-fleet UI: tab restart"
+    "description": "Beacon UI: tab restart"
   },
   "workspace_panes": "{count} panes",
   "@workspace_panes": {
@@ -404,107 +404,107 @@
   },
   "notify_body_waiting": "This session is waiting for you",
   "@notify_body_waiting": {
-    "description": "term-fleet UI: notify body waiting"
+    "description": "Beacon UI: notify body waiting"
   },
   "notify_body_done": "This session finished",
   "@notify_body_done": {
-    "description": "term-fleet UI: notify body done"
+    "description": "Beacon UI: notify body done"
   },
   "notify_body_error": "This session failed",
   "@notify_body_error": {
-    "description": "term-fleet UI: notify body error"
+    "description": "Beacon UI: notify body error"
   },
   "settings_pane_notifications": "Notifications",
   "@settings_pane_notifications": {
-    "description": "term-fleet UI: settings pane notifications"
+    "description": "Beacon UI: settings pane notifications"
   },
   "settings_notify_waiting": "Notify when a session needs you",
   "@settings_notify_waiting": {
-    "description": "term-fleet UI: settings notify waiting"
+    "description": "Beacon UI: settings notify waiting"
   },
   "settings_notify_done": "Notify when an agent finishes",
   "@settings_notify_done": {
-    "description": "term-fleet UI: settings notify done"
+    "description": "Beacon UI: settings notify done"
   },
   "settings_notify_error": "Notify when a program fails",
   "@settings_notify_error": {
-    "description": "term-fleet UI: settings notify error"
+    "description": "Beacon UI: settings notify error"
   },
   "settings_dock_badge": "Show the count on the Dock icon",
   "@settings_dock_badge": {
-    "description": "term-fleet UI: settings dock badge"
+    "description": "Beacon UI: settings dock badge"
   },
   "settings_notify_note": "Only when the window is not in front, or the session is not the one on screen.",
   "@settings_notify_note": {
-    "description": "term-fleet UI: settings notify note"
+    "description": "Beacon UI: settings notify note"
   },
   "action_next_session": "Next Session",
   "@action_next_session": {
-    "description": "term-fleet UI: action next session"
+    "description": "Beacon UI: action next session"
   },
   "action_previous_session": "Previous Session",
   "@action_previous_session": {
-    "description": "term-fleet UI: action previous session"
+    "description": "Beacon UI: action previous session"
   },
   "action_zoom_pane": "Zoom Pane",
   "@action_zoom_pane": {
-    "description": "term-fleet UI: action zoom pane"
+    "description": "Beacon UI: action zoom pane"
   },
   "action_next_pane": "Next Pane",
   "@action_next_pane": {
-    "description": "term-fleet UI: action next pane"
+    "description": "Beacon UI: action next pane"
   },
   "action_previous_pane": "Previous Pane",
   "@action_previous_pane": {
-    "description": "term-fleet UI: action previous pane"
+    "description": "Beacon UI: action previous pane"
   },
   "action_pane_left": "Pane to the Left",
   "@action_pane_left": {
-    "description": "term-fleet UI: action pane left"
+    "description": "Beacon UI: action pane left"
   },
   "action_pane_right": "Pane to the Right",
   "@action_pane_right": {
-    "description": "term-fleet UI: action pane right"
+    "description": "Beacon UI: action pane right"
   },
   "action_pane_up": "Pane Above",
   "@action_pane_up": {
-    "description": "term-fleet UI: action pane up"
+    "description": "Beacon UI: action pane up"
   },
   "action_pane_down": "Pane Below",
   "@action_pane_down": {
-    "description": "term-fleet UI: action pane down"
+    "description": "Beacon UI: action pane down"
   },
   "action_text_bigger": "Bigger Text",
   "@action_text_bigger": {
-    "description": "term-fleet UI: action text bigger"
+    "description": "Beacon UI: action text bigger"
   },
   "action_text_smaller": "Smaller Text",
   "@action_text_smaller": {
-    "description": "term-fleet UI: action text smaller"
+    "description": "Beacon UI: action text smaller"
   },
   "action_text_reset": "Actual Size",
   "@action_text_reset": {
-    "description": "term-fleet UI: action text reset"
+    "description": "Beacon UI: action text reset"
   },
   "settings_pane_keyboard": "Keyboard",
   "@settings_pane_keyboard": {
-    "description": "term-fleet UI: settings pane keyboard"
+    "description": "Beacon UI: settings pane keyboard"
   },
   "settings_keys_note": "Click a shortcut, then press the keys you want. Esc cancels, ⌫ clears it.",
   "@settings_keys_note": {
-    "description": "term-fleet UI: settings keys note"
+    "description": "Beacon UI: settings keys note"
   },
   "settings_keys_record": "Press keys…",
   "@settings_keys_record": {
-    "description": "term-fleet UI: settings keys record"
+    "description": "Beacon UI: settings keys record"
   },
   "settings_keys_none": "None",
   "@settings_keys_none": {
-    "description": "term-fleet UI: settings keys none"
+    "description": "Beacon UI: settings keys none"
   },
   "settings_keys_conflict": "That key is already used by “{action}”",
   "@settings_keys_conflict": {
-    "description": "term-fleet UI: settings keys conflict"
+    "description": "Beacon UI: settings keys conflict"
   },
   "settings_keys_clear": "Clear the shortcut",
   "@settings_keys_clear": {

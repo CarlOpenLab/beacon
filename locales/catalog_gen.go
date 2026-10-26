@@ -2885,13 +2885,13 @@ func (msgs Messages) SettingsLangSystem() string {
 // ActionJumpAttention says "跳到需要你的会话"
 // in the language the app shows.
 //
-// term-fleet UI: action jump attention
+// Beacon UI: action jump attention
 func ActionJumpAttention() string { return In(i18n.Locale()).ActionJumpAttention() }
 
 // ActionJumpAttention says "跳到需要你的会话"
 // in the language of msgs.
 //
-// term-fleet UI: action jump attention
+// Beacon UI: action jump attention
 func (msgs Messages) ActionJumpAttention() string {
 	return Catalog.Format(msgs.locale, "action_jump_attention", nil)
 }
@@ -2899,13 +2899,13 @@ func (msgs Messages) ActionJumpAttention() string {
 // ActionPalette says "命令面板"
 // in the language the app shows.
 //
-// term-fleet UI: action palette
+// Beacon UI: action palette
 func ActionPalette() string { return In(i18n.Locale()).ActionPalette() }
 
 // ActionPalette says "命令面板"
 // in the language of msgs.
 //
-// term-fleet UI: action palette
+// Beacon UI: action palette
 func (msgs Messages) ActionPalette() string {
 	return Catalog.Format(msgs.locale, "action_palette", nil)
 }
@@ -2913,13 +2913,13 @@ func (msgs Messages) ActionPalette() string {
 // ActionSidebarHide says "隐藏侧栏"
 // in the language the app shows.
 //
-// term-fleet UI: action sidebar hide
+// Beacon UI: action sidebar hide
 func ActionSidebarHide() string { return In(i18n.Locale()).ActionSidebarHide() }
 
 // ActionSidebarHide says "隐藏侧栏"
 // in the language of msgs.
 //
-// term-fleet UI: action sidebar hide
+// Beacon UI: action sidebar hide
 func (msgs Messages) ActionSidebarHide() string {
 	return Catalog.Format(msgs.locale, "action_sidebar_hide", nil)
 }
@@ -2927,13 +2927,13 @@ func (msgs Messages) ActionSidebarHide() string {
 // ActionSidebarShow says "显示侧栏"
 // in the language the app shows.
 //
-// term-fleet UI: action sidebar show
+// Beacon UI: action sidebar show
 func ActionSidebarShow() string { return In(i18n.Locale()).ActionSidebarShow() }
 
 // ActionSidebarShow says "显示侧栏"
 // in the language of msgs.
 //
-// term-fleet UI: action sidebar show
+// Beacon UI: action sidebar show
 func (msgs Messages) ActionSidebarShow() string {
 	return Catalog.Format(msgs.locale, "action_sidebar_show", nil)
 }
@@ -2941,13 +2941,13 @@ func (msgs Messages) ActionSidebarShow() string {
 // ActionSplitDown says "向下分屏"
 // in the language the app shows.
 //
-// term-fleet UI: action split down
+// Beacon UI: action split down
 func ActionSplitDown() string { return In(i18n.Locale()).ActionSplitDown() }
 
 // ActionSplitDown says "向下分屏"
 // in the language of msgs.
 //
-// term-fleet UI: action split down
+// Beacon UI: action split down
 func (msgs Messages) ActionSplitDown() string {
 	return Catalog.Format(msgs.locale, "action_split_down", nil)
 }
@@ -2955,13 +2955,13 @@ func (msgs Messages) ActionSplitDown() string {
 // ActionSplitRight says "向右分屏"
 // in the language the app shows.
 //
-// term-fleet UI: action split right
+// Beacon UI: action split right
 func ActionSplitRight() string { return In(i18n.Locale()).ActionSplitRight() }
 
 // ActionSplitRight says "向右分屏"
 // in the language of msgs.
 //
-// term-fleet UI: action split right
+// Beacon UI: action split right
 func (msgs Messages) ActionSplitRight() string {
 	return Catalog.Format(msgs.locale, "action_split_right", nil)
 }
@@ -2969,13 +2969,13 @@ func (msgs Messages) ActionSplitRight() string {
 // ActionToggleSidebar says "显示或隐藏侧栏"
 // in the language the app shows.
 //
-// term-fleet UI: action toggle sidebar
+// Beacon UI: action toggle sidebar
 func ActionToggleSidebar() string { return In(i18n.Locale()).ActionToggleSidebar() }
 
 // ActionToggleSidebar says "显示或隐藏侧栏"
 // in the language of msgs.
 //
-// term-fleet UI: action toggle sidebar
+// Beacon UI: action toggle sidebar
 func (msgs Messages) ActionToggleSidebar() string {
 	return Catalog.Format(msgs.locale, "action_toggle_sidebar", nil)
 }
@@ -2983,13 +2983,13 @@ func (msgs Messages) ActionToggleSidebar() string {
 // BgDusk says "暮色"
 // in the language the app shows.
 //
-// term-fleet UI: bg dusk
+// Beacon UI: bg dusk
 func BgDusk() string { return In(i18n.Locale()).BgDusk() }
 
 // BgDusk says "暮色"
 // in the language of msgs.
 //
-// term-fleet UI: bg dusk
+// Beacon UI: bg dusk
 func (msgs Messages) BgDusk() string {
 	return Catalog.Format(msgs.locale, "bg_dusk", nil)
 }
@@ -2997,13 +2997,13 @@ func (msgs Messages) BgDusk() string {
 // BgMeadow says "草绿"
 // in the language the app shows.
 //
-// term-fleet UI: bg meadow
+// Beacon UI: bg meadow
 func BgMeadow() string { return In(i18n.Locale()).BgMeadow() }
 
 // BgMeadow says "草绿"
 // in the language of msgs.
 //
-// term-fleet UI: bg meadow
+// Beacon UI: bg meadow
 func (msgs Messages) BgMeadow() string {
 	return Catalog.Format(msgs.locale, "bg_meadow", nil)
 }
@@ -3011,13 +3011,13 @@ func (msgs Messages) BgMeadow() string {
 // BgMist says "雾蓝"
 // in the language the app shows.
 //
-// term-fleet UI: bg mist
+// Beacon UI: bg mist
 func BgMist() string { return In(i18n.Locale()).BgMist() }
 
 // BgMist says "雾蓝"
 // in the language of msgs.
 //
-// term-fleet UI: bg mist
+// Beacon UI: bg mist
 func (msgs Messages) BgMist() string {
 	return Catalog.Format(msgs.locale, "bg_mist", nil)
 }
@@ -3025,13 +3025,13 @@ func (msgs Messages) BgMist() string {
 // BgPlain says "纯色"
 // in the language the app shows.
 //
-// term-fleet UI: bg plain
+// Beacon UI: bg plain
 func BgPlain() string { return In(i18n.Locale()).BgPlain() }
 
 // BgPlain says "纯色"
 // in the language of msgs.
 //
-// term-fleet UI: bg plain
+// Beacon UI: bg plain
 func (msgs Messages) BgPlain() string {
 	return Catalog.Format(msgs.locale, "bg_plain", nil)
 }
@@ -3039,13 +3039,13 @@ func (msgs Messages) BgPlain() string {
 // BgRex says "粉紫"
 // in the language the app shows.
 //
-// term-fleet UI: bg rex
+// Beacon UI: bg rex
 func BgRex() string { return In(i18n.Locale()).BgRex() }
 
 // BgRex says "粉紫"
 // in the language of msgs.
 //
-// term-fleet UI: bg rex
+// Beacon UI: bg rex
 func (msgs Messages) BgRex() string {
 	return Catalog.Format(msgs.locale, "bg_rex", nil)
 }
@@ -3053,13 +3053,13 @@ func (msgs Messages) BgRex() string {
 // FooterDone says "已完成"
 // in the language the app shows.
 //
-// term-fleet UI: footer done
+// Beacon UI: footer done
 func FooterDone() string { return In(i18n.Locale()).FooterDone() }
 
 // FooterDone says "已完成"
 // in the language of msgs.
 //
-// term-fleet UI: footer done
+// Beacon UI: footer done
 func (msgs Messages) FooterDone() string {
 	return Catalog.Format(msgs.locale, "footer_done", nil)
 }
@@ -3067,13 +3067,13 @@ func (msgs Messages) FooterDone() string {
 // FooterNeedsYou says "需要你"
 // in the language the app shows.
 //
-// term-fleet UI: footer needs you
+// Beacon UI: footer needs you
 func FooterNeedsYou() string { return In(i18n.Locale()).FooterNeedsYou() }
 
 // FooterNeedsYou says "需要你"
 // in the language of msgs.
 //
-// term-fleet UI: footer needs you
+// Beacon UI: footer needs you
 func (msgs Messages) FooterNeedsYou() string {
 	return Catalog.Format(msgs.locale, "footer_needs_you", nil)
 }
@@ -3081,13 +3081,13 @@ func (msgs Messages) FooterNeedsYou() string {
 // FooterWorking says "运行中"
 // in the language the app shows.
 //
-// term-fleet UI: footer working
+// Beacon UI: footer working
 func FooterWorking() string { return In(i18n.Locale()).FooterWorking() }
 
 // FooterWorking says "运行中"
 // in the language of msgs.
 //
-// term-fleet UI: footer working
+// Beacon UI: footer working
 func (msgs Messages) FooterWorking() string {
 	return Catalog.Format(msgs.locale, "footer_working", nil)
 }
@@ -3095,13 +3095,13 @@ func (msgs Messages) FooterWorking() string {
 // NotifyDoneTitle says "{name} 完成了"
 // in the language the app shows.
 //
-// term-fleet UI: notify done title
+// Beacon UI: notify done title
 func NotifyDoneTitle(name string) string { return In(i18n.Locale()).NotifyDoneTitle(name) }
 
 // NotifyDoneTitle says "{name} 完成了"
 // in the language of msgs.
 //
-// term-fleet UI: notify done title
+// Beacon UI: notify done title
 func (msgs Messages) NotifyDoneTitle(name string) string {
 	return Catalog.Format(msgs.locale, "notify_done_title", map[string]any{"name": name})
 }
@@ -3109,13 +3109,13 @@ func (msgs Messages) NotifyDoneTitle(name string) string {
 // NotifyFailedTitle says "{name} 出错了"
 // in the language the app shows.
 //
-// term-fleet UI: notify failed title
+// Beacon UI: notify failed title
 func NotifyFailedTitle(name string) string { return In(i18n.Locale()).NotifyFailedTitle(name) }
 
 // NotifyFailedTitle says "{name} 出错了"
 // in the language of msgs.
 //
-// term-fleet UI: notify failed title
+// Beacon UI: notify failed title
 func (msgs Messages) NotifyFailedTitle(name string) string {
 	return Catalog.Format(msgs.locale, "notify_failed_title", map[string]any{"name": name})
 }
@@ -3123,13 +3123,13 @@ func (msgs Messages) NotifyFailedTitle(name string) string {
 // NotifyNeedsYouTitle says "{name} 需要你"
 // in the language the app shows.
 //
-// term-fleet UI: notify needs you title
+// Beacon UI: notify needs you title
 func NotifyNeedsYouTitle(name string) string { return In(i18n.Locale()).NotifyNeedsYouTitle(name) }
 
 // NotifyNeedsYouTitle says "{name} 需要你"
 // in the language of msgs.
 //
-// term-fleet UI: notify needs you title
+// Beacon UI: notify needs you title
 func (msgs Messages) NotifyNeedsYouTitle(name string) string {
 	return Catalog.Format(msgs.locale, "notify_needs_you_title", map[string]any{"name": name})
 }
@@ -3137,13 +3137,13 @@ func (msgs Messages) NotifyNeedsYouTitle(name string) string {
 // PaletteCommands says "命令"
 // in the language the app shows.
 //
-// term-fleet UI: palette commands
+// Beacon UI: palette commands
 func PaletteCommands() string { return In(i18n.Locale()).PaletteCommands() }
 
 // PaletteCommands says "命令"
 // in the language of msgs.
 //
-// term-fleet UI: palette commands
+// Beacon UI: palette commands
 func (msgs Messages) PaletteCommands() string {
 	return Catalog.Format(msgs.locale, "palette_commands", nil)
 }
@@ -3151,13 +3151,13 @@ func (msgs Messages) PaletteCommands() string {
 // PaletteLabel says "命令面板"
 // in the language the app shows.
 //
-// term-fleet UI: palette label
+// Beacon UI: palette label
 func PaletteLabel() string { return In(i18n.Locale()).PaletteLabel() }
 
 // PaletteLabel says "命令面板"
 // in the language of msgs.
 //
-// term-fleet UI: palette label
+// Beacon UI: palette label
 func (msgs Messages) PaletteLabel() string {
 	return Catalog.Format(msgs.locale, "palette_label", nil)
 }
@@ -3165,13 +3165,13 @@ func (msgs Messages) PaletteLabel() string {
 // PaletteNoMatches says "没有匹配项"
 // in the language the app shows.
 //
-// term-fleet UI: palette no matches
+// Beacon UI: palette no matches
 func PaletteNoMatches() string { return In(i18n.Locale()).PaletteNoMatches() }
 
 // PaletteNoMatches says "没有匹配项"
 // in the language of msgs.
 //
-// term-fleet UI: palette no matches
+// Beacon UI: palette no matches
 func (msgs Messages) PaletteNoMatches() string {
 	return Catalog.Format(msgs.locale, "palette_no_matches", nil)
 }
@@ -3179,13 +3179,13 @@ func (msgs Messages) PaletteNoMatches() string {
 // PalettePlaceholder says "搜索会话、机器或命令"
 // in the language the app shows.
 //
-// term-fleet UI: palette placeholder
+// Beacon UI: palette placeholder
 func PalettePlaceholder() string { return In(i18n.Locale()).PalettePlaceholder() }
 
 // PalettePlaceholder says "搜索会话、机器或命令"
 // in the language of msgs.
 //
-// term-fleet UI: palette placeholder
+// Beacon UI: palette placeholder
 func (msgs Messages) PalettePlaceholder() string {
 	return Catalog.Format(msgs.locale, "palette_placeholder", nil)
 }
@@ -3193,13 +3193,13 @@ func (msgs Messages) PalettePlaceholder() string {
 // PaletteSessions says "会话"
 // in the language the app shows.
 //
-// term-fleet UI: palette sessions
+// Beacon UI: palette sessions
 func PaletteSessions() string { return In(i18n.Locale()).PaletteSessions() }
 
 // PaletteSessions says "会话"
 // in the language of msgs.
 //
-// term-fleet UI: palette sessions
+// Beacon UI: palette sessions
 func (msgs Messages) PaletteSessions() string {
 	return Catalog.Format(msgs.locale, "palette_sessions", nil)
 }
@@ -3207,13 +3207,13 @@ func (msgs Messages) PaletteSessions() string {
 // SessionMarkRead says "标为已读"
 // in the language the app shows.
 //
-// term-fleet UI: session mark read
+// Beacon UI: session mark read
 func SessionMarkRead() string { return In(i18n.Locale()).SessionMarkRead() }
 
 // SessionMarkRead says "标为已读"
 // in the language of msgs.
 //
-// term-fleet UI: session mark read
+// Beacon UI: session mark read
 func (msgs Messages) SessionMarkRead() string {
 	return Catalog.Format(msgs.locale, "session_mark_read", nil)
 }
@@ -3221,13 +3221,13 @@ func (msgs Messages) SessionMarkRead() string {
 // SettingsBackground says "窗口背景"
 // in the language the app shows.
 //
-// term-fleet UI: settings background
+// Beacon UI: settings background
 func SettingsBackground() string { return In(i18n.Locale()).SettingsBackground() }
 
 // SettingsBackground says "窗口背景"
 // in the language of msgs.
 //
-// term-fleet UI: settings background
+// Beacon UI: settings background
 func (msgs Messages) SettingsBackground() string {
 	return Catalog.Format(msgs.locale, "settings_background", nil)
 }
@@ -3235,13 +3235,13 @@ func (msgs Messages) SettingsBackground() string {
 // SettingsPaneAppearance says "外观"
 // in the language the app shows.
 //
-// term-fleet UI: settings pane appearance
+// Beacon UI: settings pane appearance
 func SettingsPaneAppearance() string { return In(i18n.Locale()).SettingsPaneAppearance() }
 
 // SettingsPaneAppearance says "外观"
 // in the language of msgs.
 //
-// term-fleet UI: settings pane appearance
+// Beacon UI: settings pane appearance
 func (msgs Messages) SettingsPaneAppearance() string {
 	return Catalog.Format(msgs.locale, "settings_pane_appearance", nil)
 }
@@ -3249,13 +3249,13 @@ func (msgs Messages) SettingsPaneAppearance() string {
 // SettingsTheme says "主题"
 // in the language the app shows.
 //
-// term-fleet UI: settings theme
+// Beacon UI: settings theme
 func SettingsTheme() string { return In(i18n.Locale()).SettingsTheme() }
 
 // SettingsTheme says "主题"
 // in the language of msgs.
 //
-// term-fleet UI: settings theme
+// Beacon UI: settings theme
 func (msgs Messages) SettingsTheme() string {
 	return Catalog.Format(msgs.locale, "settings_theme", nil)
 }
@@ -3263,13 +3263,13 @@ func (msgs Messages) SettingsTheme() string {
 // SettingsTranslucent says "半透明"
 // in the language the app shows.
 //
-// term-fleet UI: settings translucent
+// Beacon UI: settings translucent
 func SettingsTranslucent() string { return In(i18n.Locale()).SettingsTranslucent() }
 
 // SettingsTranslucent says "半透明"
 // in the language of msgs.
 //
-// term-fleet UI: settings translucent
+// Beacon UI: settings translucent
 func (msgs Messages) SettingsTranslucent() string {
 	return Catalog.Format(msgs.locale, "settings_translucent", nil)
 }
@@ -3277,13 +3277,13 @@ func (msgs Messages) SettingsTranslucent() string {
 // SettingsTranslucentNote says "让桌面从窗口里透出一点"
 // in the language the app shows.
 //
-// term-fleet UI: settings translucent note
+// Beacon UI: settings translucent note
 func SettingsTranslucentNote() string { return In(i18n.Locale()).SettingsTranslucentNote() }
 
 // SettingsTranslucentNote says "让桌面从窗口里透出一点"
 // in the language of msgs.
 //
-// term-fleet UI: settings translucent note
+// Beacon UI: settings translucent note
 func (msgs Messages) SettingsTranslucentNote() string {
 	return Catalog.Format(msgs.locale, "settings_translucent_note", nil)
 }
@@ -3291,13 +3291,13 @@ func (msgs Messages) SettingsTranslucentNote() string {
 // SidebarMachineEmpty says "还没有会话"
 // in the language the app shows.
 //
-// term-fleet UI: sidebar machine empty
+// Beacon UI: sidebar machine empty
 func SidebarMachineEmpty() string { return In(i18n.Locale()).SidebarMachineEmpty() }
 
 // SidebarMachineEmpty says "还没有会话"
 // in the language of msgs.
 //
-// term-fleet UI: sidebar machine empty
+// Beacon UI: sidebar machine empty
 func (msgs Messages) SidebarMachineEmpty() string {
 	return Catalog.Format(msgs.locale, "sidebar_machine_empty", nil)
 }
@@ -3305,13 +3305,13 @@ func (msgs Messages) SidebarMachineEmpty() string {
 // SidebarMachineLook says "点击查看会话"
 // in the language the app shows.
 //
-// term-fleet UI: sidebar machine look
+// Beacon UI: sidebar machine look
 func SidebarMachineLook() string { return In(i18n.Locale()).SidebarMachineLook() }
 
 // SidebarMachineLook says "点击查看会话"
 // in the language of msgs.
 //
-// term-fleet UI: sidebar machine look
+// Beacon UI: sidebar machine look
 func (msgs Messages) SidebarMachineLook() string {
 	return Catalog.Format(msgs.locale, "sidebar_machine_look", nil)
 }
@@ -3319,13 +3319,13 @@ func (msgs Messages) SidebarMachineLook() string {
 // SidebarNoSessions says "还没有会话，点 + 新建一个终端。"
 // in the language the app shows.
 //
-// term-fleet UI: sidebar no sessions
+// Beacon UI: sidebar no sessions
 func SidebarNoSessions() string { return In(i18n.Locale()).SidebarNoSessions() }
 
 // SidebarNoSessions says "还没有会话，点 + 新建一个终端。"
 // in the language of msgs.
 //
-// term-fleet UI: sidebar no sessions
+// Beacon UI: sidebar no sessions
 func (msgs Messages) SidebarNoSessions() string {
 	return Catalog.Format(msgs.locale, "sidebar_no_sessions", nil)
 }
@@ -3333,13 +3333,13 @@ func (msgs Messages) SidebarNoSessions() string {
 // SidebarNothingDone says "没有刚完成的会话"
 // in the language the app shows.
 //
-// term-fleet UI: sidebar nothing done
+// Beacon UI: sidebar nothing done
 func SidebarNothingDone() string { return In(i18n.Locale()).SidebarNothingDone() }
 
 // SidebarNothingDone says "没有刚完成的会话"
 // in the language of msgs.
 //
-// term-fleet UI: sidebar nothing done
+// Beacon UI: sidebar nothing done
 func (msgs Messages) SidebarNothingDone() string {
 	return Catalog.Format(msgs.locale, "sidebar_nothing_done", nil)
 }
@@ -3347,13 +3347,13 @@ func (msgs Messages) SidebarNothingDone() string {
 // SidebarNothingNeedsYou says "没有会话需要你"
 // in the language the app shows.
 //
-// term-fleet UI: sidebar nothing needs you
+// Beacon UI: sidebar nothing needs you
 func SidebarNothingNeedsYou() string { return In(i18n.Locale()).SidebarNothingNeedsYou() }
 
 // SidebarNothingNeedsYou says "没有会话需要你"
 // in the language of msgs.
 //
-// term-fleet UI: sidebar nothing needs you
+// Beacon UI: sidebar nothing needs you
 func (msgs Messages) SidebarNothingNeedsYou() string {
 	return Catalog.Format(msgs.locale, "sidebar_nothing_needs_you", nil)
 }
@@ -3361,13 +3361,13 @@ func (msgs Messages) SidebarNothingNeedsYou() string {
 // SidebarNothingWorking says "没有会话在运行"
 // in the language the app shows.
 //
-// term-fleet UI: sidebar nothing working
+// Beacon UI: sidebar nothing working
 func SidebarNothingWorking() string { return In(i18n.Locale()).SidebarNothingWorking() }
 
 // SidebarNothingWorking says "没有会话在运行"
 // in the language of msgs.
 //
-// term-fleet UI: sidebar nothing working
+// Beacon UI: sidebar nothing working
 func (msgs Messages) SidebarNothingWorking() string {
 	return Catalog.Format(msgs.locale, "sidebar_nothing_working", nil)
 }
@@ -3375,13 +3375,13 @@ func (msgs Messages) SidebarNothingWorking() string {
 // StatusDone says "已完成"
 // in the language the app shows.
 //
-// term-fleet UI: status done
+// Beacon UI: status done
 func StatusDone() string { return In(i18n.Locale()).StatusDone() }
 
 // StatusDone says "已完成"
 // in the language of msgs.
 //
-// term-fleet UI: status done
+// Beacon UI: status done
 func (msgs Messages) StatusDone() string {
 	return Catalog.Format(msgs.locale, "status_done", nil)
 }
@@ -3389,13 +3389,13 @@ func (msgs Messages) StatusDone() string {
 // StatusExited says "已退出"
 // in the language the app shows.
 //
-// term-fleet UI: status exited
+// Beacon UI: status exited
 func StatusExited() string { return In(i18n.Locale()).StatusExited() }
 
 // StatusExited says "已退出"
 // in the language of msgs.
 //
-// term-fleet UI: status exited
+// Beacon UI: status exited
 func (msgs Messages) StatusExited() string {
 	return Catalog.Format(msgs.locale, "status_exited", nil)
 }
@@ -3403,13 +3403,13 @@ func (msgs Messages) StatusExited() string {
 // StatusFailed says "失败"
 // in the language the app shows.
 //
-// term-fleet UI: status failed
+// Beacon UI: status failed
 func StatusFailed() string { return In(i18n.Locale()).StatusFailed() }
 
 // StatusFailed says "失败"
 // in the language of msgs.
 //
-// term-fleet UI: status failed
+// Beacon UI: status failed
 func (msgs Messages) StatusFailed() string {
 	return Catalog.Format(msgs.locale, "status_failed", nil)
 }
@@ -3417,13 +3417,13 @@ func (msgs Messages) StatusFailed() string {
 // StatusHasQuestion says "有问题要问"
 // in the language the app shows.
 //
-// term-fleet UI: status has question
+// Beacon UI: status has question
 func StatusHasQuestion() string { return In(i18n.Locale()).StatusHasQuestion() }
 
 // StatusHasQuestion says "有问题要问"
 // in the language of msgs.
 //
-// term-fleet UI: status has question
+// Beacon UI: status has question
 func (msgs Messages) StatusHasQuestion() string {
 	return Catalog.Format(msgs.locale, "status_has_question", nil)
 }
@@ -3431,13 +3431,13 @@ func (msgs Messages) StatusHasQuestion() string {
 // StatusIdle says "空闲"
 // in the language the app shows.
 //
-// term-fleet UI: status idle
+// Beacon UI: status idle
 func StatusIdle() string { return In(i18n.Locale()).StatusIdle() }
 
 // StatusIdle says "空闲"
 // in the language of msgs.
 //
-// term-fleet UI: status idle
+// Beacon UI: status idle
 func (msgs Messages) StatusIdle() string {
 	return Catalog.Format(msgs.locale, "status_idle", nil)
 }
@@ -3445,13 +3445,13 @@ func (msgs Messages) StatusIdle() string {
 // StatusNeedsPermission says "需要授权"
 // in the language the app shows.
 //
-// term-fleet UI: status needs permission
+// Beacon UI: status needs permission
 func StatusNeedsPermission() string { return In(i18n.Locale()).StatusNeedsPermission() }
 
 // StatusNeedsPermission says "需要授权"
 // in the language of msgs.
 //
-// term-fleet UI: status needs permission
+// Beacon UI: status needs permission
 func (msgs Messages) StatusNeedsPermission() string {
 	return Catalog.Format(msgs.locale, "status_needs_permission", nil)
 }
@@ -3459,13 +3459,13 @@ func (msgs Messages) StatusNeedsPermission() string {
 // StatusNeedsSignIn says "需要登录"
 // in the language the app shows.
 //
-// term-fleet UI: status needs sign in
+// Beacon UI: status needs sign in
 func StatusNeedsSignIn() string { return In(i18n.Locale()).StatusNeedsSignIn() }
 
 // StatusNeedsSignIn says "需要登录"
 // in the language of msgs.
 //
-// term-fleet UI: status needs sign in
+// Beacon UI: status needs sign in
 func (msgs Messages) StatusNeedsSignIn() string {
 	return Catalog.Format(msgs.locale, "status_needs_sign_in", nil)
 }
@@ -3473,13 +3473,13 @@ func (msgs Messages) StatusNeedsSignIn() string {
 // StatusWaiting says "等你处理"
 // in the language the app shows.
 //
-// term-fleet UI: status waiting
+// Beacon UI: status waiting
 func StatusWaiting() string { return In(i18n.Locale()).StatusWaiting() }
 
 // StatusWaiting says "等你处理"
 // in the language of msgs.
 //
-// term-fleet UI: status waiting
+// Beacon UI: status waiting
 func (msgs Messages) StatusWaiting() string {
 	return Catalog.Format(msgs.locale, "status_waiting", nil)
 }
@@ -3487,13 +3487,13 @@ func (msgs Messages) StatusWaiting() string {
 // StatusWorking says "运行中"
 // in the language the app shows.
 //
-// term-fleet UI: status working
+// Beacon UI: status working
 func StatusWorking() string { return In(i18n.Locale()).StatusWorking() }
 
 // StatusWorking says "运行中"
 // in the language of msgs.
 //
-// term-fleet UI: status working
+// Beacon UI: status working
 func (msgs Messages) StatusWorking() string {
 	return Catalog.Format(msgs.locale, "status_working", nil)
 }
@@ -3501,13 +3501,13 @@ func (msgs Messages) StatusWorking() string {
 // TabRestart says "重新开始"
 // in the language the app shows.
 //
-// term-fleet UI: tab restart
+// Beacon UI: tab restart
 func TabRestart() string { return In(i18n.Locale()).TabRestart() }
 
 // TabRestart says "重新开始"
 // in the language of msgs.
 //
-// term-fleet UI: tab restart
+// Beacon UI: tab restart
 func (msgs Messages) TabRestart() string {
 	return Catalog.Format(msgs.locale, "tab_restart", nil)
 }
@@ -3529,13 +3529,13 @@ func (msgs Messages) WorkspacePanes(count int) string {
 // NotifyBodyWaiting says "这个会话在等你"
 // in the language the app shows.
 //
-// term-fleet UI: notify body waiting
+// Beacon UI: notify body waiting
 func NotifyBodyWaiting() string { return In(i18n.Locale()).NotifyBodyWaiting() }
 
 // NotifyBodyWaiting says "这个会话在等你"
 // in the language of msgs.
 //
-// term-fleet UI: notify body waiting
+// Beacon UI: notify body waiting
 func (msgs Messages) NotifyBodyWaiting() string {
 	return Catalog.Format(msgs.locale, "notify_body_waiting", nil)
 }
@@ -3543,13 +3543,13 @@ func (msgs Messages) NotifyBodyWaiting() string {
 // NotifyBodyDone says "这个会话完成了"
 // in the language the app shows.
 //
-// term-fleet UI: notify body done
+// Beacon UI: notify body done
 func NotifyBodyDone() string { return In(i18n.Locale()).NotifyBodyDone() }
 
 // NotifyBodyDone says "这个会话完成了"
 // in the language of msgs.
 //
-// term-fleet UI: notify body done
+// Beacon UI: notify body done
 func (msgs Messages) NotifyBodyDone() string {
 	return Catalog.Format(msgs.locale, "notify_body_done", nil)
 }
@@ -3557,13 +3557,13 @@ func (msgs Messages) NotifyBodyDone() string {
 // NotifyBodyError says "这个会话出错了"
 // in the language the app shows.
 //
-// term-fleet UI: notify body error
+// Beacon UI: notify body error
 func NotifyBodyError() string { return In(i18n.Locale()).NotifyBodyError() }
 
 // NotifyBodyError says "这个会话出错了"
 // in the language of msgs.
 //
-// term-fleet UI: notify body error
+// Beacon UI: notify body error
 func (msgs Messages) NotifyBodyError() string {
 	return Catalog.Format(msgs.locale, "notify_body_error", nil)
 }
@@ -3571,13 +3571,13 @@ func (msgs Messages) NotifyBodyError() string {
 // SettingsPaneNotifications says "通知"
 // in the language the app shows.
 //
-// term-fleet UI: settings pane notifications
+// Beacon UI: settings pane notifications
 func SettingsPaneNotifications() string { return In(i18n.Locale()).SettingsPaneNotifications() }
 
 // SettingsPaneNotifications says "通知"
 // in the language of msgs.
 //
-// term-fleet UI: settings pane notifications
+// Beacon UI: settings pane notifications
 func (msgs Messages) SettingsPaneNotifications() string {
 	return Catalog.Format(msgs.locale, "settings_pane_notifications", nil)
 }
@@ -3585,13 +3585,13 @@ func (msgs Messages) SettingsPaneNotifications() string {
 // SettingsNotifyWaiting says "需要你时通知"
 // in the language the app shows.
 //
-// term-fleet UI: settings notify waiting
+// Beacon UI: settings notify waiting
 func SettingsNotifyWaiting() string { return In(i18n.Locale()).SettingsNotifyWaiting() }
 
 // SettingsNotifyWaiting says "需要你时通知"
 // in the language of msgs.
 //
-// term-fleet UI: settings notify waiting
+// Beacon UI: settings notify waiting
 func (msgs Messages) SettingsNotifyWaiting() string {
 	return Catalog.Format(msgs.locale, "settings_notify_waiting", nil)
 }
@@ -3599,13 +3599,13 @@ func (msgs Messages) SettingsNotifyWaiting() string {
 // SettingsNotifyDone says "完成时通知"
 // in the language the app shows.
 //
-// term-fleet UI: settings notify done
+// Beacon UI: settings notify done
 func SettingsNotifyDone() string { return In(i18n.Locale()).SettingsNotifyDone() }
 
 // SettingsNotifyDone says "完成时通知"
 // in the language of msgs.
 //
-// term-fleet UI: settings notify done
+// Beacon UI: settings notify done
 func (msgs Messages) SettingsNotifyDone() string {
 	return Catalog.Format(msgs.locale, "settings_notify_done", nil)
 }
@@ -3613,13 +3613,13 @@ func (msgs Messages) SettingsNotifyDone() string {
 // SettingsNotifyError says "失败时通知"
 // in the language the app shows.
 //
-// term-fleet UI: settings notify error
+// Beacon UI: settings notify error
 func SettingsNotifyError() string { return In(i18n.Locale()).SettingsNotifyError() }
 
 // SettingsNotifyError says "失败时通知"
 // in the language of msgs.
 //
-// term-fleet UI: settings notify error
+// Beacon UI: settings notify error
 func (msgs Messages) SettingsNotifyError() string {
 	return Catalog.Format(msgs.locale, "settings_notify_error", nil)
 }
@@ -3627,13 +3627,13 @@ func (msgs Messages) SettingsNotifyError() string {
 // SettingsDockBadge says "Dock 图标显示计数"
 // in the language the app shows.
 //
-// term-fleet UI: settings dock badge
+// Beacon UI: settings dock badge
 func SettingsDockBadge() string { return In(i18n.Locale()).SettingsDockBadge() }
 
 // SettingsDockBadge says "Dock 图标显示计数"
 // in the language of msgs.
 //
-// term-fleet UI: settings dock badge
+// Beacon UI: settings dock badge
 func (msgs Messages) SettingsDockBadge() string {
 	return Catalog.Format(msgs.locale, "settings_dock_badge", nil)
 }
@@ -3641,13 +3641,13 @@ func (msgs Messages) SettingsDockBadge() string {
 // SettingsNotifyNote says "只有窗口不在前台、或屏幕上看不到这个会话时才会通知。"
 // in the language the app shows.
 //
-// term-fleet UI: settings notify note
+// Beacon UI: settings notify note
 func SettingsNotifyNote() string { return In(i18n.Locale()).SettingsNotifyNote() }
 
 // SettingsNotifyNote says "只有窗口不在前台、或屏幕上看不到这个会话时才会通知。"
 // in the language of msgs.
 //
-// term-fleet UI: settings notify note
+// Beacon UI: settings notify note
 func (msgs Messages) SettingsNotifyNote() string {
 	return Catalog.Format(msgs.locale, "settings_notify_note", nil)
 }
@@ -3655,13 +3655,13 @@ func (msgs Messages) SettingsNotifyNote() string {
 // ActionNextSession says "下一个会话"
 // in the language the app shows.
 //
-// term-fleet UI: action next session
+// Beacon UI: action next session
 func ActionNextSession() string { return In(i18n.Locale()).ActionNextSession() }
 
 // ActionNextSession says "下一个会话"
 // in the language of msgs.
 //
-// term-fleet UI: action next session
+// Beacon UI: action next session
 func (msgs Messages) ActionNextSession() string {
 	return Catalog.Format(msgs.locale, "action_next_session", nil)
 }
@@ -3669,13 +3669,13 @@ func (msgs Messages) ActionNextSession() string {
 // ActionPreviousSession says "上一个会话"
 // in the language the app shows.
 //
-// term-fleet UI: action previous session
+// Beacon UI: action previous session
 func ActionPreviousSession() string { return In(i18n.Locale()).ActionPreviousSession() }
 
 // ActionPreviousSession says "上一个会话"
 // in the language of msgs.
 //
-// term-fleet UI: action previous session
+// Beacon UI: action previous session
 func (msgs Messages) ActionPreviousSession() string {
 	return Catalog.Format(msgs.locale, "action_previous_session", nil)
 }
@@ -3683,13 +3683,13 @@ func (msgs Messages) ActionPreviousSession() string {
 // ActionZoomPane says "让窗格占满窗口"
 // in the language the app shows.
 //
-// term-fleet UI: action zoom pane
+// Beacon UI: action zoom pane
 func ActionZoomPane() string { return In(i18n.Locale()).ActionZoomPane() }
 
 // ActionZoomPane says "让窗格占满窗口"
 // in the language of msgs.
 //
-// term-fleet UI: action zoom pane
+// Beacon UI: action zoom pane
 func (msgs Messages) ActionZoomPane() string {
 	return Catalog.Format(msgs.locale, "action_zoom_pane", nil)
 }
@@ -3697,13 +3697,13 @@ func (msgs Messages) ActionZoomPane() string {
 // ActionNextPane says "下一个窗格"
 // in the language the app shows.
 //
-// term-fleet UI: action next pane
+// Beacon UI: action next pane
 func ActionNextPane() string { return In(i18n.Locale()).ActionNextPane() }
 
 // ActionNextPane says "下一个窗格"
 // in the language of msgs.
 //
-// term-fleet UI: action next pane
+// Beacon UI: action next pane
 func (msgs Messages) ActionNextPane() string {
 	return Catalog.Format(msgs.locale, "action_next_pane", nil)
 }
@@ -3711,13 +3711,13 @@ func (msgs Messages) ActionNextPane() string {
 // ActionPreviousPane says "上一个窗格"
 // in the language the app shows.
 //
-// term-fleet UI: action previous pane
+// Beacon UI: action previous pane
 func ActionPreviousPane() string { return In(i18n.Locale()).ActionPreviousPane() }
 
 // ActionPreviousPane says "上一个窗格"
 // in the language of msgs.
 //
-// term-fleet UI: action previous pane
+// Beacon UI: action previous pane
 func (msgs Messages) ActionPreviousPane() string {
 	return Catalog.Format(msgs.locale, "action_previous_pane", nil)
 }
@@ -3725,13 +3725,13 @@ func (msgs Messages) ActionPreviousPane() string {
 // ActionPaneLeft says "向左的窗格"
 // in the language the app shows.
 //
-// term-fleet UI: action pane left
+// Beacon UI: action pane left
 func ActionPaneLeft() string { return In(i18n.Locale()).ActionPaneLeft() }
 
 // ActionPaneLeft says "向左的窗格"
 // in the language of msgs.
 //
-// term-fleet UI: action pane left
+// Beacon UI: action pane left
 func (msgs Messages) ActionPaneLeft() string {
 	return Catalog.Format(msgs.locale, "action_pane_left", nil)
 }
@@ -3739,13 +3739,13 @@ func (msgs Messages) ActionPaneLeft() string {
 // ActionPaneRight says "向右的窗格"
 // in the language the app shows.
 //
-// term-fleet UI: action pane right
+// Beacon UI: action pane right
 func ActionPaneRight() string { return In(i18n.Locale()).ActionPaneRight() }
 
 // ActionPaneRight says "向右的窗格"
 // in the language of msgs.
 //
-// term-fleet UI: action pane right
+// Beacon UI: action pane right
 func (msgs Messages) ActionPaneRight() string {
 	return Catalog.Format(msgs.locale, "action_pane_right", nil)
 }
@@ -3753,13 +3753,13 @@ func (msgs Messages) ActionPaneRight() string {
 // ActionPaneUp says "向上的窗格"
 // in the language the app shows.
 //
-// term-fleet UI: action pane up
+// Beacon UI: action pane up
 func ActionPaneUp() string { return In(i18n.Locale()).ActionPaneUp() }
 
 // ActionPaneUp says "向上的窗格"
 // in the language of msgs.
 //
-// term-fleet UI: action pane up
+// Beacon UI: action pane up
 func (msgs Messages) ActionPaneUp() string {
 	return Catalog.Format(msgs.locale, "action_pane_up", nil)
 }
@@ -3767,13 +3767,13 @@ func (msgs Messages) ActionPaneUp() string {
 // ActionPaneDown says "向下的窗格"
 // in the language the app shows.
 //
-// term-fleet UI: action pane down
+// Beacon UI: action pane down
 func ActionPaneDown() string { return In(i18n.Locale()).ActionPaneDown() }
 
 // ActionPaneDown says "向下的窗格"
 // in the language of msgs.
 //
-// term-fleet UI: action pane down
+// Beacon UI: action pane down
 func (msgs Messages) ActionPaneDown() string {
 	return Catalog.Format(msgs.locale, "action_pane_down", nil)
 }
@@ -3781,13 +3781,13 @@ func (msgs Messages) ActionPaneDown() string {
 // ActionTextBigger says "放大字号"
 // in the language the app shows.
 //
-// term-fleet UI: action text bigger
+// Beacon UI: action text bigger
 func ActionTextBigger() string { return In(i18n.Locale()).ActionTextBigger() }
 
 // ActionTextBigger says "放大字号"
 // in the language of msgs.
 //
-// term-fleet UI: action text bigger
+// Beacon UI: action text bigger
 func (msgs Messages) ActionTextBigger() string {
 	return Catalog.Format(msgs.locale, "action_text_bigger", nil)
 }
@@ -3795,13 +3795,13 @@ func (msgs Messages) ActionTextBigger() string {
 // ActionTextSmaller says "缩小字号"
 // in the language the app shows.
 //
-// term-fleet UI: action text smaller
+// Beacon UI: action text smaller
 func ActionTextSmaller() string { return In(i18n.Locale()).ActionTextSmaller() }
 
 // ActionTextSmaller says "缩小字号"
 // in the language of msgs.
 //
-// term-fleet UI: action text smaller
+// Beacon UI: action text smaller
 func (msgs Messages) ActionTextSmaller() string {
 	return Catalog.Format(msgs.locale, "action_text_smaller", nil)
 }
@@ -3809,13 +3809,13 @@ func (msgs Messages) ActionTextSmaller() string {
 // ActionTextReset says "实际大小"
 // in the language the app shows.
 //
-// term-fleet UI: action text reset
+// Beacon UI: action text reset
 func ActionTextReset() string { return In(i18n.Locale()).ActionTextReset() }
 
 // ActionTextReset says "实际大小"
 // in the language of msgs.
 //
-// term-fleet UI: action text reset
+// Beacon UI: action text reset
 func (msgs Messages) ActionTextReset() string {
 	return Catalog.Format(msgs.locale, "action_text_reset", nil)
 }
@@ -3823,13 +3823,13 @@ func (msgs Messages) ActionTextReset() string {
 // SettingsPaneKeyboard says "键盘"
 // in the language the app shows.
 //
-// term-fleet UI: settings pane keyboard
+// Beacon UI: settings pane keyboard
 func SettingsPaneKeyboard() string { return In(i18n.Locale()).SettingsPaneKeyboard() }
 
 // SettingsPaneKeyboard says "键盘"
 // in the language of msgs.
 //
-// term-fleet UI: settings pane keyboard
+// Beacon UI: settings pane keyboard
 func (msgs Messages) SettingsPaneKeyboard() string {
 	return Catalog.Format(msgs.locale, "settings_pane_keyboard", nil)
 }
@@ -3837,13 +3837,13 @@ func (msgs Messages) SettingsPaneKeyboard() string {
 // SettingsKeysNote says "点一下快捷键，再按下想用的组合。Esc 取消，⌫ 清除。"
 // in the language the app shows.
 //
-// term-fleet UI: settings keys note
+// Beacon UI: settings keys note
 func SettingsKeysNote() string { return In(i18n.Locale()).SettingsKeysNote() }
 
 // SettingsKeysNote says "点一下快捷键，再按下想用的组合。Esc 取消，⌫ 清除。"
 // in the language of msgs.
 //
-// term-fleet UI: settings keys note
+// Beacon UI: settings keys note
 func (msgs Messages) SettingsKeysNote() string {
 	return Catalog.Format(msgs.locale, "settings_keys_note", nil)
 }
@@ -3851,13 +3851,13 @@ func (msgs Messages) SettingsKeysNote() string {
 // SettingsKeysRecord says "按下快捷键…"
 // in the language the app shows.
 //
-// term-fleet UI: settings keys record
+// Beacon UI: settings keys record
 func SettingsKeysRecord() string { return In(i18n.Locale()).SettingsKeysRecord() }
 
 // SettingsKeysRecord says "按下快捷键…"
 // in the language of msgs.
 //
-// term-fleet UI: settings keys record
+// Beacon UI: settings keys record
 func (msgs Messages) SettingsKeysRecord() string {
 	return Catalog.Format(msgs.locale, "settings_keys_record", nil)
 }
@@ -3865,13 +3865,13 @@ func (msgs Messages) SettingsKeysRecord() string {
 // SettingsKeysNone says "未设置"
 // in the language the app shows.
 //
-// term-fleet UI: settings keys none
+// Beacon UI: settings keys none
 func SettingsKeysNone() string { return In(i18n.Locale()).SettingsKeysNone() }
 
 // SettingsKeysNone says "未设置"
 // in the language of msgs.
 //
-// term-fleet UI: settings keys none
+// Beacon UI: settings keys none
 func (msgs Messages) SettingsKeysNone() string {
 	return Catalog.Format(msgs.locale, "settings_keys_none", nil)
 }
@@ -3879,7 +3879,7 @@ func (msgs Messages) SettingsKeysNone() string {
 // SettingsKeysConflict says "这个组合已经给了「{action}」"
 // in the language the app shows.
 //
-// term-fleet UI: settings keys conflict
+// Beacon UI: settings keys conflict
 func SettingsKeysConflict(action string) string {
 	return In(i18n.Locale()).SettingsKeysConflict(action)
 }
@@ -3887,7 +3887,7 @@ func SettingsKeysConflict(action string) string {
 // SettingsKeysConflict says "这个组合已经给了「{action}」"
 // in the language of msgs.
 //
-// term-fleet UI: settings keys conflict
+// Beacon UI: settings keys conflict
 func (msgs Messages) SettingsKeysConflict(action string) string {
 	return Catalog.Format(msgs.locale, "settings_keys_conflict", map[string]any{"action": action})
 }

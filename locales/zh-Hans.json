@@ -1056,183 +1056,183 @@
   },
   "action_jump_attention": "跳到需要你的会话",
   "@action_jump_attention": {
-    "description": "term-fleet UI: action jump attention"
+    "description": "Beacon UI: action jump attention"
   },
   "action_palette": "命令面板",
   "@action_palette": {
-    "description": "term-fleet UI: action palette"
+    "description": "Beacon UI: action palette"
   },
   "action_sidebar_hide": "隐藏侧栏",
   "@action_sidebar_hide": {
-    "description": "term-fleet UI: action sidebar hide"
+    "description": "Beacon UI: action sidebar hide"
   },
   "action_sidebar_show": "显示侧栏",
   "@action_sidebar_show": {
-    "description": "term-fleet UI: action sidebar show"
+    "description": "Beacon UI: action sidebar show"
   },
   "action_split_down": "向下分屏",
   "@action_split_down": {
-    "description": "term-fleet UI: action split down"
+    "description": "Beacon UI: action split down"
   },
   "action_split_right": "向右分屏",
   "@action_split_right": {
-    "description": "term-fleet UI: action split right"
+    "description": "Beacon UI: action split right"
   },
   "action_toggle_sidebar": "显示或隐藏侧栏",
   "@action_toggle_sidebar": {
-    "description": "term-fleet UI: action toggle sidebar"
+    "description": "Beacon UI: action toggle sidebar"
   },
   "bg_dusk": "暮色",
   "@bg_dusk": {
-    "description": "term-fleet UI: bg dusk"
+    "description": "Beacon UI: bg dusk"
   },
   "bg_meadow": "草绿",
   "@bg_meadow": {
-    "description": "term-fleet UI: bg meadow"
+    "description": "Beacon UI: bg meadow"
   },
   "bg_mist": "雾蓝",
   "@bg_mist": {
-    "description": "term-fleet UI: bg mist"
+    "description": "Beacon UI: bg mist"
   },
   "bg_plain": "纯色",
   "@bg_plain": {
-    "description": "term-fleet UI: bg plain"
+    "description": "Beacon UI: bg plain"
   },
   "bg_rex": "粉紫",
   "@bg_rex": {
-    "description": "term-fleet UI: bg rex"
+    "description": "Beacon UI: bg rex"
   },
   "footer_done": "已完成",
   "@footer_done": {
-    "description": "term-fleet UI: footer done"
+    "description": "Beacon UI: footer done"
   },
   "footer_needs_you": "需要你",
   "@footer_needs_you": {
-    "description": "term-fleet UI: footer needs you"
+    "description": "Beacon UI: footer needs you"
   },
   "footer_working": "运行中",
   "@footer_working": {
-    "description": "term-fleet UI: footer working"
+    "description": "Beacon UI: footer working"
   },
   "notify_done_title": "{name} 完成了",
   "@notify_done_title": {
-    "description": "term-fleet UI: notify done title"
+    "description": "Beacon UI: notify done title"
   },
   "notify_failed_title": "{name} 出错了",
   "@notify_failed_title": {
-    "description": "term-fleet UI: notify failed title"
+    "description": "Beacon UI: notify failed title"
   },
   "notify_needs_you_title": "{name} 需要你",
   "@notify_needs_you_title": {
-    "description": "term-fleet UI: notify needs you title"
+    "description": "Beacon UI: notify needs you title"
   },
   "palette_commands": "命令",
   "@palette_commands": {
-    "description": "term-fleet UI: palette commands"
+    "description": "Beacon UI: palette commands"
   },
   "palette_label": "命令面板",
   "@palette_label": {
-    "description": "term-fleet UI: palette label"
+    "description": "Beacon UI: palette label"
   },
   "palette_no_matches": "没有匹配项",
   "@palette_no_matches": {
-    "description": "term-fleet UI: palette no matches"
+    "description": "Beacon UI: palette no matches"
   },
   "palette_placeholder": "搜索会话、机器或命令",
   "@palette_placeholder": {
-    "description": "term-fleet UI: palette placeholder"
+    "description": "Beacon UI: palette placeholder"
   },
   "palette_sessions": "会话",
   "@palette_sessions": {
-    "description": "term-fleet UI: palette sessions"
+    "description": "Beacon UI: palette sessions"
   },
   "session_mark_read": "标为已读",
   "@session_mark_read": {
-    "description": "term-fleet UI: session mark read"
+    "description": "Beacon UI: session mark read"
   },
   "settings_background": "窗口背景",
   "@settings_background": {
-    "description": "term-fleet UI: settings background"
+    "description": "Beacon UI: settings background"
   },
   "settings_pane_appearance": "外观",
   "@settings_pane_appearance": {
-    "description": "term-fleet UI: settings pane appearance"
+    "description": "Beacon UI: settings pane appearance"
   },
   "settings_theme": "主题",
   "@settings_theme": {
-    "description": "term-fleet UI: settings theme"
+    "description": "Beacon UI: settings theme"
   },
   "settings_translucent": "半透明",
   "@settings_translucent": {
-    "description": "term-fleet UI: settings translucent"
+    "description": "Beacon UI: settings translucent"
   },
   "settings_translucent_note": "让桌面从窗口里透出一点",
   "@settings_translucent_note": {
-    "description": "term-fleet UI: settings translucent note"
+    "description": "Beacon UI: settings translucent note"
   },
   "sidebar_machine_empty": "还没有会话",
   "@sidebar_machine_empty": {
-    "description": "term-fleet UI: sidebar machine empty"
+    "description": "Beacon UI: sidebar machine empty"
   },
   "sidebar_machine_look": "点击查看会话",
   "@sidebar_machine_look": {
-    "description": "term-fleet UI: sidebar machine look"
+    "description": "Beacon UI: sidebar machine look"
   },
   "sidebar_no_sessions": "还没有会话，点 + 新建一个终端。",
   "@sidebar_no_sessions": {
-    "description": "term-fleet UI: sidebar no sessions"
+    "description": "Beacon UI: sidebar no sessions"
   },
   "sidebar_nothing_done": "没有刚完成的会话",
   "@sidebar_nothing_done": {
-    "description": "term-fleet UI: sidebar nothing done"
+    "description": "Beacon UI: sidebar nothing done"
   },
   "sidebar_nothing_needs_you": "没有会话需要你",
   "@sidebar_nothing_needs_you": {
-    "description": "term-fleet UI: sidebar nothing needs you"
+    "description": "Beacon UI: sidebar nothing needs you"
   },
   "sidebar_nothing_working": "没有会话在运行",
   "@sidebar_nothing_working": {
-    "description": "term-fleet UI: sidebar nothing working"
+    "description": "Beacon UI: sidebar nothing working"
   },
   "status_done": "已完成",
   "@status_done": {
-    "description": "term-fleet UI: status done"
+    "description": "Beacon UI: status done"
   },
   "status_exited": "已退出",
   "@status_exited": {
-    "description": "term-fleet UI: status exited"
+    "description": "Beacon UI: status exited"
   },
   "status_failed": "失败",
   "@status_failed": {
-    "description": "term-fleet UI: status failed"
+    "description": "Beacon UI: status failed"
   },
   "status_has_question": "有问题要问",
   "@status_has_question": {
-    "description": "term-fleet UI: status has question"
+    "description": "Beacon UI: status has question"
   },
   "status_idle": "空闲",
   "@status_idle": {
-    "description": "term-fleet UI: status idle"
+    "description": "Beacon UI: status idle"
   },
   "status_needs_permission": "需要授权",
   "@status_needs_permission": {
-    "description": "term-fleet UI: status needs permission"
+    "description": "Beacon UI: status needs permission"
   },
   "status_needs_sign_in": "需要登录",
   "@status_needs_sign_in": {
-    "description": "term-fleet UI: status needs sign in"
+    "description": "Beacon UI: status needs sign in"
   },
   "status_waiting": "等你处理",
   "@status_waiting": {
-    "description": "term-fleet UI: status waiting"
+    "description": "Beacon UI: status waiting"
   },
   "status_working": "运行中",
   "@status_working": {
-    "description": "term-fleet UI: status working"
+    "description": "Beacon UI: status working"
   },
   "tab_restart": "重新开始",
   "@tab_restart": {
-    "description": "term-fleet UI: tab restart"
+    "description": "Beacon UI: tab restart"
   },
   "workspace_panes": "{count} 个窗格",
   "@workspace_panes": {
@@ -1245,107 +1245,107 @@
   },
   "notify_body_waiting": "这个会话在等你",
   "@notify_body_waiting": {
-    "description": "term-fleet UI: notify body waiting"
+    "description": "Beacon UI: notify body waiting"
   },
   "notify_body_done": "这个会话完成了",
   "@notify_body_done": {
-    "description": "term-fleet UI: notify body done"
+    "description": "Beacon UI: notify body done"
   },
   "notify_body_error": "这个会话出错了",
   "@notify_body_error": {
-    "description": "term-fleet UI: notify body error"
+    "description": "Beacon UI: notify body error"
   },
   "settings_pane_notifications": "通知",
   "@settings_pane_notifications": {
-    "description": "term-fleet UI: settings pane notifications"
+    "description": "Beacon UI: settings pane notifications"
   },
   "settings_notify_waiting": "需要你时通知",
   "@settings_notify_waiting": {
-    "description": "term-fleet UI: settings notify waiting"
+    "description": "Beacon UI: settings notify waiting"
   },
   "settings_notify_done": "完成时通知",
   "@settings_notify_done": {
-    "description": "term-fleet UI: settings notify done"
+    "description": "Beacon UI: settings notify done"
   },
   "settings_notify_error": "失败时通知",
   "@settings_notify_error": {
-    "description": "term-fleet UI: settings notify error"
+    "description": "Beacon UI: settings notify error"
   },
   "settings_dock_badge": "Dock 图标显示计数",
   "@settings_dock_badge": {
-    "description": "term-fleet UI: settings dock badge"
+    "description": "Beacon UI: settings dock badge"
   },
   "settings_notify_note": "只有窗口不在前台、或屏幕上看不到这个会话时才会通知。",
   "@settings_notify_note": {
-    "description": "term-fleet UI: settings notify note"
+    "description": "Beacon UI: settings notify note"
   },
   "action_next_session": "下一个会话",
   "@action_next_session": {
-    "description": "term-fleet UI: action next session"
+    "description": "Beacon UI: action next session"
   },
   "action_previous_session": "上一个会话",
   "@action_previous_session": {
-    "description": "term-fleet UI: action previous session"
+    "description": "Beacon UI: action previous session"
   },
   "action_zoom_pane": "让窗格占满窗口",
   "@action_zoom_pane": {
-    "description": "term-fleet UI: action zoom pane"
+    "description": "Beacon UI: action zoom pane"
   },
   "action_next_pane": "下一个窗格",
   "@action_next_pane": {
-    "description": "term-fleet UI: action next pane"
+    "description": "Beacon UI: action next pane"
   },
   "action_previous_pane": "上一个窗格",
   "@action_previous_pane": {
-    "description": "term-fleet UI: action previous pane"
+    "description": "Beacon UI: action previous pane"
   },
   "action_pane_left": "向左的窗格",
   "@action_pane_left": {
-    "description": "term-fleet UI: action pane left"
+    "description": "Beacon UI: action pane left"
   },
   "action_pane_right": "向右的窗格",
   "@action_pane_right": {
-    "description": "term-fleet UI: action pane right"
+    "description": "Beacon UI: action pane right"
   },
   "action_pane_up": "向上的窗格",
   "@action_pane_up": {
-    "description": "term-fleet UI: action pane up"
+    "description": "Beacon UI: action pane up"
   },
   "action_pane_down": "向下的窗格",
   "@action_pane_down": {
-    "description": "term-fleet UI: action pane down"
+    "description": "Beacon UI: action pane down"
   },
   "action_text_bigger": "放大字号",
   "@action_text_bigger": {
-    "description": "term-fleet UI: action text bigger"
+    "description": "Beacon UI: action text bigger"
   },
   "action_text_smaller": "缩小字号",
   "@action_text_smaller": {
-    "description": "term-fleet UI: action text smaller"
+    "description": "Beacon UI: action text smaller"
   },
   "action_text_reset": "实际大小",
   "@action_text_reset": {
-    "description": "term-fleet UI: action text reset"
+    "description": "Beacon UI: action text reset"
   },
   "settings_pane_keyboard": "键盘",
   "@settings_pane_keyboard": {
-    "description": "term-fleet UI: settings pane keyboard"
+    "description": "Beacon UI: settings pane keyboard"
   },
   "settings_keys_note": "点一下快捷键，再按下想用的组合。Esc 取消，⌫ 清除。",
   "@settings_keys_note": {
-    "description": "term-fleet UI: settings keys note"
+    "description": "Beacon UI: settings keys note"
   },
   "settings_keys_record": "按下快捷键…",
   "@settings_keys_record": {
-    "description": "term-fleet UI: settings keys record"
+    "description": "Beacon UI: settings keys record"
   },
   "settings_keys_none": "未设置",
   "@settings_keys_none": {
-    "description": "term-fleet UI: settings keys none"
+    "description": "Beacon UI: settings keys none"
   },
   "settings_keys_conflict": "这个组合已经给了「{action}」",
   "@settings_keys_conflict": {
-    "description": "term-fleet UI: settings keys conflict"
+    "description": "Beacon UI: settings keys conflict"
   },
   "settings_keys_clear": "清除快捷键",
   "@settings_keys_clear": {
