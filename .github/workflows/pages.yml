@@ -33,6 +33,7 @@ jobs:
         # The page names the version in three places; deriving it from the
         # release keeps them from drifting apart (the page said v0.6.8 while
         # the download button already served v0.7.3).
+        id: stamp
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ github.token }}
@@ -46,3 +47,45 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Check the page and the download button name this release
+        # A release is not finished until the site says so: if the live page
+        # still carries another number, or the download button serves a
+        # different release than the page names, this fails the run.
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+          VERSION: ${{ steps.stamp.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERSION}" ]; then
+            echo "::error::nothing was stamped, so the page cannot be checked"
+            exit 1
+          fi
+
+          # Pages can serve the previous version for a few seconds; ask again.
+          # Write to a file before grepping: `curl | grep -q` makes grep close
+          # the pipe on the first match, and under pipefail that reads as a
+          # failed request even when the page was right.
+          found=""
+          for attempt in $(seq 1 12); do
+            if curl -fsS "${PAGE_URL}?check=${VERSION}-${attempt}" -o /tmp/live-page.html \
+               && grep -q ">${VERSION}<" /tmp/live-page.html; then
+              found=yes
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "${found}" ]; then
+            echo "::error::the live page does not name ${VERSION} — this release is not finished"
+            grep -o 'v[0-9][0-9.]*[0-9]' /tmp/live-page.html | sort -u || true
+            exit 1
+          fi
+
+          target=$(curl -fsSIL -o /dev/null -w '%{url_effective}' "https://github.com/${REPO}/releases/latest" || true)
+          case "${target}" in
+            *"/tag/${VERSION}")
+              echo "live page names ${VERSION}; the download button resolves to ${target}" ;;
+            *)
+              echo "::error::the download button resolves to '${target}', which is not ${VERSION}"
+              exit 1 ;;
+          esac

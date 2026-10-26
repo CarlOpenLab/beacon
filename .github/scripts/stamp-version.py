@@ -38,6 +38,21 @@ def normalise(tag: str) -> str:
     return tag if tag.startswith("v") else "v" + tag
 
 
+def set_output(key: str, value: str) -> None:
+    """Hand the version to the next workflow step (it verifies the live page)."""
+    path = os.environ.get("GITHUB_OUTPUT", "").strip()
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write("%s=%s\n" % (key, value))
+
+
+def version_on_page(html: str) -> Optional[str]:
+    """The version already written in the header badge, for the fallback case."""
+    found = re.search(r'<span class="brand-ver">(v?\d+\.\d+\.\d+)</span>', html)
+    return found.group(1) if found else None
+
+
 def release_tag() -> Optional[str]:
     """The version to show: this run's release tag, else the latest release."""
     tag = os.environ.get("RELEASE_TAG", "").strip()
@@ -58,7 +73,12 @@ def release_tag() -> Optional[str]:
         with urllib.request.urlopen(request, timeout=20) as response:
             return json.load(response)["tag_name"]
     except Exception as error:  # a lookup hiccup must not block a deploy
-        print("could not read the latest release (%s); keeping the version already on the page" % error)
+        # Never a quiet fallback: the page then keeps whatever number it has,
+        # which is exactly how it ended up advertising an old release. Shout.
+        print(
+            "::warning title=Version not checked::could not read the latest release (%s) — "
+            "the page keeps the version already written in it; check it by hand" % error
+        )
         return None
 
 
@@ -69,7 +89,10 @@ def main(argv: List[str]) -> int:
 
     tag = release_tag()
     if not tag:
-        print("no release tag available; %s keeps the version it already has" % page)
+        current = version_on_page(html)
+        print("::warning title=Version not checked::no release tag available; %s keeps %s" % (page, current or "the version it has"))
+        if current:
+            set_output("version", current)
         return 0
 
     version = normalise(tag)
@@ -87,6 +110,7 @@ def main(argv: List[str]) -> int:
             return 1
 
     page.write_text(html, encoding="utf-8")
+    set_output("version", version)
     return 0
 
 
