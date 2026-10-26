@@ -262,3 +262,55 @@ func TestTheEmptyStateOpensTheSidebarSettings(t *testing.T) {
 		t.Fatalf("settings opened on pane %d, want the sidebar", got)
 	}
 }
+
+// Picking a machine this window has no shell on keeps the terminal where it
+// was, so the column must not take that click as "this is where I am": the
+// machine stays in the other row, and the note under a folded machine is not
+// repeated for every name in it.
+func TestClickingAQuietMachineKeepsItInTheOthers(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	w.collapsed = make(map[string]bool)
+	w.foldByHand = make(map[string]bool)
+	w.roster = []tunnel.Machine{{ID: "m1", Name: "quiet one", Online: true}}
+
+	tt := drawNav(t, w)
+	tt.Frame()
+	if !tt.HasText(locales.SidebarOthers(1)) {
+		t.Fatalf("the quiet machine has no other row; texts = %v", tt.Texts())
+	}
+
+	if err := tt.Click(locales.SidebarOthers(1)); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(300 * time.Millisecond)
+	tt.Frame()
+	if err := tt.Click("quiet one"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(300 * time.Millisecond)
+	tt.Frame()
+
+	// Still folded away: the panes did not move, so neither does the column.
+	if err := tt.Click(locales.SidebarOthers(1)); err != nil {
+		t.Fatal(err)
+	}
+	tt.Advance(300 * time.Millisecond)
+	tt.Frame()
+	if !tt.HasText(locales.SidebarOthers(1)) {
+		t.Fatalf("the other row is gone after a click that changed nothing; texts = %v", tt.Texts())
+	}
+	if n := countText(tt.Texts(), locales.SidebarMachineLook()); n != 0 {
+		t.Fatalf("the folded machine still teaches under itself %d times; texts = %v", n, tt.Texts())
+	}
+}
+
+func countText(texts []string, want string) int {
+	n := 0
+	for _, s := range texts {
+		if s == want {
+			n++
+		}
+	}
+	return n
+}

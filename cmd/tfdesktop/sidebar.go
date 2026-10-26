@@ -202,7 +202,7 @@ func (w *window) sidebarMachines(c *ui.Context, pal *uitokens.Palette) {
 	normal, other := w.splitMachines(c.Now())
 	for i, m := range normal {
 		divided := i > 0 && len(w.entriesFor(normal[i-1].ID)) > 0
-		w.machineGroup(c, pal, m, i == 0, divided)
+		w.machineGroup(c, pal, m, i == 0, divided, false)
 	}
 	if len(other) > 0 {
 		w.otherMachinesRow(c, pal, len(other))
@@ -223,7 +223,7 @@ func (w *window) sidebarMachines(c *ui.Context, pal *uitokens.Palette) {
 // nothing from the user, and is not the one this window is working on: any of
 // those makes it a place the person may be about to look.
 func (w *window) splitMachines(now time.Time) (normal, other []tunnel.Machine) {
-	selected := w.selectedMachine()
+	selected := w.workingMachine()
 	for _, m := range w.groups() {
 		if !w.machineShown(m.ID, now) {
 			continue
@@ -236,6 +236,17 @@ func (w *window) splitMachines(now time.Time) (normal, other []tunnel.Machine) {
 		normal = append(normal, m)
 	}
 	return normal, other
+}
+
+// workingMachine is the machine the person is working on, which is the one the
+// panes show. It is not the last machine clicked: picking a machine this window
+// has no shell on keeps the terminal where it was, so a click that changed
+// nothing on screen must not change the column either.
+func (w *window) workingMachine() string {
+	if tb := w.activeTab(); tb != nil {
+		return tb.machine
+	}
+	return w.selectedMachine()
 }
 
 // entriesNeedYou is the product's loudest state: a session waiting for an
@@ -404,7 +415,7 @@ func (w *window) foldedMachines(c *ui.Context, pal *uitokens.Palette, machines [
 		list.Children(func() {
 			for i, m := range machines {
 				divided := i > 0 && len(w.entriesFor(machines[i-1].ID)) > 0
-				w.machineGroup(c, pal, m, i == 0, divided)
+				w.machineGroup(c, pal, m, i == 0, divided, false)
 			}
 		})
 	})
@@ -460,7 +471,7 @@ func (w *window) settingsMachines() []tunnel.Machine {
 
 // machineGroup is one machine and, under it, its sessions: a project group,
 // with the machine's state in the header and a "+" that opens a shell there.
-func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Machine, first, divided bool) {
+func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Machine, first, divided, quiet bool) {
 	selected := w.selectedMachine() == m.ID
 	collapsed := w.collapsed[m.ID]
 	entries := w.entriesFor(m.ID)
@@ -651,7 +662,7 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	}
 	// A note stands in for rows only once the group is open: on the way out it
 	// would be the one thing left behind in a group that is leaving.
-	if folded == 1 && len(entries) == 0 {
+	if folded == 1 && len(entries) == 0 && !quiet {
 		note := locales.SidebarMachineEmpty()
 		if m.ID != machineLocal && len(w.remoteSessions[m.ID]) == 0 {
 			note = locales.SidebarMachineLook()
