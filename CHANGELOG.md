@@ -4,6 +4,19 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.3
+
+**Beacon 0.7.3: 侧栏只留正在用的机器 — the column keeps the machines in use**
+
+- **A machine with nothing under it folds into one row.** The column used to give every machine a header, so a fleet of ten was a page of names with nothing under them. A machine now keeps its header only when it has sessions, when one of its sessions is waiting on an answer, or when it is the machine the panes are on; the rest are counted in 「其他 N 台」, which opens into ordinary headers and takes them away again. Hiding a machine outright still works, and hiding a machine the person is in never happens on its own: an empty group under the panes is the loudest answer to 「我点到哪了」.
+  — 侧栏原来给每台机器一个标题，十台机器就是一页只有名字的空行。现在只有有会话的、有会话在等你回答的、以及窗格正踩着的那台保留标题，其余收进「其他 N 台」，展开就变回普通标题。手动隐藏照旧。
+- **The current machine is the one on screen, not the last click.** Picking a machine this window has no shell on leaves the terminal where it was, so that click never became the truth about where a person is — but the column took it as the current machine and kept a quiet one out of the other row for the rest of the session. It asks the active tab now, and falls back to the pick only when there is nothing on screen.
+  — 点一台这窗口没有 shell 的机器时，窗格不会跟着换；可侧栏把这次点击当成了「你正在用的那台」，于是那台空机器一直留在外面。现在按当前标签页所属的机器算，屏幕上什么都没有时才用点选的那台。
+- **Folding a group is movement, and by hand it is the movement you asked for.** A group's rows fold with 180 ms and the rows below ride up over them. The flag that says a person folded it was being spent on the very frame that drew the click, so the animated curve never ran: it was always the instant one. Clicked folds animate again, window-driven ones still land at once, and 减弱动态效果 takes every one of them to its place in the first frame.
+  — 分组收起时那 180 毫秒原来从没走过：记着「这是手点的」的那个标记在画这一帧时就被用掉了，于是永远走的是瞬间那条。现在手点的带动画，窗口自己触发的仍然立刻到位，系统开了减弱动态效果的一律瞬间到位。
+- **Open, the other machines are a group with a line above them.** Folded, 「其他 N 台」 is a summary and a line under it would claim a second group; open, its rows are machines and without the line they run into the sessions above. The line lives inside the fold, so it leaves with the content instead of flashing.
+  — 收起时它是一句摘要，画线等于宣称这是第二个分组；展开时里面是真机器行，没有线就和上面的会话行连成一片。线画在折叠里面，收起时跟着内容一起走，不会先闪一下。
+
 ## 0.7.2
 
 **Beacon 0.7.2: Windows 的卡片保留圆角 — Windows keeps its card corners**
