@@ -180,6 +180,17 @@ func (w *window) groups() []tunnel.Machine {
 	return out
 }
 
+// groupHasRows says whether the group at index has sessions to hide under it. A
+// group with nothing in it needs no line above it: there is no list to tell apart
+// from the one before.
+func (w *window) groupHasRows(index int) bool {
+	groups := w.groups()
+	if index < 0 || index >= len(groups) {
+		return false
+	}
+	return len(w.entriesFor(groups[index].ID)) > 0
+}
+
 // machineGroup is one machine and, under it, its sessions: a project group,
 // with the machine's state in the header and a "+" that opens a shell there.
 func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Machine, index int) {
@@ -187,9 +198,14 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	collapsed := w.collapsed[m.ID]
 	entries := w.entriesFor(m.ID)
 
-	top := float32(18)
+	top := float32(14)
 	if index == 0 {
 		top = 2
+	}
+	// A line rather than a stretch of blank: while scrolling, the gap between two
+	// groups and the gap between two sessions of one group look the same.
+	if index > 0 && w.groupHasRows(index-1) {
+		ui.Box(c).Height(0.5).FillWidth().Margin(0, 8, 0, 8).Background(pal.Text.Alpha(0.12))
 	}
 	hdr := ui.Row(c).Height(uitokens.GroupH).Margin(top, 0, 3, 0).Padding(0, 6, 0, 10).Gap(6).
 		AlignItems(ui.Center).Radius(6).Tooltip(w.machineTooltip(m))
@@ -229,18 +245,23 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		if name == "" {
 			name = w.machineName(m.ID)
 		}
-		ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(pal.TextMuted).
+		ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(pal.Text).
 			SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-		ui.Textf(c, "%d", len(entries)).FontSize(12.5).TextColor(pal.TextFaint).Shrink(0)
+		ui.Textf(c, "%d", len(entries)).FontSize(11).TextColor(pal.TextFaint).FontFeatures("tnum").Shrink(0)
 		chev := ui.Icon(c, iconChevron).Size(11, 11).TextColor(pal.TextFaint)
 		chev.Rotate(chev.AnimateTo("turn", 90*float32(b2f(!collapsed)), ui.Snappy))
 		chev.Opacity(chev.Animate("shown", float32(b2f(hovered || collapsed)), 120e6))
 		ui.Spacer(c)
-		// Ask this machine for its session list again. It stays on the group at
-		// rest: a refresh is the answer to a list that looks stale, and a button
-		// that only appears under the pointer is not there when it is needed.
-		if refreshButton(c, pal, w.refreshing(m.ID), locales.SessionRefreshMachine()).Clicked() {
-			w.refreshSessions(m.ID)
+		// Ask this machine for its session list again — under the pointer, where a
+		// button that acts on the group belongs, and in the menu for a hand that
+		// never hovers. Its square stays at rest so the count and the + hold still.
+		refreshSlot := ui.Box(c).Size(20, 20).Shrink(0)
+		if hovered || w.refreshing(m.ID) {
+			refreshSlot.Children(func() {
+				if refreshButton(c, pal, w.refreshing(m.ID), locales.SessionRefreshMachine()).Clicked() {
+					w.refreshSessions(m.ID)
+				}
+			})
 		}
 		if iconButton(c, iconPlus, locales.SessionNewOnMachine(), 20).Clicked() {
 			w.newTabOn(m.ID)
@@ -445,29 +466,28 @@ func (w *window) sidebarFooter(c *ui.Context, pal *uitokens.Palette) {
 		// What across the sessions wants a look, each a button going to the next
 		// session of it, and how the fleet stands when nothing does.
 		waiting, working, done := w.statusCounts()
-		chip := func(kind, label string, n int, color ui.Color) {
-			if n == 0 {
-				return
-			}
+		// One number stays out, the one that wants a hand; the other two are in
+		// its tooltip, where they do not compete for 268 points of footer.
+		all := locales.FooterNeedsYou() + " " + itoa(waiting) + " · " +
+			locales.FooterWorking() + " " + itoa(working) + " · " +
+			locales.FooterDone() + " " + itoa(done)
+		if waiting > 0 {
 			row := ui.Row(c).Gap(5).Padding(0, 6).AlignItems(ui.Center).Radius(12).
-				Label(label + " " + itoa(n)).Tooltip(label)
+				Label(locales.FooterNeedsYou() + " " + itoa(waiting)).Tooltip(all)
 			if row.Hovered() {
 				row.Background(pal.RowHover)
 			}
 			row.Children(func() {
-				statusGlyph(c, pal, kind, kind == "idle", -1, 12)
-				ui.Textf(c, "%d", n).FontSize(12).FontWeight(500).TextColor(color).FontFeatures("tnum")
+				statusGlyph(c, pal, "waiting", false, -1, 12)
+				ui.Textf(c, "%d", waiting).FontSize(12).FontWeight(500).TextColor(pal.Attention).FontFeatures("tnum")
 			})
 			if row.Clicked() {
-				w.jumpTo(kind)
+				w.jumpTo("waiting")
 			}
 		}
-		chip("waiting", locales.FooterNeedsYou(), waiting, pal.Attention)
-		chip("working", locales.FooterWorking(), working, pal.TextMuted)
-		chip("idle", locales.FooterDone(), done, pal.TextMuted)
-		if waiting+working+done == 0 {
+		if waiting == 0 {
 			row := ui.Row(c).Gap(6).Padding(0, 6).AlignItems(ui.Center).
-				Label(w.serviceLine()).Tooltip(w.machineNote())
+				Label(w.serviceLine()).Tooltip(w.machineNote() + "\n" + all)
 			row.Children(func() {
 				ui.Box(c).Size(6, 6).Radius(3).Background(w.fleetColor(c.Theme()))
 				ui.Textf(c, "%d", w.machineCount()).FontSize(12).TextColor(pal.TextFaint).FontFeatures("tnum")

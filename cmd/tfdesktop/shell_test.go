@@ -77,17 +77,6 @@ func TestTheSidebarFootNamesTheService(t *testing.T) {
 	}
 }
 
-// The mark is embedded, so the window always has a picture of itself — the
-// brand in the header and the empty state both draw it.
-func TestTheMarkIsEmbedded(t *testing.T) {
-	if mark == nil {
-		t.Fatal("the embedded mark did not decode")
-	}
-	if w, h := mark.Size(); w != 512 || h != 512 {
-		t.Fatalf("the mark is %dx%d, want 512x512", w, h)
-	}
-}
-
 // The shell brings its own palette: the app's light and dark sets, a card that is
 // not the ground it sits on, and a terminal whose colors match the card the
 // window draws around it.

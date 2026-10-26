@@ -50,10 +50,11 @@ func TestAMachineGroupRefreshesItsSessions(t *testing.T) {
 	w.fleet = newTestFleet(t)
 
 	tt := drawNav(t, w)
-	// The refresh stays on the group at rest: it is the answer to a list that
-	// looks stale, not a hover's extra.
-	if !tt.HasText(locales.SessionRefreshMachine()) {
-		t.Fatalf("the group has no refresh button at rest; texts = %v", tt.Texts())
+	// The refresh waits for the pointer — one mark at rest is what a 268-point
+	// header can carry — while the + that opens a shell stays out, because it is
+	// the group's usual action and not its repair.
+	if tt.HasText(locales.SessionRefreshMachine()) {
+		t.Fatalf("the group shows its refresh at rest; texts = %v", tt.Texts())
 	}
 	if !tt.HasText(locales.SessionNewOnMachine()) {
 		t.Fatalf("the group has no new-terminal button at rest; texts = %v", tt.Texts())
@@ -115,7 +116,7 @@ func TestAMachineGroupRefreshesItsSessions(t *testing.T) {
 	}
 }
 
-// A tab's row keeps its close and its state at rest, and carries no clock:
+// A tab's row keeps its state at rest — and its close under the pointer — and carries no clock:
 // the time since a state began is a fact for the tooltip, not a column of the
 // sidebar. The state is a dot or the working ring, never a checkmark.
 func TestATabRowKeepsItsCloseAndStateWithoutAClock(t *testing.T) {
@@ -133,8 +134,19 @@ func TestATabRowKeepsItsCloseAndStateWithoutAClock(t *testing.T) {
 	if _, ok := nav.Find("5m"); ok {
 		t.Errorf("the tab row still shows its age: %v", nav.Texts())
 	}
+	// The close is the one act that ends a running shell, so it waits for the
+	// pointer; the row keeps its square, so the name does not move when it comes.
+	if _, ok := nav.Find(locales.TabCloseNamed("one")); ok {
+		t.Errorf("the tab row shows its close at rest: %v", nav.Texts())
+	}
+	row, ok := nav.Find("one")
+	if !ok {
+		t.Fatalf("the tab's row is missing; texts = %v", nav.Texts())
+	}
+	nav.Move(row.X+4, row.Y+4)
+	nav.Frame()
 	if _, ok := nav.Find(locales.TabCloseNamed("one")); !ok {
-		t.Errorf("the tab row has no close at rest: %v", nav.Texts())
+		t.Errorf("the tab row has no close under the pointer: %v", nav.Texts())
 	}
 
 	// Finished, unseen: a green dot (the done mark). Seen: nothing, not a check.

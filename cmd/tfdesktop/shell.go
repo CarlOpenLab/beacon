@@ -1,7 +1,6 @@
 package main
 
 import (
-	_ "embed"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,30 +23,6 @@ import (
 
 // The terminal fills the workspace without a floating card around it.
 const paneInset = 0
-
-//go:embed assets/mark.png
-var markPNG []byte
-
-// mark is the app's own icon, decoded once. It heads the window's brand and it
-// is what stands in the middle of the window while no shell is open.
-var mark = decodeMark()
-
-func decodeMark() *ui.Bitmap {
-	bmp, err := ui.DecodeBitmap(markPNG)
-	if err != nil {
-		return nil
-	}
-	return bmp
-}
-
-// markTile draws the mark at a size, or nothing at all when it could not be
-// read: a missing picture must not take the window down with it.
-func markTile(c *ui.Context, size float32) {
-	if mark == nil {
-		return
-	}
-	ui.Image(c, mark).Size(size, size).Radius(size * 0.28).Label("term-fleet")
-}
 
 // header is the band across the top of the window: the product's name on the
 // left, what the window has to say in the middle, and the controls on the right.

@@ -603,19 +603,31 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		if !e.alive {
 			name.TextColor(pal.TextMuted)
 		}
-		// The lease is the one thing a status glyph cannot say, so it keeps its
-		// badge: 只读, 已退出, 创建中.
-		if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
-			badgeChip(c, badge, color)
+		// The lease is the one thing a status glyph cannot say, so the chosen row
+		// still spells it out: 只读, 已退出, 创建中. Every other row leaves it to
+		// the ring and a muted name, because a chip and a ring saying the same
+		// thing costs the name the 30-odd points it is truncated by.
+		if selected {
+			if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
+				badgeChip(c, badge, color)
+			}
 		}
-		// The state, then the way out: both stay on the row at rest, so a tab's
-		// close is where the eye already is rather than a hover away. A pane in a
-		// split draws its own row under this one and has no close of its own.
+		// The state, then the way out — which waits for the pointer: closing is
+		// destructive, and it should not stand in the reading path. The menu and
+		// ⌘W carry it for a hand that never hovers. A pane in a split draws its
+		// own row under this one and has no close of its own.
 		if e.close != nil {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
 				statusGlyph(c, pal, e.status, e.unread, e.progress, 14)
-				if iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Clicked() {
-					e.close()
+				// The button's own square stays in the row at rest as empty room,
+				// so a name never moves when the pointer arrives.
+				slot := ui.Box(c).Size(20, 20).Shrink(0)
+				if hovered {
+					slot.Children(func() {
+						if iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Clicked() {
+							e.close()
+						}
+					})
 				}
 			})
 			return
@@ -696,8 +708,10 @@ func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, l
 		if !e.alive {
 			name.TextColor(pal.TextMuted)
 		}
-		if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
-			badgeChip(c, badge, color)
+		if selected {
+			if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
+				badgeChip(c, badge, color)
+			}
 		}
 	})
 	if row.Clicked() {

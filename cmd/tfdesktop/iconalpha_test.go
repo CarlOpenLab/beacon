@@ -45,26 +45,41 @@ func TestTheAppIconHasNoOpaquePlate(t *testing.T) {
 				t.Fatalf("%dx%d, want a square icon", b.Dx(), b.Dy())
 			}
 
-			// The middle of the top edge is outside the art: the logo sits
-			// centred with room around it. An opaque pixel there is a plate
-			// composited behind the logo.
+			// The design changed after the first version of this test: the icon is
+			// now a lamp on a dark rounded tile, so the tile *is* opaque along the
+			// edge, and that is on purpose — it is what makes the lamp legible in
+			// the Dock and on this site's paper-coloured header.
 			//
-			// The edge, not the corner: the plate that was there is a rounded
-			// square, so its corners are cut away and only the edges carry the
-			// colour. Sampling a corner passes on the broken file, which is how
-			// the first version of this test managed to.
-			mid := b.Min.X + b.Dx()/2
-			_, _, _, edge := img.At(mid, b.Min.Y+4).RGBA()
-			if edge > 0x0800 {
-				t.Fatalf("top-edge alpha = %d/65535 at (%d,%d): there is an opaque plate behind the logo",
-					edge, mid, b.Min.Y+4)
+			// What must stay true is the thing the report was about: the tile has to
+			// be rounded, not a full-bleed square. A corner is cut by the rounding,
+			// so a corner that paints anything at all is a square plate composited
+			// behind the art — the bug this test was written for. Sampling the edge
+			// instead would now pass on that bug, which is why the sample moved.
+			for _, corner := range [][2]int{
+				{b.Min.X + 2, b.Min.Y + 2},
+				{b.Max.X - 3, b.Min.Y + 2},
+				{b.Min.X + 2, b.Max.Y - 3},
+				{b.Max.X - 3, b.Max.Y - 3},
+			} {
+				_, _, _, alpha := img.At(corner[0], corner[1]).RGBA()
+				if alpha > 0x0800 {
+					t.Fatalf("corner alpha = %d/65535 at (%d,%d): there is a square plate behind the logo",
+						alpha, corner[0], corner[1])
+				}
 			}
 
-			// And the art itself is still opaque at the centre, so the icon did
-			// not become an empty file to satisfy the check above.
-			_, _, _, centre := img.At(mid, b.Min.Y+b.Dy()/2).RGBA()
-			if centre < 0xc000 {
-				t.Fatalf("centre alpha = %d/65535, want the logo itself opaque", centre)
+			// And something is drawn: a file emptied to satisfy the check above is
+			// not an icon.
+			opaque := 0
+			for y := b.Min.Y; y < b.Max.Y; y += 8 {
+				for x := b.Min.X; x < b.Max.X; x += 8 {
+					if _, _, _, a := img.At(x, y).RGBA(); a > 0x8000 {
+						opaque++
+					}
+				}
+			}
+			if opaque < (b.Dx()/8)*(b.Dy()/8)/20 {
+				t.Fatalf("only %d sampled pixels are opaque: the icon is empty", opaque)
 			}
 		})
 	}

@@ -171,7 +171,16 @@ func TestSessionPanelOffersWorkingShellControls(t *testing.T) {
 	}
 	drainFor(t, w, func() bool { return len(w.order) == 1 && w.tabs[w.order[0]].alive })
 	tt.Frame()
-	if err := tt.Click(locales.TabCloseNamed(w.activeTab().name())); err != nil {
+	// The row's × waits for the pointer, so the pointer goes to the row first,
+	// the way a hand would arrive on it.
+	name := w.activeTab().name()
+	row, ok := tt.Find(name)
+	if !ok {
+		t.Fatalf("the tab's row is missing; texts = %v", tt.Texts())
+	}
+	tt.Move(row.X+4, row.Y+row.H/2)
+	tt.Frame()
+	if err := tt.Click(locales.TabCloseNamed(name)); err != nil {
 		t.Fatalf("click the row's close: %v; texts = %v", err, tt.Texts())
 	}
 	if got := waitSessions(f, 0); got != 0 {
