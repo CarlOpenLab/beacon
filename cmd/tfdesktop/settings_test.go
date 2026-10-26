@@ -304,8 +304,17 @@ func TestSettingsApplyingTheRelayReachesTheFleet(t *testing.T) {
 	}
 
 	// The other machine is not merely in the list: it is drawn, which is the row
-	// the report was about.
+	// the report was about. It has no sessions, so it is folded into the other
+	// row; opening that row is what shows it.
 	nav := drawNav(t, w)
+	if !nav.HasText(locales.SidebarOthers(1)) {
+		t.Fatalf("the machines' panel does not hold the other machine; texts = %v", nav.Texts())
+	}
+	if err := nav.Click(locales.SidebarOthers(1)); err != nil {
+		t.Fatal(err)
+	}
+	nav.Advance(300 * time.Millisecond)
+	nav.Frame()
 	if !nav.HasText("other box") {
 		t.Fatalf("the machines' panel does not list the other machine; texts = %v", nav.Texts())
 	}

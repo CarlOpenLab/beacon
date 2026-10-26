@@ -2,11 +2,13 @@ package main
 
 import (
 	"math"
+	"sort"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/settings"
 	"github.com/CarlOpenLab/beacon/internal/tunnel"
 	"github.com/CarlOpenLab/beacon/internal/uitokens"
 	"github.com/CarlOpenLab/beacon/locales"
@@ -45,6 +47,11 @@ var groupFold = ui.Animation{Duration: 180 * time.Millisecond, Ease: ui.CubicBez
 // opened it: a jump to a session, a machine picked in the column. It lands on
 // the next frame, which is the still column the person expects to find there.
 var groupFoldNow = ui.Animation{Duration: time.Millisecond, Ease: ui.CubicBezier(0.22, 1, 0.36, 1)}
+
+// hiddenReleaseDelay is how long a hidden machine stays after the session that
+// needed the user stopped needing them. A row that vanished under the pointer
+// that had just answered it would read as the click deleting the machine.
+const hiddenReleaseDelay = 1500 * time.Millisecond
 
 // sideChrome is where the fold has the sidebar and the cards this frame, in
 // whole pixels so that edges stay crisp. Each is rounded from one progress so
@@ -125,10 +132,7 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 			})
 
 			ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, 10, 16, 10).Children(func() {
-				for i, m := range w.groups() {
-					w.machineGroup(c, pal, m, i)
-				}
-
+				w.sidebarMachines(c, pal)
 			})
 			w.sidebarFooter(c, pal)
 		})
@@ -190,31 +194,284 @@ func (w *window) groups() []tunnel.Machine {
 	return out
 }
 
-// groupHasRows says whether the group at index has sessions to hide under it. A
-// group with nothing in it needs no line above it: there is no list to tell apart
-// from the one before.
-func (w *window) groupHasRows(index int) bool {
-	groups := w.groups()
-	if index < 0 || index >= len(groups) {
+// sidebarMachines draws the column's machine list: the groups that earn a
+// place, the one row that holds the quiet ones, and, when nothing is left, the
+// two rows that say so and offer the way back.
+func (w *window) sidebarMachines(c *ui.Context, pal *uitokens.Palette) {
+	w.reconcileHidden(c)
+	normal, other := w.splitMachines(c.Now())
+	for i, m := range normal {
+		divided := i > 0 && len(w.entriesFor(normal[i-1].ID)) > 0
+		w.machineGroup(c, pal, m, i == 0, divided)
+	}
+	if len(other) > 0 {
+		w.otherMachinesRow(c, pal, len(other))
+	}
+	// The other row is the only thing left when every quiet machine is folded
+	// away, and the two empty rows are what a column with no machine at all
+	// says. Hidden machines are not counted here: they are the setting's job,
+	// not a group with nothing under it. While the quiet headers are still on
+	// their way out the empty rows wait, so they do not shove the fold down.
+	folding := w.foldedMachines(c, pal, other)
+	if len(normal) == 0 && (len(other) == 0 || (!w.othersOpen && !folding)) {
+		w.sidebarEmpty(c, pal)
+	}
+}
+
+// splitMachines separates the machines that keep a header from the quiet ones
+// the other row holds. A machine is other only when it has no rows, needs
+// nothing from the user, and is not the one this window is working on: any of
+// those makes it a place the person may be about to look.
+func (w *window) splitMachines(now time.Time) (normal, other []tunnel.Machine) {
+	selected := w.selectedMachine()
+	for _, m := range w.groups() {
+		if !w.machineShown(m.ID, now) {
+			continue
+		}
+		entries := w.entriesFor(m.ID)
+		if len(entries) == 0 && !entriesNeedYou(entries) && m.ID != selected {
+			other = append(other, m)
+			continue
+		}
+		normal = append(normal, m)
+	}
+	return normal, other
+}
+
+// entriesNeedYou is the product's loudest state: a session waiting for an
+// answer or reporting a failure. It ranks above a quiet machine, and above the
+// person's choice to hide one.
+func entriesNeedYou(entries []sessionEntry) bool {
+	for _, e := range entries {
+		if e.status == "waiting" || e.status == "error" {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *window) machineNeedsYou(id string) bool {
+	return entriesNeedYou(w.entriesFor(id))
+}
+
+// hiddenSet is the machines a settings file hides, as a set the drawing code
+// can ask without walking the list every frame.
+func hiddenSet(ids []string) map[string]bool {
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out
+}
+
+// reconcileHidden applies the hidden machines' exception: one that now needs
+// the user is shown, and one whose need has just passed keeps its row for a
+// moment. The delay is a frame timer rather than a sleep, so the row leaves
+// when the window's own clock says, not when a wall clock happens to.
+func (w *window) reconcileHidden(c *ui.Context) {
+	if len(w.hidden) == 0 {
+		return
+	}
+	now := c.Now()
+	for id := range w.hidden {
+		if w.machineNeedsYou(id) {
+			if w.hiddenNeed == nil {
+				w.hiddenNeed = make(map[string]bool)
+			}
+			w.hiddenNeed[id] = true
+			delete(w.hideAt, id)
+			continue
+		}
+		if w.hiddenNeed[id] {
+			delete(w.hiddenNeed, id)
+			if w.hideAt == nil {
+				w.hideAt = make(map[string]time.Time)
+			}
+			w.hideAt[id] = now.Add(hiddenReleaseDelay)
+		}
+		until, ok := w.hideAt[id]
+		if !ok {
+			continue
+		}
+		if !now.Before(until) {
+			delete(w.hideAt, id)
+			continue
+		}
+		c.After(until.Sub(now))
+	}
+}
+
+// machineShown says whether a machine has a header this frame. A hidden one
+// comes back while it needs the user, and for the release delay after.
+func (w *window) machineShown(id string, now time.Time) bool {
+	if !w.machineHidden(id) {
+		return true
+	}
+	if w.hiddenNeed[id] {
+		return true
+	}
+	until, ok := w.hideAt[id]
+	return ok && now.Before(until)
+}
+
+func (w *window) machineHidden(id string) bool {
+	return w.hidden[id]
+}
+
+// setMachineHidden writes the person's choice to the settings file and applies
+// it to this window. The store is the only place it lives, so a restart shows
+// the same column.
+func (w *window) setMachineHidden(id string, hide bool) error {
+	if w.store != nil {
+		_, err := w.store.Update(func(st *settings.Settings) {
+			ids := make([]string, 0, len(st.HiddenMachines)+1)
+			for _, have := range st.HiddenMachines {
+				if have != id {
+					ids = append(ids, have)
+				}
+			}
+			if hide {
+				ids = append(ids, id)
+			}
+			st.HiddenMachines = ids
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if hide {
+		if w.hidden == nil {
+			w.hidden = make(map[string]bool)
+		}
+		w.hidden[id] = true
+	} else {
+		delete(w.hidden, id)
+	}
+	delete(w.hiddenNeed, id)
+	delete(w.hideAt, id)
+	w.invalidate()
+	return nil
+}
+
+// showAllMachines lets every hidden machine back, for restore defaults.
+func (w *window) showAllMachines() error {
+	if w.store != nil {
+		if _, err := w.store.Update(func(st *settings.Settings) { st.HiddenMachines = nil }); err != nil {
+			return err
+		}
+	}
+	w.hidden = map[string]bool{}
+	w.hiddenNeed = map[string]bool{}
+	w.hideAt = map[string]time.Time{}
+	w.invalidate()
+	return nil
+}
+
+// otherMachinesRow is the quiet machines behind one line. It is a look, not a
+// setting: the folded state is this window's, and a restart begins folded.
+func (w *window) otherMachinesRow(c *ui.Context, pal *uitokens.Palette, count int) {
+	label := locales.SidebarOthers(count)
+	row := ui.Row(c).Height(28).Margin(4, 0, 2, 0).Padding(0, 8, 0, 10).Gap(6).
+		AlignItems(ui.Center).Radius(6)
+	hovered := row.Hovered()
+	row.Children(func() {
+		chev := ui.Icon(c, iconChevron).Size(11, 11).TextColor(pal.TextFaint)
+		chev.Rotate(chev.AnimateTo("turn", 90*float32(b2f(w.othersOpen)), ui.Snappy))
+		ui.Text(c, label).FontSize(12).FontWeight(500).TextColor(pal.Text.Alpha(0.8)).SingleLine()
+	})
+	if hovered {
+		row.Background(pal.RowHover.Alpha(0.4))
+	}
+	if row.Clicked() {
+		w.othersOpen = !w.othersOpen
+		w.invalidate()
+	}
+}
+
+// foldedMachines grows the quiet machines under the other row, in the order
+// they keep in the column. While closed it draws nothing, so a folded name is
+// not merely transparent but absent. It reports whether any of them is still
+// on screen, which is what keeps the empty state from appearing mid-fold.
+func (w *window) foldedMachines(c *ui.Context, pal *uitokens.Palette, machines []tunnel.Machine) bool {
+	fold := ui.Column(c).Key("sidebar-others").Shrink(0)
+	folded := fold.AnimateTo("fold", float32(b2f(w.othersOpen)), groupFold)
+	if folded == 0 {
 		return false
 	}
-	return len(w.entriesFor(groups[index].ID)) > 0
+	var list ui.Element
+	fold.Children(func() {
+		list = ui.Column(c).FillWidth()
+		list.Children(func() {
+			for i, m := range machines {
+				divided := i > 0 && len(w.entriesFor(machines[i-1].ID)) > 0
+				w.machineGroup(c, pal, m, i == 0, divided)
+			}
+		})
+	})
+	if folded < 1 {
+		fold.ClipY().Height(folded * list.Bounds().H).Opacity(folded)
+	}
+	return true
+}
+
+// sidebarEmpty is what a column with nothing to show says, and the row that
+// takes the person to the switch that changes it. The second row is an entry,
+// not a note: a dead end that tells someone where to go is still a dead end.
+func (w *window) sidebarEmpty(c *ui.Context, pal *uitokens.Palette) {
+	ui.Row(c).Height(30).Margin(4, 0, 0, 0).Padding(0, 12).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, locales.SidebarNoneVisible()).FontSize(13).TextColor(pal.TextMuted).SingleLine()
+	})
+	row := ui.Row(c).Height(44).Padding(0, 8, 0, 10).Gap(6).AlignItems(ui.Center).Radius(6)
+	hovered := row.Hovered()
+	row.Children(func() {
+		ui.Text(c, locales.SidebarRestoreMachines()).FontSize(13).FontWeight(500).TextColor(pal.Text).SingleLine()
+		ui.Spacer(c)
+		ui.Icon(c, iconChevron).Size(11, 11).TextColor(pal.TextFaint)
+	})
+	if hovered {
+		row.Background(pal.RowHover.Alpha(0.4))
+	}
+	if row.Clicked() {
+		w.openSettingsAt(paneSidebar)
+	}
+}
+
+// settingsMachines is every machine the settings page can offer a switch for:
+// the ones the column knows, then any hidden id the roster has forgotten, so a
+// machine that went away can still be let back.
+func (w *window) settingsMachines() []tunnel.Machine {
+	out := w.groups()
+	seen := make(map[string]bool, len(out))
+	for _, m := range out {
+		seen[m.ID] = true
+	}
+	var forgotten []string
+	for id := range w.hidden {
+		if !seen[id] {
+			forgotten = append(forgotten, id)
+		}
+	}
+	sort.Strings(forgotten)
+	for _, id := range forgotten {
+		out = append(out, tunnel.Machine{ID: id, Name: w.machineName(id)})
+	}
+	return out
 }
 
 // machineGroup is one machine and, under it, its sessions: a project group,
 // with the machine's state in the header and a "+" that opens a shell there.
-func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Machine, index int) {
+func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Machine, first, divided bool) {
 	selected := w.selectedMachine() == m.ID
 	collapsed := w.collapsed[m.ID]
 	entries := w.entriesFor(m.ID)
 
 	top := float32(6)
-	if index == 0 {
+	if first {
 		top = 2
 	}
 	// A line rather than a stretch of blank: while scrolling, the gap between two
 	// groups and the gap between two sessions of one group look the same.
-	if index > 0 && w.groupHasRows(index-1) {
+	if divided {
 		ui.Box(c).Height(0.5).FillWidth().Margin(10, 10, 0, 10).Background(pal.Text.Alpha(0.12))
 	}
 	hdr := ui.Row(c).Height(uitokens.GroupH).Margin(top, 0, 3, 0).Padding(0, 6, 0, 10).Gap(6).
@@ -229,6 +486,11 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		}
 		if mu.Item(locales.MachineRefresh()).Chosen() {
 			w.refreshMachines()
+		}
+		if mu.Item(locales.ActionHideMachine()).Chosen() {
+			if err := w.setMachineHidden(m.ID, true); err != nil {
+				w.setNotice(err.Error())
+			}
 		}
 	})
 	if hdr.Clicked() {

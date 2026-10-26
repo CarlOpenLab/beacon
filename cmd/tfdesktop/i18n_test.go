@@ -34,6 +34,14 @@ func TestEveryMessageHasAnEnglishForm(t *testing.T) {
 		{zh.EmptyTitle(), en.EmptyTitle()},
 		{zh.LeaseWho("ada"), en.LeaseWho("ada")},
 		{zh.TabOrdinal(2), en.TabOrdinal(2)},
+		{zh.ActionHideMachine(), en.ActionHideMachine()},
+		{zh.SidebarOthers(3), en.SidebarOthers(3)},
+		{zh.SidebarNoneVisible(), en.SidebarNoneVisible()},
+		{zh.SidebarRestoreMachines(), en.SidebarRestoreMachines()},
+		{zh.SettingsPaneSidebar(), en.SettingsPaneSidebar()},
+		{zh.SettingsSidebarMachines(), en.SettingsSidebarMachines()},
+		{zh.SettingsSidebarNote(), en.SettingsSidebarNote()},
+		{zh.SettingsSidebarToggle("mac-mini"), en.SettingsSidebarToggle("mac-mini")},
 	}
 	for _, p := range pairs {
 		if p.zh == p.en {

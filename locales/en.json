@@ -221,6 +221,10 @@
   "@action_palette": {
     "description": "Beacon UI: action palette"
   },
+  "action_hide_machine": "Hide this machine from the sidebar",
+  "@action_hide_machine": {
+    "description": "A machine header's context menu item: take the whole machine out of the sidebar."
+  },
   "action_sidebar_hide": "Hide Sidebar",
   "@action_sidebar_hide": {
     "description": "Beacon UI: action sidebar hide"
@@ -317,6 +321,27 @@
   "@settings_pane_appearance": {
     "description": "Beacon UI: settings pane appearance"
   },
+  "settings_pane_sidebar": "Sidebar",
+  "@settings_pane_sidebar": {
+    "description": "The settings pane with the machines the sidebar shows."
+  },
+  "settings_sidebar_machines": "Machines",
+  "@settings_sidebar_machines": {
+    "description": "The sidebar settings group that lists every machine."
+  },
+  "settings_sidebar_note": "Hidden machines leave the sidebar; a machine appears by itself while a session on it needs you.",
+  "@settings_sidebar_note": {
+    "description": "The line under the sidebar machine switches, explaining the exception."
+  },
+  "settings_sidebar_toggle": "Show {name} in the sidebar",
+  "@settings_sidebar_toggle": {
+    "description": "A machine's sidebar switch, read by assistive technology.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "settings_theme": "Theme",
   "@settings_theme": {
     "description": "Beacon UI: settings theme"
@@ -336,6 +361,23 @@
   "sidebar_machine_look": "Click to see its sessions",
   "@sidebar_machine_look": {
     "description": "Beacon UI: sidebar machine look"
+  },
+  "sidebar_others": "Other machines ({count})",
+  "@sidebar_others": {
+    "description": "The sidebar row that holds the machines with no sessions, above their folded headers.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sidebar_none_visible": "No machines shown",
+  "@sidebar_none_visible": {
+    "description": "The sidebar's empty state, when no machine has a header."
+  },
+  "sidebar_restore_machines": "Choose them back in Settings",
+  "@sidebar_restore_machines": {
+    "description": "The sidebar's empty state row that opens the sidebar settings."
   },
   "sidebar_no_sessions": "No sessions yet. Press + to open a terminal.",
   "@sidebar_no_sessions": {

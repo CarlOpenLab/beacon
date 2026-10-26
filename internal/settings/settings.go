@@ -101,6 +101,12 @@ type Settings struct {
 	// first for every client; this is the one window's own arrangement, so it
 	// is kept here rather than pushed to the fleet.
 	SessionOrder map[string][]string `json:"sessionOrder,omitempty"`
+
+	// HiddenMachines are the machines the person folded out of the sidebar, by
+	// machine id. A missing key, and a first run, show every machine. It is a
+	// preference rather than the window's state: a hidden machine that comes to
+	// need the user still appears, because quiet must not become silent.
+	HiddenMachines []string `json:"hiddenMachines,omitempty"`
 }
 
 // Dir is where the desktop shell keeps its settings. BEACON_CONFIG_HOME or

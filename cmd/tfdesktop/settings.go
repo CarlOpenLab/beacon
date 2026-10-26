@@ -17,6 +17,7 @@ import (
 	"github.com/CarlOpenLab/beacon/internal/agent"
 	"github.com/CarlOpenLab/beacon/internal/fonts"
 	"github.com/CarlOpenLab/beacon/internal/settings"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 	"github.com/CarlOpenLab/beacon/internal/uitokens"
 	"github.com/CarlOpenLab/beacon/locales"
 )
@@ -101,6 +102,8 @@ const (
 	paneServer
 	paneUpdates
 	paneAppearance
+	// paneSidebar is the column's own settings: which machines keep a header.
+	paneSidebar
 	paneNotifications
 	paneKeyboard
 	// paneDiagnostics is where the log is: the one page that is about this
@@ -403,6 +406,8 @@ func (s *settingsWindow) view(c *ui.Context) {
 								s.serverPane(c)
 							case paneAppearance:
 								s.appearancePane(c)
+							case paneSidebar:
+								s.sidebarPane(c)
 							case paneNotifications:
 								s.notificationsPage(c)
 							case paneKeyboard:
@@ -460,6 +465,7 @@ var settingsPages = []settingsPage{
 	{paneServer, locales.SettingsPaneServer, iconMonitor},
 	{paneUpdates, locales.SettingsPaneUpdates, iconRefresh},
 	{paneAppearance, locales.SettingsPaneAppearance, iconSun},
+	{paneSidebar, locales.SettingsPaneSidebar, iconSidebar},
 	{paneNotifications, locales.SettingsPaneNotifications, iconBell},
 	{paneKeyboard, locales.SettingsPaneKeyboard, iconKeyboard},
 	{paneDiagnostics, locales.SettingsPaneDiagnostics, iconInfo},
@@ -674,6 +680,50 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 		for _, wsh := range uitokens.Washes {
 			s.washTile(c, pal, wsh, background)
 		}
+	})
+}
+
+// sidebarPane is which machines keep a header in the column. Every machine the
+// window knows gets a switch, and the note below is the whole rule: a hidden
+// machine still comes back while one of its sessions needs the user.
+func (s *settingsWindow) sidebarPane(c *ui.Context) {
+	pal := paletteFor(c)
+	groupRows = 0
+	settingsGroup(c, pal, locales.SettingsSidebarMachines(), func() {
+		if s.desk == nil {
+			return
+		}
+		for _, m := range s.desk.settingsMachines() {
+			s.sidebarMachineRow(c, pal, m)
+		}
+	})
+	ui.Text(c, locales.SettingsSidebarNote()).FontSize(12).TextColor(pal.TextMuted).
+		LineHeight(1.4).Padding(0, 4)
+}
+
+// sidebarMachineRow is one machine's switch: its state in the same dot the
+// column uses, its name, and whether it keeps a place there.
+func (s *settingsWindow) sidebarMachineRow(c *ui.Context, pal *uitokens.Palette, m tunnel.Machine) {
+	if groupRows++; groupRows > 1 {
+		ui.Box(c).Height(1).Shrink(0).Background(pal.Text.Alpha(0.07))
+	}
+	name := s.desk.machineName(m.ID)
+	shown := !s.desk.machineHidden(m.ID)
+	ui.Row(c).Height(44).Gap(10).AlignItems(ui.Center).Children(func() {
+		dot := ui.Box(c).Size(7, 7).Radius(4).Background(s.desk.machineDot(c, m)).Shrink(0)
+		if !shown {
+			dot.Opacity(0.35)
+		}
+		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
+			ui.Text(c, name).FontSize(13).TextColor(pal.Text).SingleLine().Ellipsis("…")
+		})
+		sw := toggle(c, pal, "sidebar-machine-"+m.ID, &shown)
+		sw.Label(locales.SettingsSidebarToggle(name))
+		sw.OnChange(func() {
+			if err := s.desk.setMachineHidden(m.ID, !shown); err != nil {
+				s.fail(err.Error())
+			}
+		})
 	})
 }
 
@@ -1275,6 +1325,11 @@ func (s *settingsWindow) restoreDefaults() {
 	// a person who restore-defaults their way out of a language they cannot
 	// read gets the one their system is in.
 	s.language = ""
+	// A restored window shows every machine again: the hidden list is one of
+	// the preferences this resets, not a separate kind of state.
+	if s.desk != nil {
+		_ = s.desk.showAllMachines()
+	}
 	s.commit()
 	// 恢复默认 is every default, the shortcuts included.
 	if _, err := s.store.Update(func(st *settings.Settings) { st.Keybinds = nil }); err == nil && s.desk != nil && s.desk.win != nil {

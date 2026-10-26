@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
@@ -15,6 +16,12 @@ func TestAMachineGroupFoldsItsRowsWithAnAnimation(t *testing.T) {
 	w.collapsed = make(map[string]bool)
 	w.foldByHand = make(map[string]bool)
 	w.roster = []tunnel.Machine{{ID: "m2", Name: "second"}}
+	// The second machine has a session, so it keeps a header of its own rather
+	// than joining the other row: this is about one group folding, not about
+	// which machines earn a place.
+	w.remoteSessions = map[string][]protocol.Summary{
+		"m2": {{SessionID: "r1", Title: "remote one", Alive: true}},
+	}
 
 	tt := drawNav(t, w)
 	tt.Frame()

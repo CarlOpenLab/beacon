@@ -189,6 +189,19 @@ type window struct {
 	// whatever height the window is.
 	sidebarSplit float32
 
+	// hidden is the machines the person folded out of the column, read from the
+	// settings file and written back through it. hiddenNeed and hideAt are the
+	// exception: a hidden machine with a session that needs the user is shown,
+	// and stays for a moment after that need passes so its row does not vanish
+	// under the pointer that just answered it. See reconcileHidden.
+	hidden     map[string]bool
+	hiddenNeed map[string]bool
+	hideAt     map[string]time.Time
+
+	// othersOpen is whether the quiet machines are spread out under their row.
+	// It is this window's own state: it is a look, not a setting.
+	othersOpen bool
+
 	// tabSeq numbers the tabs of this window, so two shells of the same kind
 	// can be told apart ("zsh 1", "zsh 2") before either reports a title.
 	tabSeq  int
@@ -221,6 +234,7 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 		cmdBar:       newCommandBar(),
 		dismissed:    make(map[string]bool),
 		sessionOrder: store.Get().SessionOrder,
+		hidden:       hiddenSet(store.Get().HiddenMachines),
 	}
 	// The window is a client of its own hub from the moment it opens, so every
 	// shell it shows — including one a browser took over — arrives as frames

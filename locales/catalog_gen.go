@@ -2910,6 +2910,22 @@ func (msgs Messages) ActionPalette() string {
 	return Catalog.Format(msgs.locale, "action_palette", nil)
 }
 
+// ActionHideMachine says "在侧栏里收起这台机器"
+// in the language the app shows.
+//
+// A machine header's context menu item: take the whole machine out of the
+// sidebar.
+func ActionHideMachine() string { return In(i18n.Locale()).ActionHideMachine() }
+
+// ActionHideMachine says "在侧栏里收起这台机器"
+// in the language of msgs.
+//
+// A machine header's context menu item: take the whole machine out of the
+// sidebar.
+func (msgs Messages) ActionHideMachine() string {
+	return Catalog.Format(msgs.locale, "action_hide_machine", nil)
+}
+
 // ActionSidebarHide says "隐藏侧栏"
 // in the language the app shows.
 //
@@ -3246,6 +3262,62 @@ func (msgs Messages) SettingsPaneAppearance() string {
 	return Catalog.Format(msgs.locale, "settings_pane_appearance", nil)
 }
 
+// SettingsPaneSidebar says "侧栏"
+// in the language the app shows.
+//
+// The settings pane with the machines the sidebar shows.
+func SettingsPaneSidebar() string { return In(i18n.Locale()).SettingsPaneSidebar() }
+
+// SettingsPaneSidebar says "侧栏"
+// in the language of msgs.
+//
+// The settings pane with the machines the sidebar shows.
+func (msgs Messages) SettingsPaneSidebar() string {
+	return Catalog.Format(msgs.locale, "settings_pane_sidebar", nil)
+}
+
+// SettingsSidebarMachines says "机器"
+// in the language the app shows.
+//
+// The sidebar settings group that lists every machine.
+func SettingsSidebarMachines() string { return In(i18n.Locale()).SettingsSidebarMachines() }
+
+// SettingsSidebarMachines says "机器"
+// in the language of msgs.
+//
+// The sidebar settings group that lists every machine.
+func (msgs Messages) SettingsSidebarMachines() string {
+	return Catalog.Format(msgs.locale, "settings_sidebar_machines", nil)
+}
+
+// SettingsSidebarNote says "收起的机器不在侧栏显示；有会话需要你时会自动出现。"
+// in the language the app shows.
+//
+// The line under the sidebar machine switches, explaining the exception.
+func SettingsSidebarNote() string { return In(i18n.Locale()).SettingsSidebarNote() }
+
+// SettingsSidebarNote says "收起的机器不在侧栏显示；有会话需要你时会自动出现。"
+// in the language of msgs.
+//
+// The line under the sidebar machine switches, explaining the exception.
+func (msgs Messages) SettingsSidebarNote() string {
+	return Catalog.Format(msgs.locale, "settings_sidebar_note", nil)
+}
+
+// SettingsSidebarToggle says "在侧栏显示 {name}"
+// in the language the app shows.
+//
+// A machine's sidebar switch, read by assistive technology.
+func SettingsSidebarToggle(name string) string { return In(i18n.Locale()).SettingsSidebarToggle(name) }
+
+// SettingsSidebarToggle says "在侧栏显示 {name}"
+// in the language of msgs.
+//
+// A machine's sidebar switch, read by assistive technology.
+func (msgs Messages) SettingsSidebarToggle(name string) string {
+	return Catalog.Format(msgs.locale, "settings_sidebar_toggle", map[string]any{"name": name})
+}
+
 // SettingsTheme says "主题"
 // in the language the app shows.
 //
@@ -3314,6 +3386,50 @@ func SidebarMachineLook() string { return In(i18n.Locale()).SidebarMachineLook()
 // Beacon UI: sidebar machine look
 func (msgs Messages) SidebarMachineLook() string {
 	return Catalog.Format(msgs.locale, "sidebar_machine_look", nil)
+}
+
+// SidebarOthers says "其他 {count} 台"
+// in the language the app shows.
+//
+// The sidebar row that holds the machines with no sessions, above their
+// folded headers.
+func SidebarOthers(count int) string { return In(i18n.Locale()).SidebarOthers(count) }
+
+// SidebarOthers says "其他 {count} 台"
+// in the language of msgs.
+//
+// The sidebar row that holds the machines with no sessions, above their
+// folded headers.
+func (msgs Messages) SidebarOthers(count int) string {
+	return Catalog.Format(msgs.locale, "sidebar_others", map[string]any{"count": count})
+}
+
+// SidebarNoneVisible says "没有显示的机器"
+// in the language the app shows.
+//
+// The sidebar's empty state, when no machine has a header.
+func SidebarNoneVisible() string { return In(i18n.Locale()).SidebarNoneVisible() }
+
+// SidebarNoneVisible says "没有显示的机器"
+// in the language of msgs.
+//
+// The sidebar's empty state, when no machine has a header.
+func (msgs Messages) SidebarNoneVisible() string {
+	return Catalog.Format(msgs.locale, "sidebar_none_visible", nil)
+}
+
+// SidebarRestoreMachines says "在设置里可以选回来"
+// in the language the app shows.
+//
+// The sidebar's empty state row that opens the sidebar settings.
+func SidebarRestoreMachines() string { return In(i18n.Locale()).SidebarRestoreMachines() }
+
+// SidebarRestoreMachines says "在设置里可以选回来"
+// in the language of msgs.
+//
+// The sidebar's empty state row that opens the sidebar settings.
+func (msgs Messages) SidebarRestoreMachines() string {
+	return Catalog.Format(msgs.locale, "sidebar_restore_machines", nil)
 }
 
 // SidebarNoSessions says "还没有会话，点 + 新建一个终端。"

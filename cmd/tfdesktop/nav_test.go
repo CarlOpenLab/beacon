@@ -64,6 +64,12 @@ func TestSidebarGroupsMachinesInOrder(t *testing.T) {
 		{ID: "m1", Name: "carl-windows", Online: false},
 		{ID: "m2", Name: "win-20240410OWZ", Online: true},
 	}
+	// Both have a session, so the test reads the order of the machine headers
+	// rather than the order of their names inside the other row.
+	w.remoteSessions = map[string][]protocol.Summary{
+		"m1": {{SessionID: "r1", Title: "windows shell", Alive: true}},
+		"m2": {{SessionID: "r2", Title: "windows shell two", Alive: true}},
+	}
 	tt := drawNav(t, w)
 
 	// This machine's group first, then the roster's order: the column is a list
@@ -573,6 +579,11 @@ func TestSidebarNamesThisMachineOnce(t *testing.T) {
 	w.roster = []tunnel.Machine{
 		{ID: "dev-2", Name: "other box", Online: true,
 			Host: protocol.Host{Platform: "darwin", Arch: "arm64"}},
+	}
+	// A session keeps this machine's header out of the other row, so the test
+	// reads the name of this machine's group above a listed machine.
+	w.remoteSessions = map[string][]protocol.Summary{
+		"dev-2": {{SessionID: "r1", Title: "remote one", Alive: true}},
 	}
 
 	tt := drawNav(t, w)
