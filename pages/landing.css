@@ -1359,8 +1359,19 @@ html[lang="en"] .spark { margin-bottom: 0.1em; }
 }
 .compare tbody td { color: var(--muted); }
 .compare .col-us { background: var(--paper-2); color: var(--ink-2); }
-.compare .yes { color: var(--signal-ink); margin-right: 5px; font-size: 9px; vertical-align: 2px; }
-.compare .no { color: var(--rule); margin-right: 5px; }
+.compare .yes,
+.compare .no {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  line-height: 0;
+}
+.compare .yes svg,
+.compare .no svg { display: block; width: 10px; height: 10px; }
+.compare .yes { color: var(--signal-ink); }
+.compare .no { color: var(--rule); }
 .compare tbody tr:hover td,
 .compare tbody tr:hover th { background: color-mix(in srgb, var(--paper-2) 60%, transparent); }
 .compare tbody tr:hover .col-us { background: var(--paper-3); }
