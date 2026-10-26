@@ -25,9 +25,9 @@
   --w-red: #e4735f;
   --w-blue: #8fc7e8;
 
-  --serif: "Instrument Serif", "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
-  --sans: "Archivo", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --serif: ui-serif, "New York", "Iowan Old Style", Palatino, "Songti SC", "Noto Serif SC", Georgia, serif;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --shell: 1280px;
   --pad: clamp(20px, 4.5vw, 56px);
