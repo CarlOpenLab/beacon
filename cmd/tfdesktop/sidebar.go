@@ -36,6 +36,16 @@ const (
 // a spring's long tail, quantized to the column's pixels, would crawl and stop.
 var sidebarMotion = ui.Animation{Duration: 260 * time.Millisecond, Ease: ui.CubicBezier(0.25, 1, 0.5, 1)}
 
+// groupFold is the curve a group's rows take when the person folds them away by
+// hand: shorter than the column's own fold, so the two are not mistaken for one
+// movement, and eased so the rows leave rather than snap out of the column.
+var groupFold = ui.Animation{Duration: 180 * time.Millisecond, Ease: ui.CubicBezier(0.22, 1, 0.36, 1)}
+
+// groupFoldNow is what a group folds with when the window, not the person,
+// opened it: a jump to a session, a machine picked in the column. It lands on
+// the next frame, which is the still column the person expects to find there.
+var groupFoldNow = ui.Animation{Duration: time.Millisecond, Ease: ui.CubicBezier(0.22, 1, 0.36, 1)}
+
 // sideChrome is where the fold has the sidebar and the cards this frame, in
 // whole pixels so that edges stay crisp. Each is rounded from one progress so
 // that they move together.
@@ -198,14 +208,14 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	collapsed := w.collapsed[m.ID]
 	entries := w.entriesFor(m.ID)
 
-	top := float32(14)
+	top := float32(6)
 	if index == 0 {
 		top = 2
 	}
 	// A line rather than a stretch of blank: while scrolling, the gap between two
 	// groups and the gap between two sessions of one group look the same.
 	if index > 0 && w.groupHasRows(index-1) {
-		ui.Box(c).Height(0.5).FillWidth().Margin(0, 8, 0, 8).Background(pal.Text.Alpha(0.12))
+		ui.Box(c).Height(0.5).FillWidth().Margin(10, 10, 0, 10).Background(pal.Text.Alpha(0.12))
 	}
 	hdr := ui.Row(c).Height(uitokens.GroupH).Margin(top, 0, 3, 0).Padding(0, 6, 0, 10).Gap(6).
 		AlignItems(ui.Center).Radius(6).Tooltip(w.machineTooltip(m))
@@ -226,6 +236,12 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 			w.selectMachine(m)
 			delete(w.collapsed, m.ID)
 		} else {
+			// The person folded this group by hand: the rows leave with the
+			// fold, where a jump into a session lands on a group already open.
+			if w.foldByHand == nil {
+				w.foldByHand = make(map[string]bool)
+			}
+			w.foldByHand[m.ID] = true
 			if collapsed {
 				delete(w.collapsed, m.ID)
 			} else {
@@ -267,7 +283,15 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 			w.newTabOn(m.ID)
 		}
 	})
-	if collapsed {
+	// How far the rows are in the column: 1 open, 0 folded away. Only a hand on
+	// the header moves it; every other fold is a jump that lands at once.
+	foldAnim := groupFoldNow
+	if w.foldByHand[m.ID] {
+		foldAnim = groupFold
+		delete(w.foldByHand, m.ID)
+	}
+	folded := hdr.AnimateTo("fold", float32(b2f(!collapsed)), foldAnim)
+	if collapsed && folded == 0 {
 		return
 	}
 	// The group's rows are drawn in this window's order, with the row being
@@ -277,60 +301,71 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	// is drawn in a list that changed under it.
 	rows, dragKey, _ := w.previewEntries(m.ID, entries)
 	tops := make([]float32, len(rows))
-	list := ui.Column(c).FillWidth()
-	// The row being dragged is not drawn where it would land, only the hole it
-	// leaves: the copy under the pointer is the row itself, painted by the
-	// framework, so the list needs a slot for it to drop into.
-	slotTop := float32(-1)
-	list.Draw(func(p *ui.Painter, r ui.Rect) {
-		if slotTop < 0 {
-			return
-		}
-		p.Fill(ui.Rect{X: r.X, Y: r.Y + slotTop, W: r.W, H: uitokens.RowH},
-			pal.RowHover, uitokens.RowRadius)
-	})
+	// The rows live in a column of their own, so that a fold clips them to the
+	// height they have so far: set on the rows themselves, the height read back
+	// would be the one the last frame left them with, and the fold would
+	// compound instead of reaching the end.
+	fold := ui.Column(c).Shrink(0)
+	var list ui.Element
 	var dragging bool
 	var droppedFrom string
-	list.Children(func() {
-		y := float32(0)
-		for i, e := range rows {
-			key := sessionKey(e)
-			tops[i] = y
-			if key == dragKey {
-				slotTop = y
+	var slotTop = float32(-1)
+	fold.Children(func() {
+		list = ui.Column(c).FillWidth()
+		// The row being dragged is not drawn where it would land, only the hole it
+		// leaves: the copy under the pointer is the row itself, painted by the
+		// framework, so the list needs a slot for it to drop into.
+		list.Draw(func(p *ui.Painter, r ui.Rect) {
+			if slotTop < 0 {
+				return
 			}
-			rowDragging, drop := w.sessionRow(c, pal, e, key, key == dragKey, y)
-			if rowDragging {
-				dragging = true
-				d := w.rowDrag
-				if d == nil || d.machine != m.ID || d.key != key {
-					// The drag has just begun: the row starts where the list
-					// already had it, so the first preview changes nothing.
-					at := 0
-					for _, other := range rows[:i] {
-						if sessionKey(other) != key {
-							at++
+			p.Fill(ui.Rect{X: r.X, Y: r.Y + slotTop, W: r.W, H: uitokens.RowH},
+				pal.RowHover, uitokens.RowRadius)
+		})
+		list.Children(func() {
+			y := float32(0)
+			for i, e := range rows {
+				key := sessionKey(e)
+				tops[i] = y
+				if key == dragKey {
+					slotTop = y
+				}
+				rowDragging, drop := w.sessionRow(c, pal, e, key, key == dragKey, y)
+				if rowDragging {
+					dragging = true
+					d := w.rowDrag
+					if d == nil || d.machine != m.ID || d.key != key {
+						// The drag has just begun: the row starts where the list
+						// already had it, so the first preview changes nothing.
+						at := 0
+						for _, other := range rows[:i] {
+							if sessionKey(other) != key {
+								at++
+							}
 						}
+						d = &rowDrag{machine: m.ID, key: key, at: at}
+						w.rowDrag = d
 					}
-					d = &rowDrag{machine: m.ID, key: key, at: at}
-					w.rowDrag = d
+					d.active = true
 				}
-				d.active = true
-			}
-			if drop != "" {
-				droppedFrom = drop
-			}
-			y += uitokens.RowH + 1
-			// The first pane is the tab's own row; the others hang under it.
-			for j, pane := range e.panes {
-				if j == 0 {
-					continue
+				if drop != "" {
+					droppedFrom = drop
 				}
-				w.paneRow(c, pal, pane, j == len(e.panes)-1, y)
-				y += uitokens.PaneH + 1
+				y += uitokens.RowH + 1
+				// The first pane is the tab's own row; the others hang under it.
+				for j, pane := range e.panes {
+					if j == 0 {
+						continue
+					}
+					w.paneRow(c, pal, pane, j == len(e.panes)-1, y)
+					y += uitokens.PaneH + 1
+				}
 			}
-		}
+		})
 	})
+	if folded < 1 {
+		fold.ClipY().Height(folded * list.Bounds().H).Opacity(folded)
+	}
 	if w.rowDrag != nil && w.rowDrag.machine == m.ID {
 		d := w.rowDrag
 		if dragging || droppedFrom != "" {
@@ -352,7 +387,9 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 			return
 		}
 	}
-	if len(entries) == 0 {
+	// A note stands in for rows only once the group is open: on the way out it
+	// would be the one thing left behind in a group that is leaving.
+	if folded == 1 && len(entries) == 0 {
 		note := locales.SidebarMachineEmpty()
 		if m.ID != machineLocal && len(w.remoteSessions[m.ID]) == 0 {
 			note = locales.SidebarMachineLook()

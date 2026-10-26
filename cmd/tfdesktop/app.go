@@ -65,6 +65,10 @@ type window struct {
 	sidebarWidth float32
 	sideDrag     float32
 	collapsed    map[string]bool
+	// foldByHand is the machine whose group the person folded away by clicking
+	// its header, for the one frame that decides whether the rows leave with
+	// the fold or are simply there, open or not, on the next.
+	foldByHand map[string]bool
 
 	// sessionOrder is the order each machine's rows were dragged into, by
 	// machine id. It is this window's arrangement, kept in the settings file;
@@ -211,6 +215,7 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 		cwd:          cwd,
 		tabs:         make(map[int]*tab),
 		collapsed:    make(map[string]bool),
+		foldByHand:   make(map[string]bool),
 		sidebarSplit: -1,
 		nextKey:      1,
 		cmdBar:       newCommandBar(),
