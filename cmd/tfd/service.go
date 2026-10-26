@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/CarlOpenLab/term-fleet/internal/service"
+	"github.com/CarlOpenLab/beacon/internal/service"
 )
 
 func serviceCommand(args []string) {

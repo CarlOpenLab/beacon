@@ -5,7 +5,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
 )
 
 // statusGlyph draws what a session is doing, as the sidebar does it: a ring

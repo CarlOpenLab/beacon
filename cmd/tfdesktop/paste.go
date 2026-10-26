@@ -23,9 +23,9 @@ import (
 
 	"github.com/egoist/mygo/transfer"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 const (

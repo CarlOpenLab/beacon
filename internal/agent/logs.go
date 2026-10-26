@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/diag"
 )
 
 // logTailLines is how much of the end of the log travels. The whole file is

@@ -15,8 +15,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // termConn is one terminal's end of one session.

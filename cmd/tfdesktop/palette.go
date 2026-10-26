@@ -4,7 +4,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
 )
 
 // The chrome's measurements and colors. The colors live in internal/uitokens,

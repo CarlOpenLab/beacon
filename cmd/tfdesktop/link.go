@@ -17,8 +17,8 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // Handlers is what a link reports about one session. They are called from the

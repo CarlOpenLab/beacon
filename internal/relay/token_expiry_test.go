@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/relay"
 	"github.com/coder/websocket"
 )
 

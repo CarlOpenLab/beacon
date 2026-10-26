@@ -12,7 +12,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // dialRaw is dialTest for a client that announces capabilities.

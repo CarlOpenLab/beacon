@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/diag"
 )
 
 // The log endpoint is the member endpoint's sibling, and the scheme follows it:

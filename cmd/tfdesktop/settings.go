@@ -14,11 +14,11 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/agent"
-	"github.com/CarlOpenLab/term-fleet/internal/fonts"
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/agent"
+	"github.com/CarlOpenLab/beacon/internal/fonts"
+	"github.com/CarlOpenLab/beacon/internal/settings"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // systemFamily is what the font list shows for "no family set", which the

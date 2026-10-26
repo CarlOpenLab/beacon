@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // Naming a shell is the whole point of the gesture: a double-click on the

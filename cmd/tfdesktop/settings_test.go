@@ -16,10 +16,10 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/agent"
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/agent"
+	"github.com/CarlOpenLab/beacon/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/settings"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // newTestSettingsWindow opens the settings window over a throwaway store. The

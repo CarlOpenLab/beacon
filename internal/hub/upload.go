@@ -24,8 +24,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // uploadStale is how long a started upload may go without finishing before the

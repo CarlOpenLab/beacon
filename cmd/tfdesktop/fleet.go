@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/agent"
-	"github.com/CarlOpenLab/term-fleet/internal/daemon"
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/hub"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/relayclient"
-	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/internal/agent"
+	"github.com/CarlOpenLab/beacon/internal/daemon"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/hub"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/relayclient"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
 // versionOf is what this build reports about itself in the handshake, on the

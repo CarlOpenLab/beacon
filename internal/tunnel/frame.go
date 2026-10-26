@@ -9,7 +9,7 @@
 // send straight to a daemon; only the addressing differs.
 package tunnel
 
-import "github.com/CarlOpenLab/term-fleet/internal/protocol"
+import "github.com/CarlOpenLab/beacon/internal/protocol"
 
 // Version is the tunnel protocol version, carried by agent.hello.
 const Version = 1

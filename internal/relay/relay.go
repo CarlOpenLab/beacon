@@ -1,4 +1,4 @@
-// Package relay is the public-side router of a term-fleet.
+// Package relay is the public-side router of a beacon fleet.
 //
 // Members (anything running a hub) dial *out* to it, so a machine behind NAT
 // needs no port forward and no public address. Clients connect to the same
@@ -26,8 +26,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
 const (

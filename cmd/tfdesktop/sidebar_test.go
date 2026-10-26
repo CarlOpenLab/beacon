@@ -6,8 +6,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // The column folds rather than disappearing: one frame after the toggle still

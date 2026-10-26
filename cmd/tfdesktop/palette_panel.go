@@ -7,8 +7,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // paletteState is the command palette's: a field that finds sessions, machines

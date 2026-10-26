@@ -6,8 +6,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/settings"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // Accelerators are written one way in a settings file and drawn another on

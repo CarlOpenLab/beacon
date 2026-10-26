@@ -1,4 +1,4 @@
-// Command tfrelay is the public-side router of a term-fleet.
+// Command tfrelay is the public-side router of a beacon fleet.
 //
 // Machines dial out to it; browsers and apps dial in. Nothing listens on the
 // member side, which is what lets a fleet sit behind NAT.
@@ -19,10 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/admin"
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
-	"github.com/CarlOpenLab/term-fleet/internal/web"
+	"github.com/CarlOpenLab/beacon/internal/admin"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/web"
 )
 
 func main() {
@@ -47,7 +47,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `tfrelay — public-side router for a term-fleet
+	fmt.Fprint(os.Stderr, `tfrelay — public-side router for a beacon fleet
 
   tfrelay enroll -name <machine> [-devices devices.json]
   tfrelay list [-devices devices.json]

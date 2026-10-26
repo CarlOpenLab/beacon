@@ -12,8 +12,8 @@ package main
 import (
 	"testing"
 
-	"github.com/CarlOpenLab/term-fleet/internal/hub"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/hub"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 func TestACloseFromAnotherClientDropsThisWindowsTab(t *testing.T) {

@@ -244,7 +244,7 @@ NAT / CGNAT。没配 `-relay` 时 `tfd` 的行为一个字都不变，局域网�
 ## 8. 还没定
 
 - ~~项目名最终是 `term-fleet` 还是 `termfleet`~~ → 定为 `term-fleet`（远端
-  `github.com/CarlOpenLab/term-fleet`，Go module 同名）
+  `github.com/CarlOpenLab/beacon`，Go module 同名）
 - ~~PC 端是否要保留「一个进程既是服务端又是 UI」~~ → M1 定为「是」，
   见上面 M1 的三件事第一条
 - ~~是否需要多主机 hub~~ → 由 M2 的中继给出，且按「中继只路由」实现

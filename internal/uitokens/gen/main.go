@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
 )
 
 func main() {

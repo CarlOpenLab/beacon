@@ -605,7 +605,7 @@
   "@update_unavailable_note": {
     "description": "The updates pane, for a build with no updater."
   },
-  "update_source_note": "更新源：github.com/CarlOpenLab/term-fleet 的正式发布版，包带签名校验。",
+  "update_source_note": "更新源：github.com/CarlOpenLab/beacon 的正式发布版，包带签名校验。",
   "@update_source_note": {
     "description": "The updates pane's note about where updates come from."
   },

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/agent"
+	"github.com/CarlOpenLab/beacon/internal/agent"
 )
 
 // The endpoint is derived from the address a machine already joins with, so

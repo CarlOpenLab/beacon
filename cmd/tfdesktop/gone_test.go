@@ -12,8 +12,8 @@ package main
 import (
 	"testing"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 func TestATabOpenedOnAGoneSessionIsClosedNotMarkedExited(t *testing.T) {

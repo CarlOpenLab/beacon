@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // Attention: what needs the user, what is busy, and what finished while nobody

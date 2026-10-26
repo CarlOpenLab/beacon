@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/relay"
 )
 
 //go:embed ui.html

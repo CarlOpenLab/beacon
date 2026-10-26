@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // splitWindow is a window whose body is split in two, one shell each, with the

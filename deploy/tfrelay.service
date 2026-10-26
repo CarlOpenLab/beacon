@@ -1,6 +1,6 @@
 [Unit]
 Description=Beacon relay
-Documentation=https://github.com/CarlOpenLab/term-fleet
+Documentation=https://github.com/CarlOpenLab/beacon
 After=network-online.target
 Wants=network-online.target
 # A relay that loses its members should come back fast, but a crash loop should

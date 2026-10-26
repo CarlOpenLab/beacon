@@ -1,4 +1,4 @@
-// Package uitokens is the one place term-fleet's colors, washes and the
+// Package uitokens is the one place Beacon's colors, washes and the
 // measurements of its chrome are written down.
 //
 // The desktop shell (cmd/tfdesktop) and the browser client (web/src) are meant

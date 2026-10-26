@@ -5,8 +5,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // The shell is the part of the window that is not a terminal: the band across

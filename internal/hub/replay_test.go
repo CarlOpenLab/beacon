@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // peerDefaultReadLimit is coder/websocket's default read limit for a socket

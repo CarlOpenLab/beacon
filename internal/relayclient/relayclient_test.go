@@ -13,10 +13,10 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
-	"github.com/CarlOpenLab/term-fleet/internal/relayclient"
-	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/relayclient"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
 // A real relay behind a real HTTP server, and a hand-rolled member dialled into

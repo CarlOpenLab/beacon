@@ -129,7 +129,7 @@ jobs:
           if [ "$GOOS" = windows ]; then ext=".exe"; fi
           # The version is stamped in: a machine's roster entry names the build
           # it answers as, and "devel" on every row answers nothing.
-          ldflags="-s -w -X github.com/CarlOpenLab/term-fleet/internal/diag.buildVersion=${VERSION}"
+          ldflags="-s -w -X github.com/CarlOpenLab/beacon/internal/diag.buildVersion=${VERSION}"
           go build -trimpath -ldflags "$ldflags" -o "stage/tfd$ext" ./cmd/tfd
           go build -trimpath -ldflags "$ldflags" -o "stage/tfrelay$ext" ./cmd/tfrelay
           cp README.md stage/

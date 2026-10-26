@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/hub"
+	"github.com/CarlOpenLab/beacon/internal/hub"
 )
 
 func TestValidateBinding(t *testing.T) {

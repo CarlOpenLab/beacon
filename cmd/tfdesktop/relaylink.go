@@ -12,9 +12,9 @@ package main
 import (
 	"sync"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/relayclient"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/relayclient"
 )
 
 // relayLink is the window's client end of one machine's hub, over a relay

@@ -11,10 +11,10 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
-	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/settings"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // The previews are how the shell is looked at: a test can assert that a label is
@@ -328,8 +328,8 @@ func previewScreen() string {
 		"\x1b[38;2;111;211;154m??\x1b[0m cmd/tfdesktop/palette.go\r\n" +
 		"\x1b[38;2;111;211;154m??\x1b[0m cmd/tfdesktop/shell.go\r\n" +
 		"\x1b[38;2;139;144;162m$\x1b[0m go test ./...\r\n" +
-		"ok  \tgithub.com/CarlOpenLab/term-fleet/cmd/tfdesktop\t0.6s\r\n" +
-		"ok  \tgithub.com/CarlOpenLab/term-fleet/internal/settings\t0.1s\r\n" +
+		"ok  \tgithub.com/CarlOpenLab/beacon/cmd/tfdesktop\t0.6s\r\n" +
+		"ok  \tgithub.com/CarlOpenLab/beacon/internal/settings\t0.1s\r\n" +
 		"\x1b[38;2;139;144;162m$\x1b[0m "
 }
 

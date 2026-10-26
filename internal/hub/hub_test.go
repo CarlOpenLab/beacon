@@ -14,8 +14,8 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/CarlOpenLab/term-fleet/internal/hub"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/hub"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // These are M0's acceptance tests from PLAN.md: create -> attach -> input ->

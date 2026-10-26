@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CarlOpenLab/term-fleet/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/CarlOpenLab/term-fleet/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/CarlOpenLab/term-fleet/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/CarlOpenLab/term-fleet?color=6366f1"></a>
+  <a href="https://github.com/CarlOpenLab/beacon/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/CarlOpenLab/beacon/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/CarlOpenLab/beacon/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/CarlOpenLab/beacon?color=6366f1"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue">
   <img alt="Go Version" src="https://img.shields.io/badge/go-%3E%3D1.24-00ADD8">
 </p>
@@ -22,6 +22,8 @@
 ---
 
 **Beacon** 将分布在各台物理机、虚拟机与云服务器上的真实 PTY 会话，编织为一个随处可达、具备状态感知的终端中枢。
+
+> 这个项目以前叫 `term-fleet`。仓库名和 Go 模块路径都换成了 `beacon`；GitHub 会重定向旧链接，已有的 `term-fleet` 设置目录仍照读不误（`TERM_FLEET_CONFIG_HOME` 也仍然有效）。
 
 宿主机守护进程（`tfd`）直接托管真实 PTY 并通过单条多路复用 WebSocket 对外服务。基于 Mygo 构建的精致原生桌面客户端（浮动卡片式布局、弥散渐变水洗背景，纯原生渲染无需 WebView）、浏览器端以及手机端，均可同时附着到同一个会话中。手机上的终端 Tab，就是桌面上正在运行的同一个 Shell。
 
@@ -81,7 +83,7 @@
 
 ## 下载与安装
 
-每个正式版本的全平台安装包均可在 **[Releases 页面](https://github.com/CarlOpenLab/term-fleet/releases)** 下载：
+每个正式版本的全平台安装包均可在 **[Releases 页面](https://github.com/CarlOpenLab/beacon/releases)** 下载：
 
 | 平台 | 安装包格式 | 包含内容 |
 | :--- | :--- | :--- |
@@ -103,7 +105,7 @@
 
 ```sh
 # 源码构建
-git clone https://github.com/CarlOpenLab/term-fleet.git beacon
+git clone https://github.com/CarlOpenLab/beacon.git
 cd beacon
 pnpm install
 pnpm run build

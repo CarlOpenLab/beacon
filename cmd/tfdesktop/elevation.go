@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
 )
 
 // Surfaces stand out by their color and an edge, crisp, on whole pixels. In the

@@ -11,9 +11,9 @@ package main
 import (
 	"context"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/hub"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/hub"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // localLink is the window's client end of this machine's hub.

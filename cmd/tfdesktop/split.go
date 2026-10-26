@@ -16,7 +16,7 @@ package main
 import (
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
 )
 
 // workspace is one tab's layout of terminals: its split tree, the pane that had

@@ -20,7 +20,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // inspectWidth is the browser client's --w-inspect. The two clients show the

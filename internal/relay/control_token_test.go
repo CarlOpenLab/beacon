@@ -13,7 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/relay"
 )
 
 // A machine may ask the relay for a short-lived credential instead of being

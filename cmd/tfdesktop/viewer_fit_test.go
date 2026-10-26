@@ -10,8 +10,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/settings"
 )
 
 func TestViewerFitScaleMakesTheWholeScreenFit(t *testing.T) {

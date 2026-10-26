@@ -6,7 +6,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
 
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // updaterMenuItem is the 检查更新… item. It is a variable rather than a call so
@@ -46,7 +46,7 @@ func (w *window) menuAccelFor(id string) string {
 
 func appMenu(w *window) *mygo.Menu {
 	return mygo.NewMenu([]*mygo.MenuItem{
-		{Label: "term-fleet", Submenu: []*mygo.MenuItem{
+		{Label: "Beacon", Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleAbout},
 			updaterMenuItem(),
 			mygo.Separator(),

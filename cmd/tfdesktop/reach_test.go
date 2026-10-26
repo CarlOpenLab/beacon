@@ -14,13 +14,13 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/agent"
-	"github.com/CarlOpenLab/term-fleet/internal/daemon"
-	"github.com/CarlOpenLab/term-fleet/internal/hub"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/agent"
+	"github.com/CarlOpenLab/beacon/internal/daemon"
+	"github.com/CarlOpenLab/beacon/internal/hub"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/settings"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // The whole reach, over real sockets: a relay, another machine's daemon dialled

@@ -1,8 +1,8 @@
 package hub
 
 import (
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/session"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/session"
 )
 
 // This file is the host-facing edge of the hub: the small surface a program

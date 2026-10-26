@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // A session list is what opens tabs, and it must not open one for a shell that

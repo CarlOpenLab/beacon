@@ -5,8 +5,8 @@ package relay_test
 import (
 	"testing"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
 // TestReattachReplaysLargeRing is the white pane end to end, over real

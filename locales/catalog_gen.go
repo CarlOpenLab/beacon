@@ -1646,13 +1646,13 @@ func (msgs Messages) UpdateUnavailableNote() string {
 	return Catalog.Format(msgs.locale, "update_unavailable_note", nil)
 }
 
-// UpdateSourceNote says "更新源：github.com/CarlOpenLab/term-fleet 的正式发布版，包带签名校验。"
+// UpdateSourceNote says "更新源：github.com/CarlOpenLab/beacon 的正式发布版，包带签名校验。"
 // in the language the app shows.
 //
 // The updates pane's note about where updates come from.
 func UpdateSourceNote() string { return In(i18n.Locale()).UpdateSourceNote() }
 
-// UpdateSourceNote says "更新源：github.com/CarlOpenLab/term-fleet 的正式发布版，包带签名校验。"
+// UpdateSourceNote says "更新源：github.com/CarlOpenLab/beacon 的正式发布版，包带签名校验。"
 // in the language of msgs.
 //
 // The updates pane's note about where updates come from.

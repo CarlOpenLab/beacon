@@ -1,4 +1,4 @@
-// Command tfd is the headless half of term-fleet: it hosts PTY sessions on this
+// Command tfd is the headless half of Beacon: it hosts PTY sessions on this
 // machine and hands them to any client that connects, over one WebSocket.
 package main
 
@@ -14,11 +14,11 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/CarlOpenLab/term-fleet/internal/agent"
-	"github.com/CarlOpenLab/term-fleet/internal/daemon"
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/hub"
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
+	"github.com/CarlOpenLab/beacon/internal/agent"
+	"github.com/CarlOpenLab/beacon/internal/daemon"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/hub"
+	"github.com/CarlOpenLab/beacon/internal/settings"
 )
 
 func main() {

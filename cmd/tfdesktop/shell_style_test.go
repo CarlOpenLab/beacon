@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
 )
 
 // The card's corner follows the window's: the system draws the outer arc, the

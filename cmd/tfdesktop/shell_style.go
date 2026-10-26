@@ -14,7 +14,7 @@ package main
 import (
 	"runtime"
 
-	"github.com/CarlOpenLab/term-fleet/internal/uitokens"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
 )
 
 // windowRadiusFor is the radius the system draws. These three numbers belong to

@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/CarlOpenLab/term-fleet/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/CarlOpenLab/term-fleet/actions/workflows/ci.yml/badge.svg"></a>
-  <a href="https://github.com/CarlOpenLab/term-fleet/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/CarlOpenLab/term-fleet?color=6366f1"></a>
+  <a href="https://github.com/CarlOpenLab/beacon/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/CarlOpenLab/beacon/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/CarlOpenLab/beacon/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/CarlOpenLab/beacon?color=6366f1"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue">
   <img alt="Go Version" src="https://img.shields.io/badge/go-%3E%3D1.24-00ADD8">
 </p>
@@ -22,6 +22,8 @@
 ---
 
 **Beacon** turns the real PTY sessions across your physical and virtual machines into an ambient, unified terminal hub.
+
+> This project used to be `term-fleet`. The repository and the Go module were renamed to `beacon`; GitHub redirects the old links, and an existing settings directory under `term-fleet` is still read (`TERM_FLEET_CONFIG_HOME` keeps working).
 
 A lightweight daemon (`tfd`) manages PTY sessions over a single multiplexed WebSocket. A native desktop app built with Mygo (featuring floating cards and soft color washes, rendered natively without WebViews), a browser client, and a mobile client all attach to the exact same connection. Every shell tab on your phone is the identical shell running on your desktop.
 
@@ -81,7 +83,7 @@ Machines dial **out** to a public relay (`tfrelay`), making all your sessions re
 
 ## Download & Installation
 
-Pre-built binaries and installers for every release are available on the **[Releases Page](https://github.com/CarlOpenLab/term-fleet/releases)**:
+Pre-built binaries and installers for every release are available on the **[Releases Page](https://github.com/CarlOpenLab/beacon/releases)**:
 
 | Platform | Package Type | Details |
 | :--- | :--- | :--- |
@@ -103,7 +105,7 @@ If you only want to access your terminal from your local browser or phone on the
 
 ```sh
 # Clone and build
-git clone https://github.com/CarlOpenLab/term-fleet.git beacon
+git clone https://github.com/CarlOpenLab/beacon.git
 cd beacon
 pnpm install
 pnpm run build

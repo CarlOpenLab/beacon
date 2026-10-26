@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/relay"
 )
 
 // TestParseTokenTTL pins the lifetime syntax the panel and any script talk in.

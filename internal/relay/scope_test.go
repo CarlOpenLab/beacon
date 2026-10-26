@@ -13,10 +13,10 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/CarlOpenLab/term-fleet/internal/agent"
-	"github.com/CarlOpenLab/term-fleet/internal/daemon"
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
-	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/internal/agent"
+	"github.com/CarlOpenLab/beacon/internal/daemon"
+	"github.com/CarlOpenLab/beacon/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
 // A token minted for one person can be limited to one machine. The relay enforces

@@ -25,12 +25,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/diag"
 
 	"github.com/coder/websocket"
 
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
 // State is what the client's own link to the relay is doing.

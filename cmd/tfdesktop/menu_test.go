@@ -6,7 +6,7 @@ import (
 
 	"github.com/egoist/mygo"
 
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // The menu bar is built at startup, before anything else runs, so it must not

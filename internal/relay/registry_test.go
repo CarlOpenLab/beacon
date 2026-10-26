@@ -14,7 +14,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/CarlOpenLab/term-fleet/internal/relay"
+	"github.com/CarlOpenLab/beacon/internal/relay"
 )
 
 // TestEmptyRegistryIsAllowed pins the change that makes the admin setup flow

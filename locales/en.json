@@ -114,7 +114,7 @@
   "update_check_now": "Check for updates…",
   "update_found_note": "When a new version appears a window lists its notes, with install, remind me later and skip this version.",
   "update_unavailable_note": "This build cannot update itself: a development build, or one installed by a package manager (.deb and the like), which owns updating. Builds from the installer or tar.gz update themselves.",
-  "update_source_note": "Update source: the official releases of github.com/CarlOpenLab/term-fleet, signed and verified.",
+  "update_source_note": "Update source: the official releases of github.com/CarlOpenLab/beacon, signed and verified.",
   "theme_system": "Follow the system",
   "theme_light": "Light",
   "theme_dark": "Dark",

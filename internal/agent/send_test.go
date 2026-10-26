@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
 // A full out queue must slow a viewer's writer down, not answer it with an

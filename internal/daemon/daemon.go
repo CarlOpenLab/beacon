@@ -17,10 +17,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/hub"
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
-	"github.com/CarlOpenLab/term-fleet/internal/web"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/hub"
+	"github.com/CarlOpenLab/beacon/internal/protocol"
+	"github.com/CarlOpenLab/beacon/internal/web"
 )
 
 // Options configures a Server. The zero value listens on 127.0.0.1:0.
@@ -49,7 +49,7 @@ type Options struct {
 	ControlOff bool
 }
 
-// Server is a bound, not yet necessarily serving, term-fleet host.
+// Server is a bound, not yet necessarily serving, Beacon host.
 type Server struct {
 	hub *hub.Hub
 	ln  net.Listener

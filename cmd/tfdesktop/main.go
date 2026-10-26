@@ -1,4 +1,4 @@
-// Command tfdesktop is term-fleet's PC client: the daemon `tfd` runs, with a
+// Command tfdesktop is Beacon's PC client: the daemon `tfd` runs, with a
 // native window over it instead of a browser.
 //
 // The window is drawn with mygo's own UI toolkit and terminal — no webview, no
@@ -28,9 +28,9 @@ import (
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/term-fleet/internal/diag"
-	"github.com/CarlOpenLab/term-fleet/internal/settings"
-	"github.com/CarlOpenLab/term-fleet/locales"
+	"github.com/CarlOpenLab/beacon/internal/diag"
+	"github.com/CarlOpenLab/beacon/internal/settings"
+	"github.com/CarlOpenLab/beacon/locales"
 )
 
 func main() {
@@ -186,7 +186,7 @@ func main() {
 
 	mygo.App.WhenReady(func() {
 		win := mygo.NewWindow(framedWindow(mygo.WindowOptions{
-			Title:           "term-fleet",
+			Title:           "Beacon",
 			Width:           1180,
 			Height:          760,
 			MinWidth:        720,

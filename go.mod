@@ -1,4 +1,4 @@
-module github.com/CarlOpenLab/term-fleet
+module github.com/CarlOpenLab/beacon
 
 go 1.27.1
 
