@@ -24,6 +24,7 @@ EnvironmentFile=/etc/tfrelay/env
 ExecStart=/usr/local/bin/tfrelay \
   -addr 127.0.0.1:7699 \
   -devices /var/lib/tfrelay/devices.json \
+  -log-dir /var/lib/tfrelay/logs \
   -trust-proxy
 
 Restart=always

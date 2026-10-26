@@ -76,7 +76,7 @@ type Config struct {
 	AuthWindow      time.Duration
 	AuthCooldown    time.Duration
 	// LogStore keeps the diagnostic tails machines push. Nil means a fresh
-	// in-memory store, which is what a relay that never shows the panel wants.
+	// in-memory store; the relay command supplies a persistent store.
 	LogStore *LogStore
 	Log      *log.Logger
 }
@@ -373,7 +373,12 @@ func (r *Relay) ServeLog(w http.ResponseWriter, rq *http.Request) {
 		http.Error(w, "bad log report", http.StatusBadRequest)
 		return
 	}
-	entry := r.logs.Put(id, report)
+	entry, err := r.logs.Put(id, report)
+	if err != nil {
+		r.log.Printf("relay: storing log report for %s: %v", id, err)
+		http.Error(w, "cannot persist log report", http.StatusInternalServerError)
+		return
+	}
 	r.log.Printf("relay: log report from %s: %d line(s), level=%s", id, len(entry.Lines), entry.Level)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -503,7 +508,7 @@ func (r *Relay) ServeAgent(w http.ResponseWriter, rq *http.Request) {
 		old.close("replaced by a newer link")
 	}
 
-	r.log.Printf("relay: member %s online (%s/%s)", id, hello.Host.Platform, hello.Host.Arch)
+	r.log.Printf("relay: member %s online (%s/%s version=%s instance=%s)", id, hello.Host.Platform, hello.Host.Arch, hello.Host.Version, hello.Host.Instance)
 	r.broadcastMachines()
 	defer func() {
 		r.mu.Lock()
@@ -525,12 +530,14 @@ func (r *Relay) ServeAgent(w http.ResponseWriter, rq *http.Request) {
 	for {
 		f, err := readFrame(ctx, conn)
 		if err != nil {
+			r.log.Printf("relay: member link read ended machine=%s: %v", id, err)
 			return
 		}
 		switch f.T {
 		case tunnel.TData:
 			m.forwardToClient(f)
 		case tunnel.TClose:
+			r.log.Printf("relay: member closed stream machine=%s stream=%d reason=%q", id, f.Stream, f.Message)
 			m.forwardToClient(f)
 			m.dropStream(f.Stream)
 		case tunnel.TAgentHello:
@@ -640,6 +647,7 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 	for {
 		f, err := readFrame(ctx, conn)
 		if err != nil {
+			r.log.Printf("relay: client link read ended client=%d: %v", n, err)
 			return
 		}
 		switch f.T {
@@ -648,6 +656,9 @@ func (r *Relay) ServeClient(w http.ResponseWriter, rq *http.Request) {
 		case tunnel.TData:
 			r.routeFromClient(c, f)
 		case tunnel.TClose:
+			if owner, ok := c.stream(f.Stream); ok {
+				r.log.Printf("relay: client closed stream machine=%s client_stream=%d member_stream=%d", owner.member.id, f.Stream, owner.memberStream)
+			}
 			r.handleClientClose(c, f)
 		case tunnel.TMachines:
 			c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshotFor(grant)})

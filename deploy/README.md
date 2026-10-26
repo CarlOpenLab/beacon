@@ -77,6 +77,13 @@ sudo systemctl enable --now tfrelay
 The registry file is created on first use; keep it at mode 0600 — the member
 secrets in it are as sensitive as the machines they unlock.
 
+The relay also writes `tfrelay.log` beside the registry by default, and keeps
+one `tfrelay.log.1` backup after the active file reaches 8 MiB. Machine log
+reports are stored under `logs/machines/` as one bounded JSON report per device
+so the admin Logs page keeps its history across a relay restart. Override both
+locations with `-log-dir`; the service unit uses `/var/lib/tfrelay/logs`.
+The log directory and files are private to the relay account (0700/0600).
+
 # 3b. Set up the admin panel
 
 Open the relay's management page once and create the admin account:

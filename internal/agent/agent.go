@@ -395,6 +395,7 @@ func (s *session) sendCtx(ctx context.Context, f tunnel.Frame) error {
 // which is exactly what the control arbitration already expects.
 func (s *session) openStream(ctx context.Context, id uint32) {
 	tp := &streamTransport{
+		id:   id,
 		in:   make(chan []byte, inboundQueue),
 		done: make(chan struct{}),
 	}
@@ -411,7 +412,7 @@ func (s *session) openStream(ctx context.Context, id uint32) {
 			s.mu.Lock()
 			delete(s.streams, id)
 			s.mu.Unlock()
-			s.send(tunnel.Frame{T: tunnel.TClose, Stream: id})
+			s.send(tunnel.Frame{T: tunnel.TClose, Stream: id, Message: "member stream ended"})
 		}()
 		s.a.cfg.Hub.ServeTransport(tp)
 	}()
@@ -490,6 +491,7 @@ const inboundQueue = 512
 // streamTransport is a hub.Transport backed by tunnel frames rather than a
 // socket.
 type streamTransport struct {
+	id   uint32
 	in   chan []byte
 	send func(ctx context.Context, payload []byte) error
 	done chan struct{}
@@ -527,7 +529,10 @@ func (s *streamTransport) Write(ctx context.Context, b []byte) error {
 func (s *streamTransport) Ping(ctx context.Context) error { return nil }
 
 func (s *streamTransport) Close(reason string) error {
-	s.once.Do(func() { close(s.done) })
+	s.once.Do(func() {
+		diag.Infof("relay", "member stream transport closed stream=%d reason=%q", s.id, reason)
+		close(s.done)
+	})
 	return nil
 }
 

@@ -466,7 +466,12 @@ func (a *Admin) handleLogClear(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, http.StatusBadRequest, "which machine? pass an id")
 		return
 	}
-	cleared := a.opts.Relay.Logs().Clear(id)
+	cleared, err := a.opts.Relay.Logs().Clear(id)
+	if err != nil {
+		a.opts.Log.Printf("admin: clear log %q: %v", id, err)
+		a.fail(w, http.StatusInternalServerError, "could not clear machine log")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cleared": cleared})
 }
 

@@ -134,13 +134,21 @@ func Open(dir, name string, level Level) (*Logger, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return nil, err
+	}
 	path := filepath.Join(dir, name+".log")
 	if info, err := os.Stat(path); err == nil && info.Size() > maxBytes {
 		_ = os.Remove(path + ".1")
 		_ = os.Rename(path, path+".1")
+		_ = os.Chmod(path+".1", 0o600)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
+		return nil, err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 	var written int64
@@ -319,7 +327,8 @@ func (l *Logger) rotateLocked() {
 	_ = l.file.Close()
 	_ = os.Remove(l.path + ".1")
 	_ = os.Rename(l.path, l.path+".1")
-	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	_ = os.Chmod(l.path+".1", 0o600)
+	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		// Nowhere left to write: the ring keeps the lines, and the next Open
 		// picks the file back up.

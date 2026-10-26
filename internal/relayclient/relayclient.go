@@ -389,7 +389,11 @@ func (c *Client) handle(f tunnel.Frame) {
 		}
 	case tunnel.TClose:
 		if s := c.streamOf(f.Stream); s != nil {
-			s.end("machine closed the stream")
+			reason := strings.TrimSpace(f.Message)
+			if reason == "" {
+				reason = "machine closed the stream"
+			}
+			s.end(reason)
 		}
 	case tunnel.TError:
 		if s := c.streamOf(f.Stream); s != nil {

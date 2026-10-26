@@ -1,6 +1,12 @@
 package relay
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -8,18 +14,15 @@ import (
 )
 
 // LogStore keeps the tail of every machine's diagnostic log. A machine pushes
-// its own lines over the relay's agent link (an HTTP POST beside the tunnel, so
-// the relay still never parses an inner frame), and the admin panel reads them
-// from here.
-//
-// The store is deliberately a ring rather than a file: a relay is a router, not
-// a logging service. It holds enough recent history for someone to look at a
-// bug while it is still warm, and never grows without bound.
+// its own lines over the relay's agent link, and the store persists the latest
+// report so a relay restart does not erase the evidence an operator needs.
 type LogStore struct {
 	mu       sync.Mutex
-	byID     map[string]*LogEntry
+	byID     map[string]LogSummary
+	memory   map[string]*LogEntry
 	maxLines int
 	maxBytes int
+	root     string
 }
 
 // LogEntry is one machine's latest report, with the metadata the panel shows
@@ -33,9 +36,7 @@ type LogEntry struct {
 	Lines      []string  `json:"lines"`
 	Bytes      int       `json:"bytes"`
 	ReceivedAt time.Time `json:"receivedAt"`
-	// UpdatedAt is when the machine produced its newest line, from the report.
-	// It can lag ReceivedAt when a machine has been quiet.
-	UpdatedAt time.Time `json:"updatedAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // LogSummary is what the list endpoint sends: everything except the lines.
@@ -65,118 +66,208 @@ type LogReport struct {
 
 const (
 	defaultMaxLogLines = 4000
-	// defaultMaxLogBytes bounds one machine's stored report. A debug log line
-	// is a few hundred bytes; 2 MiB holds many thousands of them.
 	defaultMaxLogBytes = 2 << 20
 	maxLogLineBytes    = 8 << 10
 )
 
-// NewLogStore builds the store the relay uses.
+// NewLogStore builds the in-memory store used by tests and embedders. The
+// relay command uses NewPersistentLogStore so reports survive restarts.
 func NewLogStore() *LogStore {
+	return newLogStore("")
+}
+
+// NewPersistentLogStore loads machine reports from dir. Each report is kept in
+// its own JSON file, which makes one corrupt machine unable to hide the others.
+func NewPersistentLogStore(dir string) (*LogStore, error) {
+	if strings.TrimSpace(dir) == "" {
+		return nil, errors.New("relay: log directory is empty")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return nil, err
+	}
+	s := newLogStore(dir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			return nil, err
+		}
+		var e LogEntry
+		if err := json.Unmarshal(b, &e); err != nil || e.ID == "" || entry.Name() != logFileName(e.ID) {
+			// A partial/corrupt report is ignored; the next upload repairs it.
+			continue
+		}
+		e = s.normaliseEntry(e)
+		s.byID[e.ID] = summaryOf(e)
+	}
+	return s, nil
+}
+
+func newLogStore(root string) *LogStore {
 	return &LogStore{
-		byID:     map[string]*LogEntry{},
+		byID:     map[string]LogSummary{},
+		memory:   map[string]*LogEntry{},
 		maxLines: defaultMaxLogLines,
 		maxBytes: defaultMaxLogBytes,
+		root:     root,
 	}
 }
 
-// Put replaces a machine's report with the newest one. Reports are full tails,
-// not deltas, so replacing is what makes the panel show one machine's story
-// rather than an interleaving of every upload.
-func (s *LogStore) Put(id string, report LogReport) LogEntry {
+// Put replaces a machine's report with the newest one. Persistence happens
+// before the in-memory index is swapped, so a failed disk write never makes a
+// report appear saved when it is not.
+func (s *LogStore) Put(id string, report LogReport) (LogEntry, error) {
 	now := time.Now().UTC()
-	lines := make([]string, 0, len(report.Lines))
-	bytes := 0
-	for _, line := range report.Lines {
-		if len(line) > maxLogLineBytes {
-			line = line[:maxLogLineBytes]
-		}
-		// The cap is kept from the end: the newest lines are the ones that
-		// explain the thing that just went wrong.
-		bytes += len(line) + 1
-		lines = append(lines, line)
-		if len(lines) > s.maxLines || bytes > s.maxBytes {
-			drop := len(lines) - s.maxLines
-			if drop < 1 {
-				drop = 1
-			}
-			for i := 0; i < drop; i++ {
-				bytes -= len(lines[i]) + 1
-			}
-			lines = lines[drop:]
-		}
-	}
 	updated := now
 	if report.UpdatedAt != "" {
 		if t, err := time.Parse(time.RFC3339Nano, report.UpdatedAt); err == nil {
 			updated = t
 		}
 	}
-	entry := &LogEntry{
-		ID:         id,
-		Version:    report.Version,
-		Platform:   report.Platform,
-		Arch:       report.Arch,
-		Level:      report.Level,
-		Lines:      lines,
-		Bytes:      bytes,
-		ReceivedAt: now,
-		UpdatedAt:  updated,
-	}
+	e := s.normaliseEntry(LogEntry{
+		ID: id, Version: report.Version, Platform: report.Platform, Arch: report.Arch,
+		Level: report.Level, Lines: append([]string(nil), report.Lines...),
+		ReceivedAt: now, UpdatedAt: updated,
+	})
 	s.mu.Lock()
-	s.byID[id] = entry
+	if err := s.persistLocked(e); err != nil {
+		s.mu.Unlock()
+		return e, err
+	}
+	s.byID[id] = summaryOf(e)
+	if s.root == "" {
+		s.memory[id] = &e
+	}
 	s.mu.Unlock()
-	return *entry
+	return e, nil
+}
+
+func summaryOf(e LogEntry) LogSummary {
+	return LogSummary{
+		ID: e.ID, Version: e.Version, Platform: e.Platform, Arch: e.Arch,
+		Level: e.Level, Lines: len(e.Lines), Bytes: e.Bytes,
+		ReceivedAt: e.ReceivedAt, UpdatedAt: e.UpdatedAt,
+	}
+}
+
+func (s *LogStore) normaliseEntry(e LogEntry) LogEntry {
+	lines := make([]string, 0, len(e.Lines))
+	bytes := 0
+	for _, line := range e.Lines {
+		if len(line) > maxLogLineBytes {
+			line = line[:maxLogLineBytes]
+		}
+		lines = append(lines, line)
+		bytes += len(line) + 1
+		for len(lines) > s.maxLines || bytes > s.maxBytes {
+			bytes -= len(lines[0]) + 1
+			lines = lines[1:]
+		}
+	}
+	e.Lines, e.Bytes = lines, bytes
+	return e
+}
+
+func (s *LogStore) persistLocked(e LogEntry) error {
+	if s.root == "" {
+		return nil
+	}
+	b, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(s.root, logFileName(e.ID))
+	tmp, err := os.CreateTemp(s.root, ".log-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
+}
+
+func logFileName(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return "machine-" + hex.EncodeToString(sum[:]) + ".json"
 }
 
 // Get returns one machine's report, lines included.
 func (s *LogStore) Get(id string) (LogEntry, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e, ok := s.byID[id]
+	e, ok := s.memory[id]
+	if ok {
+		cp := *e
+		cp.Lines = append([]string(nil), e.Lines...)
+		return cp, true
+	}
+	_, ok = s.byID[id]
 	if !ok {
 		return LogEntry{}, false
 	}
-	cp := *e
-	cp.Lines = append([]string(nil), e.Lines...)
-	return cp, true
+	if s.root == "" {
+		return LogEntry{}, false
+	}
+	b, err := os.ReadFile(filepath.Join(s.root, logFileName(id)))
+	if err != nil {
+		return LogEntry{}, false
+	}
+	var out LogEntry
+	if err := json.Unmarshal(b, &out); err != nil || out.ID != id {
+		return LogEntry{}, false
+	}
+	out = s.normaliseEntry(out)
+	return out, true
 }
 
-// List returns one summary per machine, sorted by id so the panel's rows do not
-// reshuffle between refreshes.
 func (s *LogStore) List() []LogSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]LogSummary, 0, len(s.byID))
 	for _, e := range s.byID {
-		out = append(out, LogSummary{
-			ID:         e.ID,
-			Version:    e.Version,
-			Platform:   e.Platform,
-			Arch:       e.Arch,
-			Level:      e.Level,
-			Lines:      len(e.Lines),
-			Bytes:      e.Bytes,
-			ReceivedAt: e.ReceivedAt,
-			UpdatedAt:  e.UpdatedAt,
-		})
+		out = append(out, e)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
-// Clear forgets one machine's report. It is what the panel's forget button
-// does, and what a rotated credential should be followed by.
-func (s *LogStore) Clear(id string) bool {
+// Clear forgets one machine's report and removes its persisted copy.
+func (s *LogStore) Clear(id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, ok := s.byID[id]
+	if s.root != "" {
+		if err := os.Remove(filepath.Join(s.root, logFileName(id))); err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+	}
 	delete(s.byID, id)
-	return ok
+	delete(s.memory, id)
+	return ok, nil
 }
 
-// Text renders a report as the log file the machine wrote: one line each, no
-// extra decoration. It is what the download link serves.
-func (e LogEntry) Text() string {
-	return strings.Join(e.Lines, "\n")
-}
+func (e LogEntry) Text() string { return strings.Join(e.Lines, "\n") }

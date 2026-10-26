@@ -67,7 +67,7 @@ func (a *Agent) reportLogs(ctx context.Context) {
 				// about a feature it does not have would be noise in the log this
 				// upload is trying to be useful for. Say it once, then rarely.
 				if failures == 0 || failures%20 == 0 {
-					a.log.Printf("agent: log upload: %v (retrying quietly)", err)
+					diag.Warnf("relay", "diagnostic log upload failed machine=%s: %v (retrying quietly)", a.cfg.DeviceID, err)
 				}
 				failures++
 			} else {

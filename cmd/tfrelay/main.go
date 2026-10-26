@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/CarlOpenLab/term-fleet/internal/admin"
+	"github.com/CarlOpenLab/term-fleet/internal/diag"
 	"github.com/CarlOpenLab/term-fleet/internal/relay"
 	"github.com/CarlOpenLab/term-fleet/internal/web"
 )
@@ -117,6 +118,7 @@ func runServe(args []string) {
 	webDir := flag.String("web-dir", "", "serve the client from this directory instead of the embedded copy")
 	trustProxy := flag.Bool("trust-proxy", false, "read X-Forwarded-For for rate limiting and logs (only behind a proxy you control)")
 	maxFailures := flag.Int("auth-max-failures", 10, "rejected credentials per address before a lockout; 0 disables")
+	logDir := flag.String("log-dir", "", "directory for relay logs and persisted machine log reports (default: logs beside -devices)")
 	flag.Parse()
 
 	stateDir := filepath.Dir(*devices)
@@ -125,6 +127,12 @@ func runServe(args []string) {
 	}
 	if *adminStore == "" {
 		*adminStore = filepath.Join(stateDir, "admin.json")
+	}
+	if *logDir == "" {
+		*logDir = filepath.Join(stateDir, "logs")
+	}
+	if _, err := diag.Install(*logDir, "tfrelay", diag.Info); err != nil {
+		log.Printf("tfrelay: diagnostics are not being written to disk: %v", err)
 	}
 
 	if *clientToken == "" && !fileExists(*tokenFile) {
@@ -152,6 +160,10 @@ func runServe(args []string) {
 	if token.Get() == "" {
 		log.Fatal("tfrelay: no client token: pass -client-token or set $TFRELAY_CLIENT_TOKEN")
 	}
+	logs, err := relay.NewPersistentLogStore(filepath.Join(*logDir, "machines"))
+	if err != nil {
+		log.Fatalf("tfrelay: open machine log store: %v", err)
+	}
 
 	var patterns []string
 	if *origins != "" {
@@ -164,6 +176,7 @@ func runServe(args []string) {
 		TrustProxy:      *trustProxy,
 		AuthMaxFailures: *maxFailures,
 		ControlTokenTTL: *controlTTL,
+		LogStore:        logs,
 		Log:             log.Default(),
 	})
 	if err != nil {
