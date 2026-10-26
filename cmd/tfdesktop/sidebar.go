@@ -413,6 +413,11 @@ func (w *window) foldedMachines(c *ui.Context, pal *uitokens.Palette, machines [
 	fold.Children(func() {
 		list = ui.Column(c).FillWidth()
 		list.Children(func() {
+			// Open, these are machines and the rows above are sessions: without
+			// a line the two run together and the group has no end. Folded, the
+			// row is a summary of its own and a line under it would claim a
+			// second group, so the line lives inside the fold and leaves with it.
+			ui.Box(c).Height(0.5).FillWidth().Margin(10, 10, 0, 10).Background(pal.Text.Alpha(0.12))
 			for i, m := range machines {
 				divided := i > 0 && len(w.entriesFor(machines[i-1].ID)) > 0
 				w.machineGroup(c, pal, m, i == 0, divided, false)
