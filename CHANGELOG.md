@@ -4,6 +4,13 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.8
+
+**Beacon 0.7.8: 文字粘贴不再被吞 — Text paste reaches the program**
+
+- **A text paste into a program that asks for paste events now arrives.** Windows cannot carry a terminal's OSC 5522 paste event through ConPTY — the console host drops it instead of handing it to the program — so omp and other agents that enable paste events for images never received pasted text, while images still worked. The desktop writes a text paste itself, with the terminal's paste events off, so the text goes as an ordinary paste: bracketed when the program asked for that, and read by every program. The paths an image upload pastes go the same way.
+  — Windows 的 ConPTY 不会把终端的 OSC 5522 粘贴事件交给程序（控制台宿主直接丢弃），所以为图片开启粘贴事件的 omp 等 agent 收不到文字粘贴，而图片照常可用。桌面端现在自己把文字按粘贴写入（终端侧关闭粘贴事件，程序要求时带括号），任何程序都能读到；图片上传后粘贴的路径也走同一条路。
+
 ## 0.7.7
 
 **Beacon 0.7.7: 修复 Windows 文字粘贴 — Restore Windows text paste**

@@ -1428,8 +1428,9 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 		// shell keeps Ctrl+V as the control character it has always been.
 		Keybinds: terminalKeybinds(machine),
 		// An image or a file on the clipboard becomes a file on the machine the
-		// shell runs on, and its path is what the program receives. Text pastes
-		// are left to the terminal, exactly as before.
+		// shell runs on, and its path is what the program receives. A text paste
+		// is written as a paste here, so that a program asking for paste events
+		// still gets it (see pasteText).
 		OnPaste: func(d transfer.Data) bool { return w.pasteInto(tb, d) },
 		// The screen lays out at the size the shell has, which is not always the
 		// size this pane is. A viewer is a window onto a screen that already

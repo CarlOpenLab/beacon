@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -289,4 +290,34 @@ func TestRemoteHelloAnnouncesFileUploadCapability(t *testing.T) {
 	if len(sent) == 0 || sent[0].T != protocol.CTHello || !protocol.HasCap(sent[0].Caps, protocol.CapFile) {
 		t.Fatalf("remote handshake did not announce upload support: %+v", sent)
 	}
+}
+
+// Windows cannot carry a terminal's paste event to a program: its console host
+// reads what is written to it as keyboard input, so an OSC 5522 offer is
+// dropped rather than handed to the program. A program that asks for paste
+// events — omp and other agents do, for images — would then lose a text paste
+// while images, which this app handles itself, still arrived. The text is
+// pasted as text.
+func TestTextPasteReachesAProgramThatAsksForPasteEvents(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("only ConPTY drops a paste event")
+	}
+	reader, _ := io.Pipe()
+	conn := &pasteConn{reader: reader}
+	term, err := terminal.New(terminal.Options{Conn: conn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	// What the program asked for: paste events, and bracketed pastes.
+	term.Feed([]byte("$ \x1b[?5522h\x1b[?2004h"))
+	w := &window{}
+	tb := &tab{machine: machineLocal, id: "s1", role: protocol.RoleController,
+		sess: newSession("s1", newLink(), nil), term: term}
+	if !w.pasteInto(tb, transfer.TextData("粘贴 text")) {
+		t.Fatal("text paste was not taken")
+	}
+	waitForPaste(t, "the text as a bracketed paste", func() bool {
+		return conn.text() == "\x1b[200~粘贴 text\x1b[201~"
+	})
 }
