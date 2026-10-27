@@ -1769,6 +1769,7 @@ pre.code[hidden] { display: none; }
   align-items: center;
   gap: 12px;
   height: 28px;
+  margin-bottom: 4px;
   padding: 0 6px;
   flex: none;
   color: #a9a9b4;
