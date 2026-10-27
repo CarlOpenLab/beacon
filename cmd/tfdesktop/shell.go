@@ -109,14 +109,17 @@ func (w *window) bannerState(c *ui.Context) (text, action string, tone ui.Color,
 func iconButton(c *ui.Context, icon *ui.SVG, caption string, size float32) ui.Element {
 	t := c.Theme()
 	el := ui.Box(c).
-		Size(size, size).Radius(radiusSmall).
+		Size(size, size).Shrink(0).Radius(radiusSmall).
 		AlignItems(ui.Center).Justify(ui.Center).
 		Label(caption).Tooltip(caption)
 	if el.Hovered() {
 		el.Background(t.SurfaceHover)
 	}
 	el.Children(func() {
-		ui.Icon(c, icon).FontSize(size * 0.55).TextColor(shellColorsFor(t).icon)
+		// Give the SVG an explicit box instead of a font-sized intrinsic box;
+		// the latter can be flex-scaled while the sidebar folds.
+		iconSize := size * 0.55
+		ui.Icon(c, icon).Size(iconSize, iconSize).Shrink(0).TextColor(shellColorsFor(t).icon)
 	})
 	return el
 }

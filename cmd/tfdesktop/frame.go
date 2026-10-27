@@ -80,7 +80,10 @@ func titleBarLead(bar ui.TitleBar) float32 {
 // away: after that room and the column's own button, which the card header
 // takes over with it hidden.
 func cardTitleLead(bar ui.TitleBar) float32 {
-	return titleBarLead(bar) + toolbarButton + 8
+	// The folded card inherits the complete toolbar, not only the fold button:
+	// reserve search, settings and fold so the title never slides underneath
+	// them during the resize/fold animation.
+	return titleBarLead(bar) + topControlInset + topControlsWidth + 8
 }
 
 // windowFrame is the part of a window the controls act on. mygo.Window satisfies

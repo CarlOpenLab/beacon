@@ -3,11 +3,11 @@ package main
 import (
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
-	"github.com/CarlOpenLab/beacon/internal/protocol"
 	"github.com/CarlOpenLab/beacon/internal/settings"
 	"github.com/CarlOpenLab/beacon/internal/tunnel"
 	"github.com/CarlOpenLab/beacon/internal/uitokens"
@@ -32,6 +32,13 @@ const (
 	// traffic lights, where the platform keeps them at the left) and the
 	// column's button, which it then carries.
 	headerPadShown = float32(uitokens.CardGap + 8)
+	// topControlInset keeps the three title controls clear of the traffic lights
+	// and gives the group a little breathing room from the window edge.
+	topControlInset = float32(20)
+	// topControlsWidth is the fixed footprint of search, settings and fold.
+	// Keeping this width explicit prevents flex layout from squeezing the SVGs
+	// while the sidebar is being resized or folded.
+	topControlsWidth = float32(84)
 )
 
 // sidebarMotion is the fold's curve. It lands quickly and moves in every frame:
@@ -78,7 +85,7 @@ func chromeFor(progress, width float32, bar ui.TitleBar) sideChrome {
 	// Where the header's title starts in the window, rounded once: after the
 	// column's buttons with it hidden, 16 into the card with it shown.
 	hidden, shownAt := cardTitleLead(bar), width+headerPadShown
-	x := round(hidden + (shownAt-hidden)*shown)
+	x := max(hidden, round(hidden+(shownAt-hidden)*shown))
 	return sideChrome{ready: true, shown: shown, width: w, mainPad: pad, headerPad: x - w - pad}
 }
 
@@ -104,13 +111,13 @@ func (w *window) sideWidth() float32 {
 	return min(max(w.sidebarWidth, uitokens.MinSidebar), uitokens.MaxSidebar)
 }
 
-// sidebar draws the column: the window's buttons, the machine groups, and the
-// foot with the palette, the settings and how the fleet stands.
+// sidebar draws the column: the window's buttons, the selected machine's
+// sessions, and the rail of machines along the bottom.
 func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 	bar := c.TitleBar()
 	topHeight := max(float32(uitokens.TopBar), bar.Height)
-	lead := titleBarLead(bar)
 	ch := w.chromeNow(c)
+	w.reconcileHidden(c)
 
 	// The column is as wide as the fold has it and clips what does not fit;
 	// its contents keep their full width and slide out under the clip, so the
@@ -123,41 +130,45 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 			if ch.shown > 0.99 {
 				w.resizeHandle(c, pal)
 			}
-			ui.Row(c).Height(topHeight).Shrink(0).Padding(0, 12, 0, lead).Gap(2).
-				AlignItems(ui.Center).DragWindow().Children(func() {
-				if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
-					w.sidebarHidden = true
-				}
-				ui.Spacer(c)
-			})
+			// Keep the title row itself as a drag surface. The fixed toolbar is
+			// drawn above it, so its buttons never participate in flex sizing.
+			ui.Box(c).Width(w.sideWidth()).Height(topHeight).Shrink(0).DragWindow()
+			w.sidebarToolbar(c, false, w.sideWidth())
 
 			ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, 10, 16, 10).Children(func() {
 				w.sidebarMachines(c, pal)
 			})
-			w.sidebarFooter(c, pal)
+			w.machineRail(c, pal)
 		})
 	})
 }
 
-// sidebarPeek draws the top bar's buttons over the cards while the column is
-// folding away. They stay where they were in the window rather than travelling
-// with the column, so the pointer finds them where it left them, and they fade
-// as the card's own header takes over.
-func (w *window) sidebarPeek(c *ui.Context) {
-	ch := w.chromeNow(c)
-	// The column buttons slide out with the column; these take over before they
-	// leave, and stay where they were in the window as the card slides under
-	// them.
-	alpha := min(1, (0.75-ch.shown)/0.10)
-	if alpha <= 0.01 {
-		return
+// sidebarToolbar is a fixed, non-flexing title toolbar. Keeping it out of the
+// resizable row is what prevents the SVG buttons from shrinking or jumping.
+func (w *window) sidebarToolbar(c *ui.Context, hidden bool, width float32) {
+	row := ui.Row(c).Key("sidebar-toolbar").Absolute().
+		Top((max(float32(uitokens.TopBar), c.TitleBar().Height) - toolbarButton) / 2).
+		Height(toolbarButton).Gap(2).AlignItems(ui.Center)
+	if hidden {
+		// Once the column is gone the card owns the title bar. Keep the fixed
+		// toolbar in the same left-hand title slot until the sidebar returns.
+		row.Left(titleBarLead(c.TitleBar()) + topControlInset).
+			Width(topControlsWidth).Shrink(0)
+	} else {
+		// While the column is visible the controls are flex-end aligned. Their
+		// right edge follows the panel resize instead of looking pinned to the
+		// window's left edge.
+		row.Left(0).Width(width).Padding(0, 12).Justify(ui.End).Shrink(0)
 	}
-	ui.Row(c).Key("sidebar-peek").Absolute().
-		Left(titleBarLead(c.TitleBar())).
-		Top((uitokens.TopBar - toolbarButton) / 2).
-		Height(toolbarButton).Gap(2).AlignItems(ui.Center).Opacity(alpha).Children(func() {
+	row.Children(func() {
+		if railIconButton(c, iconSearch, locales.ActionPalette()).Clicked() {
+			w.openPalette()
+		}
+		if railIconButton(c, iconSettings, locales.ActionSettings()).Clicked() {
+			w.openSettings()
+		}
 		if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
-			w.sidebarHidden = false
+			w.sidebarHidden = !hidden
 		}
 	})
 }
@@ -165,7 +176,9 @@ func (w *window) sidebarPeek(c *ui.Context) {
 // resizeHandle is the column's edge, which a drag moves and a double click puts
 // back.
 func (w *window) resizeHandle(c *ui.Context, pal *uitokens.Palette) {
-	h := ui.Box(c).Absolute().Left(w.sideWidth() - 4).Top(0).Bottom(0).Width(8).Cursor(ui.CursorResizeEW)
+	h := ui.Box(c).Key("sidebar-resize").Absolute().Left(w.sideWidth() - 4).
+		Top(max(float32(uitokens.TopBar), c.TitleBar().Height)).Bottom(machineRailH + 2*machineRailPad).
+		Width(8).Cursor(ui.CursorResizeEW)
 	if dx, _, ok := h.Dragged(); ok {
 		if w.sideDrag == 0 {
 			w.sideDrag = w.sideWidth()
@@ -194,59 +207,672 @@ func (w *window) groups() []tunnel.Machine {
 	return out
 }
 
-// sidebarMachines draws the column's machine list: the groups that earn a
-// place, the one row that holds the quiet ones, and, when nothing is left, the
-// two rows that say so and offer the way back.
+// sidebarMachines draws the body of the column: one machine's sessions. The
+// machine is the one chosen in the rail, always — a fleet has no useful combined
+// list once every machine is a workspace of its own.
 func (w *window) sidebarMachines(c *ui.Context, pal *uitokens.Palette) {
-	w.reconcileHidden(c)
-	normal, other := w.splitMachines(c.Now())
-	for i, m := range normal {
-		divided := i > 0 && len(w.entriesFor(normal[i-1].ID)) > 0
-		w.machineGroup(c, pal, m, i == 0, divided, false)
-	}
-	if len(other) > 0 {
-		w.otherMachinesRow(c, pal, len(other))
-	}
-	// The other row is the only thing left when every quiet machine is folded
-	// away, and the two empty rows are what a column with no machine at all
-	// says. Hidden machines are not counted here: they are the setting's job,
-	// not a group with nothing under it. While the quiet headers are still on
-	// their way out the empty rows wait, so they do not shove the fold down.
-	folding := w.foldedMachines(c, pal, other)
-	if len(normal) == 0 && (len(other) == 0 || (!w.othersOpen && !folding)) {
+	m, ok := w.railMachine(c.Now())
+	if !ok {
 		w.sidebarEmpty(c, pal)
+		return
 	}
+	// The body is keyed by machine so a switch is a cross-fade rather than a
+	// list that changes under the eye: the old body leaves into a copy that fades
+	// out, the new one fades in, and neither slides sideways. The two machines
+	// have no left-right relation, and a slide would pretend they did.
+	body := ui.Column(c).Key("sidebar-machine:" + m.ID).FillWidth().
+		Transition(ui.ElementTransition{
+			Duration: machineSwitchDuration,
+			Colors:   true,
+			Enter:    &ui.Motion{Opacity: 0},
+			Exit:     &ui.Motion{Opacity: 0},
+		})
+	body.Children(func() {
+		w.machineGroup(c, pal, m, true, false, false)
+	})
 }
 
-// splitMachines separates the machines that keep a header from the quiet ones
-// the other row holds. A machine is other only when it has no rows, needs
-// nothing from the user, and is not the one this window is working on: any of
-// those makes it a place the person may be about to look.
-func (w *window) splitMachines(now time.Time) (normal, other []tunnel.Machine) {
-	selected := w.workingMachine()
+// railMachines is the rail's order: the machines the column knows, minus the
+// ones the person hid, and with the hidden exception applied. It is not sorted
+// by state: a row of tiles that reorders itself as sessions come and go would
+// move the machine under the pointer that was about to click it.
+func (w *window) railMachines(now time.Time) []tunnel.Machine {
+	out := make([]tunnel.Machine, 0, len(w.roster)+1)
 	for _, m := range w.groups() {
-		if !w.machineShown(m.ID, now) {
-			continue
+		if w.machineShown(m.ID, now) {
+			out = append(out, m)
 		}
-		entries := w.entriesFor(m.ID)
-		if len(entries) == 0 && !entriesNeedYou(entries) && m.ID != selected {
-			other = append(other, m)
-			continue
-		}
-		normal = append(normal, m)
 	}
-	return normal, other
+	return out
 }
 
-// workingMachine is the machine the person is working on, which is the one the
-// panes show. It is not the last machine clicked: picking a machine this window
-// has no shell on keeps the terminal where it was, so a click that changed
-// nothing on screen must not change the column either.
-func (w *window) workingMachine() string {
-	if tb := w.activeTab(); tb != nil {
-		return tb.machine
+// railMachine is the machine the column is about: the chosen one while it is
+// still in the rail, and the first one in the rail when it is not. A machine
+// that disappears — removed from the roster, or hidden while it has no session
+// that needs the user — must not leave the column showing a machine that is no
+// longer there.
+func (w *window) railMachine(now time.Time) (tunnel.Machine, bool) {
+	machines := w.railMachines(now)
+	if len(machines) == 0 {
+		return tunnel.Machine{}, false
 	}
-	return w.selectedMachine()
+	selected := w.selectedMachine()
+	for _, m := range machines {
+		if m.ID == selected {
+			return m, true
+		}
+	}
+	w.machineSel = machines[0].ID
+	return machines[0], true
+}
+
+// The machine rail centers short rosters and scrolls longer ones sideways.
+const (
+	machineRailH      = float32(34)
+	machineRailPad    = float32(4)
+	machineTileSize   = float32(26)
+	machineTileRadius = float32(7)
+	machineRailFade   = float32(14)
+	machineGlyphSize  = float32(14)
+	machineRailButton = float32(26)
+	machineTileGap    = float32(4)
+)
+
+// machineSwitch is the 120ms the body takes to cross-fade from one machine to
+// the next, and the same time the chosen tile takes to invert. It is short
+// enough to read as a change of place rather than a performance.
+const machineSwitchDuration = 120 * time.Millisecond
+
+var machineSwitch = ui.Animation{Duration: machineSwitchDuration}
+
+// machineRail keeps every machine available without an overflow menu.
+func (w *window) machineRail(c *ui.Context, pal *uitokens.Palette) {
+	ui.Row(c).Key("machine-rail").Label("machine rail").Height(machineRailH+2*machineRailPad).Shrink(0).
+		Padding(machineRailPad, 12).
+		AlignItems(ui.Center).Children(func() {
+		machines := w.railMachines(c.Now())
+		selected := w.selectedMachine()
+		strip := ui.Box(c).Grow(1).MinWidth(0).FillHeight().ClipX()
+		strip.Children(func() {
+			scroller := ui.ScrollHorizontal(c).Fill().TrackScroll(&w.railScroll)
+			scroller.Children(func() {
+				contentWidth := float32(len(machines))*(machineTileSize+8) + float32(max(0, len(machines)-1))*machineTileGap
+				tiles := ui.Row(c).Width(max(w.sideWidth()-24, contentWidth)).Shrink(0).
+					Height(machineRailH).Gap(machineTileGap).AlignItems(ui.Center).Justify(ui.Center).
+					Role(ui.RoleTabList).FocusGroup(ui.Horizontal)
+				tiles.Children(func() {
+					for _, m := range machines {
+						w.machineRailTile(c, pal, m, m.ID == selected)
+					}
+				})
+			})
+		})
+	})
+}
+
+// railIconButton is one of the rail's two fixed buttons: a 24-point glyph in a
+// 26-point frame. It is the standalone tier — the same size as the machine
+// glyphs beside it — rather than the 16-point tier an icon beside a word uses.
+func railIconButton(c *ui.Context, icon *ui.SVG, caption string) ui.Element {
+	t := c.Theme()
+	el := ui.Box(c).Size(machineRailButton, machineRailButton).Shrink(0).Radius(machineRailButton / 2).
+		AlignItems(ui.Center).Justify(ui.Center).Label(caption).Tooltip(caption)
+	if el.Hovered() {
+		if t.Dark {
+			el.Background(ui.RGBA(255, 255, 255, 0.12))
+		} else {
+			el.Background(ui.RGBA(0, 0, 0, 0.08))
+		}
+	}
+	el.Children(func() {
+		ui.Icon(c, icon).Size(machineGlyphSize, machineGlyphSize).TextColor(shellColorsFor(t).icon)
+	})
+	return el
+}
+
+// machineRailTile draws one machine: a fixed square with its glyph, its state
+// as a small badge, and nothing else. The whole tile is the hit target — a
+// dot-sized target would be a target only a careful hand could find.
+func (w *window) machineRailTile(c *ui.Context, pal *uitokens.Palette, m tunnel.Machine, selected bool) {
+	// The slot is a little wider than the tile: the badge hangs off the tile's
+	// corner, and scrolling a tile into view has to bring the badge with it.
+	slot := ui.Box(c).Key("rail-slot:"+m.ID).Size(machineTileSize+8, machineRailH).Shrink(0).
+		AlignItems(ui.Center).Justify(ui.Center)
+	slot.Children(func() {
+		tile := ui.Box(c).Key("rail:"+m.ID).Size(machineTileSize, machineTileSize).
+			Radius(machineTileSize / 2).Center().Shrink(0).
+			Focusable().Role(ui.RoleTab).Selected(selected).
+			Label(w.machineRailLabel(m)).Tooltip(w.machineTooltip(m)).
+			Cursor(ui.CursorPointer)
+		state := w.railDotState(m)
+		bg := machineStateBg(c, state, m.ID == machineLocal || m.Online)
+		switch {
+		case tile.Pressed():
+			if state == "" {
+				bg = machinePressedBg(c)
+			} else {
+				bg = bg.Alpha(2.6)
+			}
+		case selected:
+			bg = machineActiveStateBg(c, state)
+			if tile.Hovered() {
+				bg = bg.Alpha(1.15)
+			}
+		case tile.Hovered():
+			if state == "" {
+				bg = machineHoverBg(c)
+			} else {
+				bg = bg.Alpha(1.5)
+			}
+		}
+		tile.Background(tile.AnimateColor("bg", bg, machineSwitch))
+		fg := pal.TextMuted
+		if selected {
+			fg = pal.Text
+		}
+		// No badge: a machine that needs you or has failed is told by its own
+		// glyph's colour, so it stays readable when scrolled to the strip's edge.
+		switch state {
+		case "waiting":
+			fg = machineNeedsColor(c)
+		case "failed":
+			fg = machineFailedColor(c)
+		case "pending":
+			fg = machinePendingColor(c)
+		case "offline":
+			fg = pal.TextFaint
+		}
+		tile.TextColor(fg)
+		tile.Children(func() {
+			ui.Icon(c, w.railGlyph(m, state == "failed")).Size(machineGlyphSize, machineGlyphSize).TextColor(fg)
+		})
+		tile.ContextMenu(func(mu *ui.Menu) { w.machineIconMenu(mu, m) })
+		if selected {
+			// The chosen machine is the one fact the strip must never hide: if the
+			// person scrolls it out, it comes back rather than becoming merely one of
+			// the tiles off the edge.
+			slot.ScrollIntoView()
+		}
+		if tile.Clicked() {
+			w.chooseMachine(m)
+		}
+	})
+}
+
+// machineNeedsColor and machineFailedColor are the rail's two coloured glyphs,
+// measured against the strip in each appearance: light 3.67:1 and 4.69:1 on the
+// column, dark with room to spare. They are the rail's own values rather than
+// the palette's, because the palette's orange is tuned for a dot beside text,
+// not for a glyph on the strip.
+func machineNeedsColor(c *ui.Context) ui.Color {
+	if c.Theme().Dark {
+		return ui.Hex("#f0a33a")
+	}
+	return ui.Hex("#ad6c0a")
+}
+
+func machineFailedColor(c *ui.Context) ui.Color {
+	if c.Theme().Dark {
+		return ui.Hex("#ff6961")
+	}
+	return ui.Hex("#c0392b")
+}
+
+func machinePendingColor(c *ui.Context) ui.Color {
+	if c.Theme().Dark {
+		return ui.Hex("#b8a7ff")
+	}
+	return ui.Hex("#5941b8")
+}
+
+// machineActiveBg is the selected tile's solid-but-quiet surface. It is kept
+// separate from the state washes so selecting an offline or waiting machine
+// does not make the active treatment look like a warning badge.
+func machineActiveBg(c *ui.Context) ui.Color {
+	if c.Theme().Dark {
+		return ui.RGBA(154, 190, 242, 0.28)
+	}
+	return ui.RGBA(35, 76, 150, 0.22)
+}
+
+func machineActiveStateBg(c *ui.Context, state string) ui.Color {
+	if state != "" {
+		return machineStateBg(c, state, true).Alpha(2.1)
+	}
+	return machineActiveBg(c)
+}
+
+// machineHoverBg is half the selected tint: hover says "a click lands here"
+// without looking like the tile you already chose, so two tiles never read as
+// chosen at once.
+func machineHoverBg(c *ui.Context) ui.Color {
+	if c.Theme().Dark {
+		return ui.RGBA(154, 190, 242, 0.12)
+	}
+	return ui.RGBA(35, 76, 150, 0.07)
+}
+
+// machinePressedBg is that tint a step darker while the button is down, so a
+// press is felt as well as acted on.
+func machinePressedBg(c *ui.Context) ui.Color {
+	if c.Theme().Dark {
+		return ui.RGBA(154, 190, 242, 0.34)
+	}
+	return ui.RGBA(35, 76, 150, 0.28)
+}
+
+// machineStateBg gives the rail a quiet wash for states that otherwise differ
+// only by a one-pixel glyph. It is intentionally softer than selected/hover so
+// the chosen tile remains the strongest visual anchor.
+func machineStateBg(c *ui.Context, state string, online bool) ui.Color {
+	if c.Theme().Dark {
+		switch state {
+		case "waiting":
+			return ui.RGBA(245, 166, 35, 0.22)
+		case "failed":
+			return ui.RGBA(255, 105, 97, 0.15)
+		case "running":
+			return ui.RGBA(79, 209, 122, 0.10)
+		case "done":
+			return ui.RGBA(107, 147, 255, 0.11)
+		case "pending":
+			return ui.RGBA(145, 125, 255, 0.20)
+		case "offline":
+			return ui.RGBA(130, 132, 145, 0.07)
+		}
+		if online {
+			return ui.RGBA(79, 209, 122, 0.05)
+		}
+		return ui.RGBA(120, 120, 132, 0.08)
+	}
+	switch state {
+	case "waiting":
+		return ui.RGBA(232, 154, 40, 0.22)
+	case "failed":
+		return ui.RGBA(217, 58, 53, 0.14)
+	case "running":
+		return ui.RGBA(34, 134, 58, 0.10)
+	case "done":
+		return ui.RGBA(59, 108, 246, 0.10)
+	case "pending":
+		return ui.RGBA(107, 85, 210, 0.18)
+	case "offline":
+		return ui.RGBA(110, 110, 125, 0.07)
+	}
+	if online {
+		return ui.RGBA(34, 134, 58, 0.045)
+	}
+	return ui.RGBA(110, 110, 125, 0.08)
+}
+
+// railDotState is the state the badge shows, ranked failed > needs-you >
+// running > done > offline. Work in progress outranks work finished unseen,
+// and a machine that is not answering is the quietest fact of all: only a
+// machine with nothing else to say wears the offline dot.
+func (w *window) railDotState(m tunnel.Machine) string {
+	waiting, working, done, failed, _ := w.machineSessionCounts(m.ID)
+	switch {
+	case failed > 0:
+		return "failed"
+	case waiting > 0:
+		return "waiting"
+	case working > 0:
+		return "running"
+	case done > 0:
+		return "done"
+	case w.machineHasPending(m.ID):
+		return "pending"
+	case m.ID != machineLocal && !m.Online:
+		return "offline"
+	}
+	return ""
+}
+
+func (w *window) machineHasPending(id string) bool {
+	for _, tb := range w.tabs {
+		if tb != nil && tb.machine == id && tb.isPending() {
+			return true
+		}
+	}
+	return false
+}
+
+// machinePlatformName turns the host's own word for its system into the one a
+// person reads. Anything unrecognised is left out rather than shown raw.
+func machinePlatformName(platform string) string {
+	switch strings.ToLower(platform) {
+	case "darwin", "macos", "mac":
+		return "macOS"
+	case "windows", "win32":
+		return "Windows"
+	case "linux":
+		return "Linux"
+	}
+	return ""
+}
+
+// machineRailLabel is what assistive technology reads: the machine's full name
+// and its state in words, never the glyph and never a single character. The
+// glyph is decoration; the name and the state are the facts.
+func (w *window) machineRailLabel(m tunnel.Machine) string {
+	return w.machineDisplayName(m.ID) + locales.MachineListSep() + w.machineStatusWord(m)
+}
+
+// machineStatusWord is the one word that stands for a machine's state, in the
+// same order the rail's badge ranks them: failed, needs you, running, done,
+// offline, and quiet. The label and the dot therefore cannot disagree about
+// which state a machine is in.
+func (w *window) machineStatusWord(m tunnel.Machine) string {
+	waiting, working, done, failed, _ := w.machineSessionCounts(m.ID)
+	switch {
+	case failed > 0:
+		return locales.StatusFailed()
+	case waiting > 0:
+		return locales.FooterNeedsYou()
+	case working > 0:
+		return locales.FooterWorking()
+	case done > 0:
+		return locales.StatusDone()
+	case w.machineHasPending(m.ID):
+		return locales.StatePending()
+	case m.ID != machineLocal && !m.Online:
+		return locales.MachineOffline()
+	}
+	return locales.StatusIdle()
+}
+
+// machineSessionCounts is how a machine stands, counted from the rows it is
+// showing. It is one walk of the group so that the badge, the word and the
+// tooltip cannot disagree about what they saw.
+func (w *window) machineSessionCounts(machine string) (waiting, working, done, failed, idle int) {
+	for _, e := range w.entriesFor(machine) {
+		switch e.status {
+		case "waiting":
+			waiting++
+		case "working":
+			working++
+		case "error":
+			failed++
+		case "idle":
+			if e.unread {
+				done++
+			} else {
+				idle++
+			}
+		default:
+			idle++
+		}
+	}
+	return waiting, working, done, failed, idle
+}
+
+// machineDisplayName is the full name a machine is called by here: its own
+// name, plus the shortest tail that tells it from another machine with the same
+// name. Two "studio" machines are told apart by their ids rather than renamed,
+// and neither is hidden behind a suffix longer than it has to be.
+func (w *window) machineDisplayName(id string) string {
+	return w.machineDisplayNames()[id]
+}
+
+func (w *window) machineDisplayNames() map[string]string {
+	groups := make(map[string][]tunnel.Machine)
+	var order []string
+	for _, m := range w.groups() {
+		name := m.Name
+		if name == "" {
+			name = w.machineName(m.ID)
+		}
+		name = machineDisplayHost(name, m.ID)
+		if _, seen := groups[name]; !seen {
+			order = append(order, name)
+		}
+		groups[name] = append(groups[name], m)
+	}
+	out := make(map[string]string, len(w.groups()))
+	for _, name := range order {
+		list := groups[name]
+		if len(list) == 1 {
+			out[list[0].ID] = name
+			continue
+		}
+		for _, m := range list {
+			out[m.ID] = name + " · " + shortestSuffix(m.ID, list)
+		}
+	}
+	return out
+}
+
+// machineDisplayHost is a hostname as a person should see it: without the mDNS
+// suffix a local network adds, and with the id standing in when the name was
+// nothing but that suffix. It changes no other name, so a machine its owner
+// called something keeps that word.
+func machineDisplayHost(name, id string) string {
+	name = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(name), "."))
+	lower := strings.ToLower(name)
+	for _, suffix := range []string{".localdomain", ".local"} {
+		if strings.HasSuffix(lower, suffix) {
+			name = name[:len(name)-len(suffix)]
+			break
+		}
+	}
+	if name == "" {
+		return id
+	}
+	return name
+}
+
+// shortestSuffix is the least tail of id that no other machine in the group
+// shares. Ids are device ids or hostnames, and their ends are usually the part
+// that differs, so a tail reads more naturally than a prefix.
+func shortestSuffix(id string, group []tunnel.Machine) string {
+	runes := []rune(id)
+	for n := 1; n <= len(runes); n++ {
+		suffix := string(runes[len(runes)-n:])
+		unique := true
+		for _, other := range group {
+			if other.ID == id {
+				continue
+			}
+			others := []rune(other.ID)
+			if len(others) > n {
+				others = others[len(others)-n:]
+			}
+			if string(others) == suffix {
+				unique = false
+				break
+			}
+		}
+		if unique {
+			return suffix
+		}
+	}
+	return id
+}
+
+// machineIconChoice is one glyph in the machine icon menu: its key in the
+// settings file, its word in both languages, and its drawing. The order is the
+// menu's order.
+var machineIconChoices = []struct {
+	key   string
+	label func() string
+	glyph *ui.SVG
+}{
+	{"laptop", locales.MachineIconLaptop, iconLaptop},
+	{"monitor", locales.MachineIconMonitor, iconMonitorRail},
+	{"server", locales.MachineIconServer, iconServer},
+	{"hard_drive", locales.MachineIconHardDrive, iconHardDrive},
+	{"cpu", locales.MachineIconCpu, iconCPU},
+	{"database", locales.MachineIconDatabase, iconDatabase},
+	{"cloud", locales.MachineIconCloud, iconCloud},
+	{"container", locales.MachineIconContainer, iconContainer},
+	{"router", locales.MachineIconRouter, iconRouter},
+	{"printer", locales.MachineIconPrinter, iconPrinter},
+	{"box", locales.MachineIconBox, iconBox},
+	{"terminal", locales.MachineIconTerminal, iconTerminalRail},
+}
+
+// machineIconGlyph finds a choice by its settings key.
+func machineIconGlyph(key string) (*ui.SVG, bool) {
+	for _, c := range machineIconChoices {
+		if c.key == key {
+			return c.glyph, true
+		}
+	}
+	return nil, false
+}
+
+// machineIconName is the automatic rule: the machine's name, lowercased, first
+// match top to bottom. It is deliberately about the name and not the platform:
+// a fleet is named by the people who run it, and "db-2" is a better hint than
+// the fact that it happens to run Linux.
+func machineIconName(name string) string {
+	n := strings.ToLower(name)
+	words := strings.FieldsFunc(n, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || r == ' '
+	})
+	whole := make(map[string]bool, len(words))
+	for _, word := range words {
+		whole[word] = true
+	}
+	// Most specific first: db-prod is a database before it is a server, and
+	// docker-host a container before it is a host.
+	rules := []struct {
+		key  string
+		word []string
+	}{
+		{"laptop", []string{"book", "laptop", "本"}},
+		{"monitor", []string{"mini", "imac", "studio", "desktop", "pc", "台"}},
+		{"database", []string{"db", "sql", "postgres", "mysql", "redis", "库"}},
+		{"cloud", []string{"cloud", "aws", "azure", "gcp", "fly", "云"}},
+		{"container", []string{"docker", "k8s", "vm", "container", "容器"}},
+		{"hard_drive", []string{"nas", "disk", "storage", "backup"}},
+		{"cpu", []string{"pi", "raspberry", "arm"}},
+		{"router", []string{"router", "gateway", "net", "路由"}},
+		{"printer", []string{"print", "打印"}},
+		{"server", []string{"server", "srv", "prod", "host", "服务"}},
+		{"box", []string{"win", "windows"}},
+	}
+	for _, rule := range rules {
+		for _, word := range rule.word {
+			// Three letters or fewer match a whole word only: "api-1" is
+			// not a "pi", and "darwin" is not a "win".
+			if len([]rune(word)) <= 3 && word[0] < 0x80 {
+				if whole[word] {
+					return rule.key
+				}
+				continue
+			}
+			if strings.Contains(n, word) {
+				return rule.key
+			}
+		}
+	}
+	return "terminal"
+}
+
+// railGlyph is the one seam between a machine and its drawing. A picked glyph
+// wins; a machine nobody picked for follows its name. A new rule for containers
+// or clouds belongs here and nowhere else.
+func (w *window) railGlyph(m tunnel.Machine, solid bool) *ui.SVG {
+	if glyph := machineGlyphSVG(w.machineIconKey(m), solid); glyph != nil {
+		return glyph
+	}
+	return machineGlyphSVG("terminal", solid)
+}
+
+// machineIconKey is the glyph the menu ticks: the picked one, else the one the
+// name rule gives.
+func (w *window) machineIconKey(m tunnel.Machine) string {
+	if key := w.machineIcons[m.ID]; key != "" {
+		if _, ok := machineIconGlyph(key); ok {
+			return key
+		}
+	}
+	return machineIconName(w.machineName(m.ID))
+}
+
+// setMachineIcon stores a picked glyph and applies it now. The store is the
+// source of truth, so a restart and a reconnected machine keep the choice; a
+// machine with no entry follows its name again.
+func (w *window) setMachineIcon(id, key string) error {
+	if _, ok := machineIconGlyph(key); !ok {
+		return nil
+	}
+	if w.store != nil {
+		if _, err := w.store.Update(func(st *settings.Settings) {
+			if st.MachineIcons == nil {
+				st.MachineIcons = make(map[string]string)
+			}
+			st.MachineIcons[id] = key
+		}); err != nil {
+			return err
+		}
+	}
+	if w.machineIcons == nil {
+		w.machineIcons = make(map[string]string)
+	}
+	w.machineIcons[id] = key
+	w.invalidate()
+	return nil
+}
+
+func (w *window) machineIconMenu(mu *ui.Menu, m tunnel.Machine) {
+	currentIcon := w.machineIconKey(m)
+	mu.Submenu(locales.MachineIconMenu(), func(sub *ui.Menu) {
+		for _, choice := range machineIconChoices {
+			if sub.Item(choice.label()).Checked(choice.key == currentIcon).Chosen() {
+				if err := w.setMachineIcon(m.ID, choice.key); err != nil {
+					w.setNotice(err.Error())
+				}
+			}
+		}
+	})
+}
+
+// jumpRail is ⌘1…⌘9: the nth machine in the strip, in the strip's order. A
+// number past the last machine does nothing rather than wrapping — pressing ⌘7
+// with three machines is asking for a machine that is not there.
+func (w *window) jumpRail(c *ui.Context, n int) {
+	machines := w.railMachines(c.Now())
+	if n < 0 || n >= len(machines) {
+		return
+	}
+	w.chooseMachine(machines[n])
+}
+
+// chooseMachine switches the column to a machine and then to the session that
+// needs the person there, if there is one. Picking a machine is one act — the
+// dot is not a second target — and landing on the waiting row is what makes the
+// act useful: the person does not arrive at a list and start looking.
+func (w *window) chooseMachine(m tunnel.Machine) {
+	w.selectMachine(m)
+	if w.reachPrompt != "" {
+		return
+	}
+	w.landOnNeed(m.ID)
+}
+
+// landOnNeed chooses the first session on a machine that wants an answer and
+// asks the sidebar to scroll it into view. The first is the oldest in the list's
+// order, which is the one that has been waiting longest.
+func (w *window) landOnNeed(machine string) {
+	for _, e := range w.entriesFor(machine) {
+		if e.status != "waiting" {
+			continue
+		}
+		delete(w.collapsed, machine)
+		w.railLand = e.machine + "\x00" + sessionKey(e)
+		e.pick()
+		w.invalidate()
+		return
+	}
+}
+
+// machineWaiting reports whether a machine has a session that needs the person,
+// which is the only state ⌘J walks the fleet for.
+func (w *window) machineWaiting(id string) bool {
+	waiting, _, _, _, _ := w.machineSessionCounts(id)
+	return waiting > 0
 }
 
 // entriesNeedYou is the product's loudest state: a session waiting for an
@@ -378,58 +1004,6 @@ func (w *window) showAllMachines() error {
 	return nil
 }
 
-// otherMachinesRow is the quiet machines behind one line. It is a look, not a
-// setting: the folded state is this window's, and a restart begins folded.
-func (w *window) otherMachinesRow(c *ui.Context, pal *uitokens.Palette, count int) {
-	label := locales.SidebarOthers(count)
-	row := ui.Row(c).Height(28).Margin(4, 0, 2, 0).Padding(0, 8, 0, 10).Gap(6).
-		AlignItems(ui.Center).Radius(6)
-	hovered := row.Hovered()
-	row.Children(func() {
-		chev := ui.Icon(c, iconChevron).Size(11, 11).TextColor(pal.TextFaint)
-		chev.Rotate(chev.AnimateTo("turn", 90*float32(b2f(w.othersOpen)), ui.Snappy))
-		ui.Text(c, label).FontSize(12).FontWeight(500).TextColor(pal.Text.Alpha(0.8)).SingleLine()
-	})
-	if hovered {
-		row.Background(pal.RowHover.Alpha(0.4))
-	}
-	if row.Clicked() {
-		w.othersOpen = !w.othersOpen
-		w.invalidate()
-	}
-}
-
-// foldedMachines grows the quiet machines under the other row, in the order
-// they keep in the column. While closed it draws nothing, so a folded name is
-// not merely transparent but absent. It reports whether any of them is still
-// on screen, which is what keeps the empty state from appearing mid-fold.
-func (w *window) foldedMachines(c *ui.Context, pal *uitokens.Palette, machines []tunnel.Machine) bool {
-	fold := ui.Column(c).Key("sidebar-others").Shrink(0)
-	folded := fold.AnimateTo("fold", float32(b2f(w.othersOpen)), groupFold)
-	if folded == 0 {
-		return false
-	}
-	var list ui.Element
-	fold.Children(func() {
-		list = ui.Column(c).FillWidth()
-		list.Children(func() {
-			// Open, these are machines and the rows above are sessions: without
-			// a line the two run together and the group has no end. Folded, the
-			// row is a summary of its own and a line under it would claim a
-			// second group, so the line lives inside the fold and leaves with it.
-			ui.Box(c).Height(0.5).FillWidth().Margin(10, 10, 0, 10).Background(pal.Text.Alpha(0.12))
-			for i, m := range machines {
-				divided := i > 0 && len(w.entriesFor(machines[i-1].ID)) > 0
-				w.machineGroup(c, pal, m, i == 0, divided, false)
-			}
-		})
-	})
-	if folded < 1 {
-		fold.ClipY().Height(folded * list.Bounds().H).Opacity(folded)
-	}
-	return true
-}
-
 // sidebarEmpty is what a column with nothing to show says, and the row that
 // takes the person to the switch that changes it. The second row is an entry,
 // not a note: a dead end that tells someone where to go is still a dead end.
@@ -507,6 +1081,19 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		if mu.Item(locales.MachineRefresh()).Chosen() {
 			w.refreshMachines()
 		}
+		// The glyph is a hint and sometimes a wrong one. The menu is how a
+		// person corrects it; the choice is stored with the machine's other
+		// settings and outlives a reconnect.
+		currentIcon := w.machineIconKey(m)
+		mu.Submenu(locales.MachineIconMenu(), func(sub *ui.Menu) {
+			for _, choice := range machineIconChoices {
+				if sub.Item(choice.label()).Checked(choice.key == currentIcon).Chosen() {
+					if err := w.setMachineIcon(m.ID, choice.key); err != nil {
+						w.setNotice(err.Error())
+					}
+				}
+			}
+		})
 		if mu.Item(locales.ActionHideMachine()).Chosen() {
 			if err := w.setMachineHidden(m.ID, true); err != nil {
 				w.setNotice(err.Error())
@@ -539,11 +1126,7 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		// whether this machine answers, and the count of what it runs.
 		state := w.machineDot(c, m)
 		ui.Box(c).Size(7, 7).Radius(4).Background(state).Shrink(0)
-		name := m.Name
-		if name == "" {
-			name = w.machineName(m.ID)
-		}
-		ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(pal.Text).
+		ui.Text(c, w.machineDisplayName(m.ID)).FontSize(12.5).FontWeight(600).TextColor(pal.Text).
 			SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 		ui.Textf(c, "%d", len(entries)).FontSize(11).TextColor(pal.TextFaint).FontFeatures("tnum").Shrink(0)
 		chev := ui.Icon(c, iconChevron).Size(11, 11).TextColor(pal.TextFaint)
@@ -700,7 +1283,11 @@ func refreshButton(c *ui.Context, pal *uitokens.Palette, turning bool, caption s
 	el := ui.Box(c).Size(20, 20).Radius(radiusSmall).
 		AlignItems(ui.Center).Justify(ui.Center).Label(caption).Tooltip(caption)
 	if el.Hovered() {
-		el.Background(t.SurfaceHover)
+		if t.Dark {
+			el.Background(ui.RGBA(255, 255, 255, 0.12))
+		} else {
+			el.Background(ui.RGBA(0, 0, 0, 0.08))
+		}
 	}
 	el.Children(func() {
 		if !turning {
@@ -742,25 +1329,58 @@ func (w *window) machineDot(c *ui.Context, m tunnel.Machine) ui.Color {
 	return pal.Success
 }
 
-// machineTooltip is the whole story of a machine, for the header that has no
-// room for it.
+// machineTooltip is the whole story of a machine, for the tile that has no
+// room for it: the full name, the platform and build it runs when it said, and
+// what it is doing now. The counts are this machine's own — the fleet-wide
+// footer they used to share a line with is gone — and the words are the same
+// words the tile's label and the status glyph use, so the three cannot drift
+// apart.
 func (w *window) machineTooltip(m tunnel.Machine) string {
-	state := machineState(m)
-	if m.ID == machineLocal {
-		name, meta := w.localMachine()
-		return name + " · " + meta + versionSuffix(m.Host) + "\n" + state
+	meta := []string{}
+	if p := machinePlatformName(m.Host.Platform); p != "" {
+		meta = append(meta, p)
 	}
-	return m.Name + " · " + m.ID + versionSuffix(m.Host) + "\n" + state
-}
-
-// versionSuffix names the build a machine runs, when it said. A machine too old
-// to answer with one says nothing rather than "unknown": the absence is the
-// fact, and the sentence around it already says the machine is reachable.
-func versionSuffix(h protocol.Host) string {
-	if h.Version == "" {
-		return ""
+	if m.Host.Version != "" {
+		meta = append(meta, "v"+m.Host.Version)
 	}
-	return " · v" + h.Version
+	name := w.machineDisplayName(m.ID)
+	if len(meta) > 0 {
+		name += " · " + strings.Join(meta, " · ")
+	}
+	// Only the counts that are somebody's answer. "Needs you 0 · running 0 ·
+	// idle 3" makes an idle machine look like something went wrong, and a
+	// machine whose only session failed must not be called idle here while its
+	// glyph is red and a screen reader says "failed". The five states are
+	// counted in machineStatusWord's own order, so the first line is always a
+	// subset of the word the label speaks. Offline is not a session's state and
+	// is not counted.
+	waiting, working, done, failed, idle := w.machineSessionCounts(m.ID)
+	parts := []string{}
+	for _, item := range []struct {
+		word  string
+		count int
+	}{
+		{locales.StatusFailed(), failed},
+		{locales.FooterNeedsYou(), waiting},
+		{locales.FooterWorking(), working},
+		{locales.StatusDone(), done},
+		{locales.StatusIdle(), idle},
+	} {
+		if item.count > 0 {
+			parts = append(parts, item.word+" "+itoa(item.count))
+		}
+	}
+	// The line is written around the word the glyph and the screen reader are
+	// saying. When no session is in any state, that word is the whole line: a
+	// machine that is offline says "离线", not "空闲" — being unreachable is
+	// not being idle. Counting offline is still not done: it is not a session's
+	// state, it is only ever the answer when nothing else is.
+	top := w.machineStatusWord(m)
+	if len(parts) == 0 || !strings.HasPrefix(parts[0], top) {
+		parts = append([]string{top}, parts...)
+	}
+	state := strings.Join(parts, " · ")
+	return name + "\n" + state
 }
 
 // newTabOn opens a shell on a machine, picking it first: the panels and the new
@@ -772,52 +1392,4 @@ func (w *window) newTabOn(machine string) {
 		}
 	}
 	w.newTab()
-}
-
-// sidebarFooter is the foot: the buttons for a shell, the palette and the
-// settings; then, at the right, how the fleet stands — a quiet footer, in
-// place of the band across the bottom of the window.
-func (w *window) sidebarFooter(c *ui.Context, pal *uitokens.Palette) {
-	ui.Row(c).Height(uitokens.FooterH).Shrink(0).Padding(0, 12, 4, 12).Gap(2).AlignItems(ui.Center).DragWindow().Children(func() {
-		if iconButton(c, iconSearch, locales.ActionPalette(), 26).Clicked() {
-			w.openPalette()
-		}
-		if iconButton(c, iconSettings, locales.ActionSettings(), 26).Clicked() {
-			w.openSettings()
-		}
-		ui.Spacer(c)
-		// What across the sessions wants a look, each a button going to the next
-		// session of it, and how the fleet stands when nothing does.
-		waiting, working, done := w.statusCounts()
-		// One number stays out, the one that wants a hand; the other two are in
-		// its tooltip, where they do not compete for 268 points of footer.
-		all := locales.FooterNeedsYou() + " " + itoa(waiting) + " · " +
-			locales.FooterWorking() + " " + itoa(working) + " · " +
-			locales.FooterDone() + " " + itoa(done)
-		if waiting > 0 {
-			row := ui.Row(c).Gap(5).Padding(0, 6).AlignItems(ui.Center).Radius(12).
-				Label(locales.FooterNeedsYou() + " " + itoa(waiting)).Tooltip(all)
-			if row.Hovered() {
-				row.Background(pal.RowHover)
-			}
-			row.Children(func() {
-				statusGlyph(c, pal, "waiting", false, -1, 12)
-				ui.Textf(c, "%d", waiting).FontSize(12).FontWeight(500).TextColor(pal.Attention).FontFeatures("tnum")
-			})
-			if row.Clicked() {
-				w.jumpTo("waiting")
-			}
-		}
-		if waiting == 0 {
-			row := ui.Row(c).Gap(6).Padding(0, 6).AlignItems(ui.Center).
-				Label(w.serviceLine()).Tooltip(w.machineNote() + "\n" + all)
-			row.Children(func() {
-				ui.Box(c).Size(6, 6).Radius(3).Background(w.fleetColor(c.Theme()))
-				ui.Textf(c, "%d", w.machineCount()).FontSize(12).TextColor(pal.TextFaint).FontFeatures("tnum")
-			})
-			if row.Clicked() {
-				w.refreshMachines()
-			}
-		}
-	})
 }

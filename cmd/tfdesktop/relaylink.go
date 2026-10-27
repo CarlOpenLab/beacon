@@ -118,7 +118,8 @@ func (h relayHandlers) Open() {
 	// the panel can show what this machine is running. What the window wrote
 	// while it was waiting goes out behind the hello: a machine's hub is a plain
 	// client of its own protocol, and it expects to be greeted first.
-	h.l.sendMsg(protocol.Msg{T: protocol.CTHello, V: protocol.Version})
+	h.l.sendMsg(protocol.Msg{T: protocol.CTHello, V: protocol.Version,
+		Caps: []string{protocol.CapFile, protocol.CapDeflate}})
 	h.l.sendMsg(protocol.Msg{T: protocol.CTList})
 	h.l.flush()
 	// A link that replaces a dead one picks the orphaned tabs back up here.

@@ -4,6 +4,61 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.8
+
+**Beacon 0.7.8: 文字粘贴不再被吞 — Text paste reaches the program**
+
+- **A text paste into a program that asks for paste events now arrives.** Windows cannot carry a terminal's OSC 5522 paste event through ConPTY — the console host drops it instead of handing it to the program — so omp and other agents that enable paste events for images never received pasted text, while images still worked. The desktop writes a text paste itself, with the terminal's paste events off, so the text goes as an ordinary paste: bracketed when the program asked for that, and read by every program. The paths an image upload pastes go the same way.
+  — Windows 的 ConPTY 不会把终端的 OSC 5522 粘贴事件交给程序（控制台宿主直接丢弃），所以为图片开启粘贴事件的 omp 等 agent 收不到文字粘贴，而图片照常可用。桌面端现在自己把文字按粘贴写入（终端侧关闭粘贴事件，程序要求时带括号），任何程序都能读到；图片上传后粘贴的路径也走同一条路。
+
+## 0.7.7
+
+**Beacon 0.7.7: 修复 Windows 文字粘贴 — Restore Windows text paste**
+
+- **Keep plain-text paste working when another clipboard format is malformed.** Windows now falls back to the native Unicode text clipboard when reading all advertised formats fails, while image and file pastes keep their existing handling.
+  — Windows 剪贴板同时提供异常富文本格式时，桌面端改用原生 Unicode 文本兜底，恢复本机与远程终端的文字粘贴；图片和文件粘贴流程保持不变。
+- Verified the desktop paste path, Windows cross-compilation, and the Go test suite.
+  — 已验证桌面粘贴路径、Windows 交叉编译和 Go 测试套件。
+
+## 0.7.6
+
+**Beacon 0.7.6: 底部机器栏上下留白一致 — Balanced machine rail spacing**
+
+- **Remove the separator above the machine rail.** Circular machine controls retain their borderless state fills, and now sit with equal 8-point space above and below instead of extra padding at the bottom. The resize handle respects the same rail bounds. Layout tests verify the spacing at narrow, default and wide sidebar widths.
+  — 移除底部机器栏上方的分隔线，保留圆形图标的无边框状态背景。图标上下各留 8 点距离，不再额外偏向底部；拖动句柄同步避开机器栏，布局测试覆盖窄、默认和宽侧栏。
+- Includes the local CLI image-paste fix from v0.7.5.
+  — 包含 v0.7.5 的本机 CLI 图片粘贴修复。
+
+**Full Changelog**: https://github.com/CarlOpenLab/beacon/compare/v0.7.5...v0.7.6
+
+## 0.7.5
+
+**Beacon 0.7.5: 本机图片粘贴交给 CLI 处理 — Native image paste for local CLI agents**
+
+- **Local image-only pastes now use the same gesture as Gloss.** Instead of uploading a screenshot and inserting its quoted path as text, the desktop forwards raw Ctrl+V to the local foreground program. Image-aware CLI agents can then read the original system clipboard and attach the image themselves. Text pastes, explicit file lists and read-only restrictions retain their existing behavior.
+  — 本机剪贴板只有图片时，桌面端按 Gloss 的方式向前台程序发送原始 Ctrl+V，让支持图片的 CLI agent 自己读取系统剪贴板并创建附件，不再把截图路径当普通文字插入。文字粘贴、显式文件列表及只读限制保持原有处理。
+- **Remote images still upload to the shell's machine.** Remote programs cannot read the local clipboard, so they continue receiving an uploaded file path. Regression tests cover the local image gesture, mixed text/image clipboard content, file uploads, remote images and read-only panes.
+  — 远程程序无法读取本机剪贴板，图片仍上传到 shell 所在机器后传入文件路径。新增回归覆盖本机图片按键、图文混合剪贴板、文件上传、远程图片与只读窗格。
+- **Snapshot upload metadata before starting background work.** The upload worker no longer reads machine roster and session metadata from UI-owned state, fixing a data race while session lists update during a paste.
+  — 上传开始前在界面线程获取机器平台、连接和会话信息，避免上传协程与会话列表更新并发读取界面状态，修复相关数据竞争。
+
+**Full Changelog**: https://github.com/CarlOpenLab/beacon/compare/v0.7.4...v0.7.5
+
+## 0.7.4
+
+**Beacon 0.7.4: 底部机器切换栏与图片粘贴修复 — Machine rail and image paste fixes**
+
+- **Switch machines from a centered, scrollable rail.** The desktop sidebar now shows the selected machine's sessions, with circular machine controls along the bottom. Right-click a machine to choose a persistent icon. Machine names omit local network suffixes and distinguish duplicate names. Command+1 through Command+9 switch machines in rail order.
+  — 桌面侧栏按所选机器展示会话，底部圆形机器栏居中排列，机器较多时支持横向滚动。右键可更换图标并保存；机器名去除本地域名后缀，同名机器补充标识。Command+1 至 Command+9 按栏内顺序切换机器。
+- **Separate selection, hover and machine states without borders.** Active controls use stronger fills; needs-you, pending, running, completed, failed and offline states have distinct treatments. Session status marks lead their rows, and choosing a machine can take you to its waiting session.
+  — 选中与悬停采用不同强度的无边框填充，需要你、创建中、运行中、已完成、失败和离线状态使用不同配色。会话状态标记前置，切换机器时可定位到等待回答的会话。
+- **Keep search, settings and sidebar controls together.** The top controls appear in search/settings/fold order, align to the sidebar's right edge while expanded, and remain available when folded. Fixed button sizes and additional title space prevent compression and title overlap during resizing.
+  — 顶部按搜索、设置、折叠排列，展开时靠侧栏右侧对齐，折叠后仍可操作。固定按钮尺寸并预留完整标题空间，改善拖动时的图标压缩和标题重叠。
+- **Negotiate image and file paste support on both desktop transports.** The local connection now sends a hello handshake, and remote connections announce file upload and compression capabilities. This fixes screenshots being recognized but rejected with an empty capability list. Pasted files are uploaded to the shell's machine and their quoted paths are inserted into the terminal. Regression coverage exercises the local clipboard-to-upload-to-input path and remote handshake.
+  — 本地连接补齐 hello 握手，远程连接声明文件上传及压缩能力，修复截图已被读取却因能力列表为空而遭拒绝的问题。图片或文件上传至 shell 所在机器后，以加引号的路径粘入终端；新增本地粘贴完整链路及远程握手回归测试。
+
+**Full Changelog**: https://github.com/CarlOpenLab/beacon/compare/v0.7.3...v0.7.4
+
 ## 0.7.3
 
 **Beacon 0.7.3: 侧栏只留正在用的机器 — the column keeps the machines in use**

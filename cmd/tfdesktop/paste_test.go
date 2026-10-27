@@ -9,12 +9,19 @@ package main
 import (
 	"bytes"
 	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // pasteConn records what the terminal sends and blocks on reads, so the test
@@ -132,4 +139,185 @@ func TestShellQuote(t *testing.T) {
 			t.Errorf("shellQuote(%q, %q) = %q, want %q", tc.path, tc.platform, got, tc.want)
 		}
 	}
+}
+
+// Exercise the actual file clipboard hook, local handshake and hub upload, then
+// verify the path delivered to the terminal's input stream names those bytes.
+func TestLocalFilePasteUploadsAndSendsPath(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t)
+	w.fleet = f
+	w.local = openLocalLink(f.Hub())
+	w.local.onSessions = w.sessionsArrived
+	t.Cleanup(func() { w.local.close("test done") })
+	tb := w.openTab(machineLocal, "")
+	w.local.create(80, 24, "", "", "")
+	waitForPaste(t, "session control and file capability", func() bool {
+		w.drain()
+		return tb.held() && w.local.capable(protocol.CapFile)
+	})
+
+	// Capture the final terminal input while all upload frames still travel
+	// through the real local pipe and hub.
+	inputs := make(chan string, 1)
+	w.local.sendMu.Lock()
+	send := w.local.send
+	w.local.send = func(m protocol.Msg) bool {
+		if m.T == protocol.CTInput {
+			inputs <- string(m.Data)
+			return true
+		}
+		return send(m)
+	}
+	w.local.sendMu.Unlock()
+	payload := []byte("clipboard image payload")
+	source := filepath.Join(t.TempDir(), "screenshot.png")
+	if err := os.WriteFile(source, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := transfer.FileData(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.pasteInto(tb, data) {
+		t.Fatal("file paste was not handled")
+	}
+	var path string
+	waitForPaste(t, "uploaded path to reach terminal input", func() bool {
+		w.drain()
+		select {
+		case text := <-inputs:
+			path = strings.TrimSuffix(strings.TrimPrefix(text, "'"), "' ")
+			return true
+		default:
+			return false
+		}
+	})
+	t.Cleanup(func() { _ = os.Remove(path) })
+	got, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("pasted path %q: bytes=%q err=%v", path, got, err)
+	}
+}
+
+func TestLocalImagePasteForwardsAgentGesture(t *testing.T) {
+	reader, _ := io.Pipe()
+	conn := &pasteConn{reader: reader}
+	w := &window{}
+	tb := &tab{machine: machineLocal, id: "s1", role: protocol.RoleController,
+		sess: newSession("s1", newLink(), nil)}
+	term, err := terminal.New(terminal.Options{
+		Conn:     conn,
+		Keybinds: []terminal.Keybind{{Mods: ui.Cmd, Key: ui.KeyV, Action: terminal.ActionPaste}},
+		OnPaste:  func(d transfer.Data) bool { return w.pasteInto(tb, d) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tb.term = term
+	tt := ui.NewTester(func(c *ui.Context) {
+		terminal.View(c, term).Fill().AutoFocus()
+	}, 500, 240)
+	tt.SetClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, []byte("image")))))
+	tt.Key(ui.Cmd, ui.KeyV)
+	waitForPaste(t, "one raw Ctrl+V to reach the local agent", func() bool {
+		return conn.text() == "\x16"
+	})
+	// No upload capability is required for the local image gesture, and text
+	// alongside an image must still follow the ordinary terminal paste path.
+	tt.SetClipboardData(transfer.New(transfer.NewItem(
+		transfer.Bytes(transfer.PNG, []byte("image")),
+		transfer.Bytes(transfer.Text, []byte("some text")),
+	)))
+	tt.Key(ui.Cmd, ui.KeyV)
+	waitForPaste(t, "text paste without another image gesture", func() bool {
+		return conn.text() == "\x16some text"
+	})
+	tb.role = protocol.RoleViewer
+	if !w.pasteInto(tb, transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, []byte("image"))))) {
+		t.Fatal("read-only image paste should be consumed")
+	}
+	if got := conn.text(); got != "\x16some text" {
+		t.Fatalf("read-only paste sent input: %q", got)
+	}
+}
+
+func TestRemoteImagePasteStillUploadsInsteadOfForwardingGesture(t *testing.T) {
+	reader, _ := io.Pipe()
+	conn := &pasteConn{reader: reader}
+	term, err := terminal.New(terminal.Options{Conn: conn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	l := newLink()
+	l.setHost(nil, []string{protocol.CapFile})
+	var uploaded bytes.Buffer
+	l.setSend(func(m protocol.Msg) bool {
+		switch m.T {
+		case protocol.CTFileChunk:
+			uploaded.Write(m.Data)
+		case protocol.CTFileDone:
+			l.deliverFile(protocol.Msg{T: protocol.STFileSaved, ReqID: m.ReqID, Path: "/tmp/remote-shot.png"})
+		}
+		return true
+	})
+	w := &window{}
+	tb := &tab{machine: "remote", id: "s1", role: protocol.RoleController,
+		sess: newSession("s1", l, nil), term: term}
+	payload := []byte("remote image bytes")
+	if !w.pasteInto(tb, transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, payload)))) {
+		t.Fatal("remote image was not handled")
+	}
+	waitForPaste(t, "remote image path", func() bool {
+		w.drain()
+		return conn.text() == "'/tmp/remote-shot.png' "
+	})
+	if !bytes.Equal(uploaded.Bytes(), payload) {
+		t.Fatalf("uploaded %q, want %q", uploaded.Bytes(), payload)
+	}
+}
+
+func TestRemoteHelloAnnouncesFileUploadCapability(t *testing.T) {
+	l := &relayLink{link: newLink(), machine: "remote"}
+	var sent []protocol.Msg
+	l.setSend(func(m protocol.Msg) bool {
+		sent = append(sent, m)
+		return true
+	})
+	(relayHandlers{l: l}).Open()
+	if len(sent) == 0 || sent[0].T != protocol.CTHello || !protocol.HasCap(sent[0].Caps, protocol.CapFile) {
+		t.Fatalf("remote handshake did not announce upload support: %+v", sent)
+	}
+}
+
+// Windows cannot carry a terminal's paste event to a program: its console host
+// reads what is written to it as keyboard input, so an OSC 5522 offer is
+// dropped rather than handed to the program. A program that asks for paste
+// events — omp and other agents do, for images — would then lose a text paste
+// while images, which this app handles itself, still arrived. The text is
+// pasted as text.
+func TestTextPasteReachesAProgramThatAsksForPasteEvents(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("only ConPTY drops a paste event")
+	}
+	reader, _ := io.Pipe()
+	conn := &pasteConn{reader: reader}
+	term, err := terminal.New(terminal.Options{Conn: conn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	// What the program asked for: paste events, and bracketed pastes.
+	term.Feed([]byte("$ \x1b[?5522h\x1b[?2004h"))
+	w := &window{}
+	tb := &tab{machine: machineLocal, id: "s1", role: protocol.RoleController,
+		sess: newSession("s1", newLink(), nil), term: term}
+	if !w.pasteInto(tb, transfer.TextData("粘贴 text")) {
+		t.Fatal("text paste was not taken")
+	}
+	waitForPaste(t, "the text as a bracketed paste", func() bool {
+		return conn.text() == "\x1b[200~粘贴 text\x1b[201~"
+	})
 }

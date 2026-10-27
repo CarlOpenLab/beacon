@@ -1002,9 +1002,26 @@
     "description": "A roster machine's state."
   },
   "machine_offline": "离线",
+  "machine_list_sep": "，",
+  "@machine_list_sep": {
+    "description": "Between a machine's name and its state when spoken aloud. A full-width comma in Chinese, a comma and a space in English."
+  },
   "@machine_offline": {
     "description": "A roster machine's state."
   },
+  "machine_icon_menu": "图标",
+  "machine_icon_laptop": "笔记本",
+  "machine_icon_monitor": "显示器",
+  "machine_icon_server": "服务器",
+  "machine_icon_hard_drive": "硬盘",
+  "machine_icon_cpu": "芯片",
+  "machine_icon_database": "数据库",
+  "machine_icon_cloud": "云",
+  "machine_icon_container": "容器",
+  "machine_icon_router": "路由器",
+  "machine_icon_printer": "打印机",
+  "machine_icon_box": "机箱",
+  "machine_icon_terminal": "终端",
   "machine_platform_unknown": "平台未知",
   "@machine_platform_unknown": {
     "description": "The local machine's row, with no host description."
@@ -1432,5 +1449,23 @@
   "paste_unsupported": "这台机器上的 Beacon 版本还不支持接收文件",
   "paste_failed": "粘贴失败：{reason}",
   "paste_too_large": "文件太大：{name}（上限 32 MB）",
-  "attach_truncated": "断线太久：画面可能不完整（已重放最近的输出）"
+  "attach_truncated": "断线太久：画面可能不完整（已重放最近的输出）",
+  "rail_hidden_needs": "滚出去的还有 {count} 台需要你",
+  "@rail_hidden_needs": {
+    "description": "The machine rail's edge dot: machines scrolled out of sight that need you or failed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rail_hidden_failed": "滚出去的有 {count} 台失败",
+  "@rail_hidden_failed": {
+    "description": "The machine rail's edge dot: machines scrolled out of sight that need you or failed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }

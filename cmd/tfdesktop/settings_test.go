@@ -19,6 +19,7 @@ import (
 	"github.com/CarlOpenLab/beacon/internal/agent"
 	"github.com/CarlOpenLab/beacon/internal/relay"
 	"github.com/CarlOpenLab/beacon/internal/settings"
+	"github.com/CarlOpenLab/beacon/internal/tunnel"
 	"github.com/CarlOpenLab/beacon/locales"
 )
 
@@ -303,19 +304,24 @@ func TestSettingsApplyingTheRelayReachesTheFleet(t *testing.T) {
 		t.Fatalf("the panel still asks for a token it no longer needs: %q", note)
 	}
 
-	// The other machine is not merely in the list: it is drawn, which is the row
-	// the report was about. It has no sessions, so it is folded into the other
-	// row; opening that row is what shows it.
+	// The other machine is not merely in the list: it is drawn as a tile in the
+	// rail, and picking it is what shows its sessions in the column.
 	nav := drawNav(t, w)
-	if !nav.HasText(locales.SidebarOthers(1)) {
-		t.Fatalf("the machines' panel does not hold the other machine; texts = %v", nav.Texts())
+	var other tunnel.Machine
+	for _, m := range w.roster {
+		if m.ID == otherID {
+			other = m
+		}
 	}
-	if err := nav.Click(locales.SidebarOthers(1)); err != nil {
+	label := w.machineRailLabel(other)
+	if _, ok := nav.Find(label); !ok {
+		t.Fatalf("the machines' rail does not hold the other machine; texts = %v", nav.Texts())
+	}
+	if err := nav.Click(label); err != nil {
 		t.Fatal(err)
 	}
-	nav.Advance(300 * time.Millisecond)
 	nav.Frame()
-	if !nav.HasText("other box") {
+	if _, ok := nav.Find(w.machineDisplayName(otherID)); !ok {
 		t.Fatalf("the machines' panel does not list the other machine; texts = %v", nav.Texts())
 	}
 }

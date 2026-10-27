@@ -2,6 +2,7 @@ package main
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,91 +14,287 @@ import (
 	"github.com/CarlOpenLab/beacon/locales"
 )
 
-// The machines with nothing under them share one row, and the row opens them
-// into ordinary headers and takes them away again.
-func TestQuietMachinesFoldIntoOthers(t *testing.T) {
-	w, _ := newTestShellWindow(t, "one")
+// The rail is the fleet as a row of tiles: this machine first, then the
+// roster's order, with hidden machines left out. The order never follows state,
+// because a row that reordered itself would move the machine under the pointer
+// that was about to click it.
+func TestTheMachineRailListsShownMachinesInOrder(t *testing.T) {
+	w, _ := newTestShellWindow(t, "local shell")
 	w.fleet = newTestFleet(t)
 	w.roster = []tunnel.Machine{
-		{ID: "m1", Name: "busy box", Online: true},
-		{ID: "m2", Name: "quiet one", Online: true},
-		{ID: "m3", Name: "quiet two", Online: true},
-		{ID: "m4", Name: "quiet three", Online: true},
-		{ID: "m5", Name: "quiet four", Online: true},
+		{ID: "m1", Name: "one.local", Online: true},
+		{ID: "m2", Name: "two", Online: true},
+		{ID: "m3", Name: "gone", Online: true},
 	}
-	w.remoteSessions = map[string][]protocol.Summary{
-		"m1": {{SessionID: "r1", Title: "remote shell", Alive: true, Cols: 80, Rows: 24}},
+	if err := w.setMachineHidden("m3", true); err != nil {
+		t.Fatal(err)
 	}
 
 	tt := drawNav(t, w)
-	for _, name := range []string{"busy box", w.machineName(machineLocal)} {
-		if !tt.HasText(name) {
-			t.Fatalf("%q does not have a header; texts = %v", name, tt.Texts())
+	var xs []float32
+	for _, m := range w.groups()[:3] {
+		label := w.machineRailLabel(m)
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("%q is missing from the rail; texts = %v", label, tt.Texts())
+		}
+		xs = append(xs, r.X)
+	}
+	for i := 1; i < len(xs); i++ {
+		if xs[i] <= xs[i-1] {
+			t.Fatalf("the rail is out of order: x = %v", xs)
 		}
 	}
-	if !tt.HasText(locales.SidebarOthers(4)) {
-		t.Fatalf("the column has no other row for four machines; texts = %v", tt.Texts())
+	if _, ok := tt.Find(w.machineRailLabel(w.roster[2])); ok {
+		t.Fatal("a hidden machine is still in the rail")
 	}
-	for _, name := range []string{"quiet one", "quiet two", "quiet three", "quiet four"} {
-		if tt.HasText(name) {
-			t.Fatalf("%q keeps a header while it is folded; texts = %v", name, tt.Texts())
-		}
-	}
+}
 
-	if err := tt.Click(locales.SidebarOthers(4)); err != nil {
-		t.Fatal(err)
-	}
-	tt.Advance(300 * time.Millisecond)
-	tt.Frame()
-	for _, name := range []string{"quiet one", "quiet two", "quiet three", "quiet four"} {
-		if !tt.HasText(name) {
-			t.Fatalf("%q did not grow under the other row; texts = %v", name, tt.Texts())
-		}
-	}
+// The accessibility label is the full name and the status word, and nothing
+// else: the glyph is decoration and the machine type is not the machine's name.
+// The name is a display name, so a hostname's mDNS suffix never reaches a
+// screen reader.
+func TestTheMachineRailLabelIsNameAndStatusOnly(t *testing.T) {
+	w, _ := newTestShellWindow(t)
+	w.fleet = newTestFleet(t)
+	w.roster = []tunnel.Machine{{ID: "m2", Name: "db.local", Online: true}}
 
-	if err := tt.Click(locales.SidebarOthers(4)); err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		status string
+		unread bool
+		want   string
+	}{
+		{"waiting", false, locales.FooterNeedsYou()},
+		{"working", false, locales.FooterWorking()},
+		{"error", false, locales.StatusFailed()},
+		{"idle", true, locales.StatusDone()},
+		{"idle", false, locales.StatusIdle()},
+		{"", false, locales.StatusIdle()},
 	}
-	tt.Advance(300 * time.Millisecond)
-	tt.Frame()
-	for _, name := range []string{"quiet one", "quiet two", "quiet three", "quiet four"} {
-		if tt.HasText(name) {
-			t.Fatalf("%q stayed after the other row folded; texts = %v", name, tt.Texts())
+	for _, tc := range cases {
+		w.remoteSessions = map[string][]protocol.Summary{
+			"m2": {{SessionID: "r1", Title: "query", Alive: true, Status: tc.status, Unread: tc.unread}},
+		}
+		got := w.machineRailLabel(w.roster[0])
+		if want := "db" + locales.MachineListSep() + tc.want; got != want {
+			t.Errorf("label for %q = %q, want %q", tc.status, got, want)
+		}
+		for _, word := range []string{"Database", "数据库", "Server", "server", "laptop"} {
+			if strings.Contains(got, word) {
+				t.Errorf("label %q carries the icon or machine type %q", got, word)
+			}
 		}
 	}
 }
 
-// A machine this window has no rows for still keeps its header while one of
-// its sessions needs an answer: the loudest state outranks the quiet list.
-func TestAMachineNeedingYouIsNotOther(t *testing.T) {
-	w, _ := newTestShellWindow(t, "one")
-	w.fleet = newTestFleet(t)
-	w.roster = []tunnel.Machine{
-		{ID: "m1", Name: "waiting box", Online: true},
-		{ID: "m2", Name: "quiet one", Online: true},
-		{ID: "m3", Name: "quiet two", Online: true},
+// The display name drops the mDNS suffix a local network adds. A name that was
+// nothing but the suffix falls back to the id rather than becoming empty.
+func TestMachineDisplayHostStripsTheLocalSuffix(t *testing.T) {
+	cases := []struct{ name, id, want string }{
+		{"studio.local", "m2", "studio"},
+		{"studio.localdomain", "m2", "studio"},
+		{"studio.LOCAL", "m2", "studio"},
+		{" studio.local. ", "m2", "studio"},
+		{"studio", "m2", "studio"},
+		{"", "m2", "m2"},
+		{".local", "m2", "m2"},
 	}
-	w.remoteSessions = map[string][]protocol.Summary{
-		"m1": {{SessionID: "r1", Title: "asks a question", Alive: true, Status: "waiting"}},
-	}
-
-	tt := drawNav(t, w)
-	if !tt.HasText("waiting box") {
-		t.Fatalf("the waiting machine lost its header; texts = %v", tt.Texts())
-	}
-	if !tt.HasText(locales.SidebarOthers(2)) {
-		t.Fatalf("the other row counts the waiting machine; texts = %v", tt.Texts())
-	}
-	if tt.HasText("quiet one") || tt.HasText("quiet two") {
-		t.Fatalf("a quiet machine kept a header; texts = %v", tt.Texts())
+	for _, tc := range cases {
+		if got := machineDisplayHost(tc.name, tc.id); got != tc.want {
+			t.Errorf("machineDisplayHost(%q, %q) = %q, want %q", tc.name, tc.id, got, tc.want)
+		}
 	}
 }
 
-// The machine header's menu takes the whole machine out of the column, sessions
-// and all, and the choice reaches the settings file.
+// The glyph follows the machine's name, English or Chinese, in the menu's
+// order; the name the person gave it is the better hint than the platform it
+// happens to run.
+func TestMachineIconNameRule(t *testing.T) {
+	cases := []struct{ name, want string }{
+		{"carls-macbook", "laptop"},
+		{"笔记本", "laptop"},
+		{"mac-mini", "monitor"},
+		{"台式机", "monitor"},
+		{"prod-server", "server"},
+		{"服务", "server"},
+		{"nas", "hard_drive"},
+		{"raspberry-pi", "cpu"},
+		{"db-2", "database"},
+		{"数据库", "database"},
+		{"fly-cloud", "cloud"},
+		{"云", "cloud"},
+		{"docker-dev", "container"},
+		{"容器", "container"},
+		{"router-1", "router"},
+		{"路由", "router"},
+		{"printer", "printer"},
+		{"打印", "printer"},
+		{"windows-box", "box"},
+		{"something-else", "terminal"},
+	}
+	for _, tc := range cases {
+		if got := machineIconName(tc.name); got != tc.want {
+			t.Errorf("machineIconName(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The icon menu is twelve options, in one order, named in both languages. They
+// are the menu's accessible names, so they may not be the internal keys.
+func TestTheMachineIconMenuOffersEveryIconInOrder(t *testing.T) {
+	wantKeys := []string{
+		"laptop", "monitor", "server", "hard_drive", "cpu", "database",
+		"cloud", "container", "router", "printer", "box", "terminal",
+	}
+	wantZh := []string{
+		"笔记本", "显示器", "服务器", "硬盘", "芯片", "数据库",
+		"云", "容器", "路由器", "打印机", "机箱", "终端",
+	}
+	wantEn := []string{
+		"Laptop", "Monitor", "Server", "Hard drive", "Chip", "Database",
+		"Cloud", "Container", "Router", "Printer", "Box", "Terminal",
+	}
+	zh, en := locales.In("zh-Hans"), locales.In("en")
+	zhLabels := []string{
+		zh.MachineIconLaptop(), zh.MachineIconMonitor(), zh.MachineIconServer(),
+		zh.MachineIconHardDrive(), zh.MachineIconCpu(), zh.MachineIconDatabase(),
+		zh.MachineIconCloud(), zh.MachineIconContainer(), zh.MachineIconRouter(),
+		zh.MachineIconPrinter(), zh.MachineIconBox(), zh.MachineIconTerminal(),
+	}
+	enLabels := []string{
+		en.MachineIconLaptop(), en.MachineIconMonitor(), en.MachineIconServer(),
+		en.MachineIconHardDrive(), en.MachineIconCpu(), en.MachineIconDatabase(),
+		en.MachineIconCloud(), en.MachineIconContainer(), en.MachineIconRouter(),
+		en.MachineIconPrinter(), en.MachineIconBox(), en.MachineIconTerminal(),
+	}
+
+	if len(machineIconChoices) != len(wantKeys) {
+		t.Fatalf("the menu has %d options, want %d", len(machineIconChoices), len(wantKeys))
+	}
+	for i, choice := range machineIconChoices {
+		if choice.key != wantKeys[i] {
+			t.Errorf("option %d key = %q, want %q", i, choice.key, wantKeys[i])
+		}
+		if zhLabels[i] != wantZh[i] {
+			t.Errorf("option %d Chinese = %q, want %q", i, zhLabels[i], wantZh[i])
+		}
+		if enLabels[i] != wantEn[i] {
+			t.Errorf("option %d English = %q, want %q", i, enLabels[i], wantEn[i])
+		}
+	}
+}
+
+// Picking a glyph in the machine header's menu stores it with the machine and
+// applies it to the rail at once. The settings file is the source of truth, so
+// a restart keeps the choice.
+func TestTheMachineIconMenuStoresAChoice(t *testing.T) {
+	w, dir := newTestShellWindow(t)
+	w.fleet = newTestFleet(t)
+	w.machineSel = "m2"
+	w.roster = []tunnel.Machine{{ID: "m2", Name: "studio", Online: true}}
+
+	tt := drawNav(t, w)
+	if err := tt.RightClick("studio"); err != nil {
+		t.Fatalf("right-click the machine: %v", err)
+	}
+	if err := tt.ChooseMenuItem(locales.MachineIconMenu(), locales.MachineIconServer()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+
+	if got := w.machineIcons["m2"]; got != "server" {
+		t.Fatalf("the window holds %q, want server", got)
+	}
+	if got := settings.Load(dir).MachineIcons["m2"]; got != "server" {
+		t.Fatalf("the settings file holds %q, want server", got)
+	}
+	if got := w.machineIconKey(w.roster[0]); got != "server" {
+		t.Fatalf("the rail draws %q, want server", got)
+	}
+}
+
+func TestRailIconMenuStoresAChoice(t *testing.T) {
+	w, dir := newTestShellWindow(t)
+	w.roster = []tunnel.Machine{{ID: "m2", Name: "studio", Online: true}}
+	tt := drawNav(t, w)
+	if err := tt.RightClick(w.machineRailLabel(w.roster[0])); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem(locales.MachineIconMenu(), locales.MachineIconCloud()); err != nil {
+		t.Fatal(err)
+	}
+	if got := settings.Load(dir).MachineIcons["m2"]; got != "cloud" {
+		t.Fatalf("rail icon choice saved as %q, want cloud", got)
+	}
+}
+
+func TestShortMachineRailIsCenteredAndInset(t *testing.T) {
+	for _, width := range []float32{200, 268, 440} {
+		w, _ := newTestShellWindow(t)
+		w.sidebarWidth = width
+		w.roster = []tunnel.Machine{{ID: "m2", Name: "studio", Online: true}}
+		tt := drawNav(t, w)
+		machines := w.groups()
+		first, ok := tt.Find(w.machineRailLabel(machines[0]))
+		if !ok {
+			t.Fatal("first machine missing")
+		}
+		last, ok := tt.Find(w.machineRailLabel(machines[1]))
+		if !ok {
+			t.Fatal("last machine missing")
+		}
+		if got := (first.X + last.X + last.W) / 2; got != width/2 {
+			t.Errorf("width %v: rail center = %v, want %v", width, got, width/2)
+		}
+		if bottomGap := 420 - (first.Y + first.H); bottomGap < 8 {
+			t.Errorf("width %v: bottom gap = %v, want at least 8", width, bottomGap)
+		}
+		rail, ok := tt.Find("machine rail")
+		if !ok {
+			t.Fatal("machine rail missing")
+		}
+		topGap := first.Y - rail.Y
+		bottomGap := rail.Y + rail.H - first.Y - first.H
+		if topGap != bottomGap || topGap != 8 {
+			t.Errorf("width %v: rail padding top=%v bottom=%v, want 8 on both sides", width, topGap, bottomGap)
+		}
+	}
+}
+
+// Picking a quiet machine in the rail is a switch of the column, not of the
+// terminal: its header and its empty note appear, while the shell on screen
+// stays where it was.
+func TestChoosingAMachineInTheRailShowsItsSessions(t *testing.T) {
+	w, _ := newTestShellWindow(t, "local shell")
+	w.fleet = newTestFleet(t)
+	w.roster = []tunnel.Machine{{ID: "m2", Name: "quiet one", Online: true}}
+
+	tt := drawNav(t, w)
+	if err := tt.Click(w.machineRailLabel(w.roster[0])); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+
+	if got := w.selectedMachine(); got != "m2" {
+		t.Fatalf("selected machine = %q, want m2", got)
+	}
+	if tb := w.activeTab(); tb == nil || tb.machine != machineLocal {
+		t.Fatal("picking a machine moved the terminal off this machine")
+	}
+	if _, ok := tt.Find("quiet one"); !ok {
+		t.Fatalf("the column does not show the picked machine; texts = %v", tt.Texts())
+	}
+	if !tt.HasText(locales.SidebarMachineLook()) {
+		t.Fatalf("the picked machine has no empty note; texts = %v", tt.Texts())
+	}
+}
+
+// The machine header's menu takes the whole machine out of the column and the
+// rail, sessions and all, and the choice reaches the settings file.
 func TestHidingAMachineFromItsMenuPersists(t *testing.T) {
 	w, dir := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
+	w.machineSel = "m2"
 	w.roster = []tunnel.Machine{{ID: "m2", Name: "hidden box", Online: true}}
 	w.remoteSessions = map[string][]protocol.Summary{
 		"m2": {{SessionID: "r1", Title: "remote shell", Alive: true}},
@@ -122,7 +319,7 @@ func TestHidingAMachineFromItsMenuPersists(t *testing.T) {
 	}
 
 	// The file is the source of truth: a restart reads it back into the same
-	// hidden set, and only this window's own folded state is forgotten.
+	// hidden set.
 	stored := settings.Load(dir)
 	if !slices.Contains(stored.HiddenMachines, "m2") {
 		t.Fatalf("the settings file holds %v, want m2 hidden", stored.HiddenMachines)
@@ -133,8 +330,7 @@ func TestHidingAMachineFromItsMenuPersists(t *testing.T) {
 }
 
 // The window is built from the file, so a restart keeps the machines the
-// person put away and starts the other row folded again: the open state was
-// only ever a look.
+// person put away: hiding is a setting, not a look.
 func TestHiddenMachinesArriveFromTheSettingsFile(t *testing.T) {
 	store := settings.Open(t.TempDir())
 	if _, err := store.Update(func(st *settings.Settings) {
@@ -145,9 +341,6 @@ func TestHiddenMachinesArriveFromTheSettingsFile(t *testing.T) {
 	w := newWindow(newTestFleet(t), store, "", "")
 	if !w.machineHidden("m2") {
 		t.Fatal("a new window did not read m2 back as hidden")
-	}
-	if w.othersOpen {
-		t.Fatal("a new window started with the other row open, but that state is not persisted")
 	}
 }
 
@@ -195,8 +388,9 @@ func TestTheSidebarSettingsSwitchWritesTheStore(t *testing.T) {
 	}
 }
 
-// A hidden machine comes back for a session that needs the user, and leaves
-// again a breath after that need passes — not on the frame that answered it.
+// A hidden machine comes back in the rail for a session that needs the user,
+// and leaves again a breath after that need passes — not on the frame that
+// answered it.
 func TestAHiddenMachineReturnsForANeedAndLeavesAgain(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
@@ -263,107 +457,161 @@ func TestTheEmptyStateOpensTheSidebarSettings(t *testing.T) {
 	}
 }
 
-// Picking a machine this window has no shell on keeps the terminal where it
-// was, so the column must not take that click as "this is where I am": the
-// machine stays in the other row, and the note under a folded machine is not
-// repeated for every name in it.
-func TestClickingAQuietMachineKeepsItInTheOthers(t *testing.T) {
-	w, _ := newTestShellWindow(t, "one")
+// The rail's hover copy is this machine's own numbers. The fleet-wide footer
+// the counts used to live in is gone, so the words and numbers have to agree
+// with the tile's badge.
+func TestTheMachineTooltipCountsOneMachine(t *testing.T) {
+	w, _ := newTestShellWindow(t)
 	w.fleet = newTestFleet(t)
-	w.collapsed = make(map[string]bool)
-	w.foldByHand = make(map[string]bool)
-	w.roster = []tunnel.Machine{{ID: "m1", Name: "quiet one", Online: true}}
-
-	tt := drawNav(t, w)
-	tt.Frame()
-	if !tt.HasText(locales.SidebarOthers(1)) {
-		t.Fatalf("the quiet machine has no other row; texts = %v", tt.Texts())
+	m := tunnel.Machine{
+		ID: "m2", Name: "db.local", Online: true,
+		Host: protocol.Host{Platform: "linux", Version: "1.2.3"},
 	}
-
-	if err := tt.Click(locales.SidebarOthers(1)); err != nil {
-		t.Fatal(err)
+	w.roster = []tunnel.Machine{m}
+	w.remoteSessions = map[string][]protocol.Summary{
+		"m2": {
+			{SessionID: "r1", Status: "waiting", Alive: true},
+			{SessionID: "r2", Status: "working", Alive: true},
+			{SessionID: "r3", Status: "idle", Alive: true},
+		},
 	}
-	tt.Advance(300 * time.Millisecond)
-	tt.Frame()
-	if err := tt.Click("quiet one"); err != nil {
-		t.Fatal(err)
-	}
-	tt.Advance(300 * time.Millisecond)
-	tt.Frame()
-
-	// Still folded away: the panes did not move, so neither does the column.
-	if err := tt.Click(locales.SidebarOthers(1)); err != nil {
-		t.Fatal(err)
-	}
-	tt.Advance(300 * time.Millisecond)
-	tt.Frame()
-	if !tt.HasText(locales.SidebarOthers(1)) {
-		t.Fatalf("the other row is gone after a click that changed nothing; texts = %v", tt.Texts())
-	}
-	if n := countText(tt.Texts(), locales.SidebarMachineLook()); n != 0 {
-		t.Fatalf("the folded machine still teaches under itself %d times; texts = %v", n, tt.Texts())
+	want := "db · Linux · v1.2.3\n" +
+		locales.FooterNeedsYou() + " 1 · " +
+		locales.FooterWorking() + " 1 · " +
+		locales.StatusIdle() + " 1"
+	if got := w.machineTooltip(m); got != want {
+		t.Fatalf("tooltip = %q, want %q", got, want)
 	}
 }
 
-func countText(texts []string, want string) int {
-	n := 0
-	for _, s := range texts {
-		if s == want {
-			n++
+// A count of zero is not an answer: an idle machine's tooltip says it is idle
+// and nothing else, and a machine with no sessions at all says the same rather
+// than three zeros. A platform the app has no word for is left out instead of
+// being printed as the host spells it.
+func TestTheMachineTooltipSaysOnlyWhatIsTrue(t *testing.T) {
+	w, _ := newTestShellWindow(t)
+	w.fleet = newTestFleet(t)
+	cases := []struct {
+		name     string
+		m        tunnel.Machine
+		sessions []protocol.Summary
+		want     string
+	}{
+		{"idle only", tunnel.Machine{ID: "m2", Name: "db.local", Online: true,
+			Host: protocol.Host{Platform: "darwin"}},
+			[]protocol.Summary{{SessionID: "r1", Status: "idle", Alive: true}},
+			"db · macOS\n" + locales.StatusIdle() + " 1"},
+		{"no sessions", tunnel.Machine{ID: "m2", Name: "db.local", Online: true},
+			nil, "db\n" + locales.StatusIdle()},
+		{"a failed session", tunnel.Machine{ID: "m2", Name: "db.local", Online: true,
+			Host: protocol.Host{Platform: "linux"}},
+			[]protocol.Summary{{SessionID: "r1", Status: "error", Alive: true}},
+			"db · Linux\n" + locales.StatusFailed() + " 1"},
+		{"offline, no sessions", tunnel.Machine{ID: "m2", Name: "db.local", Online: false},
+			nil, "db\n" + locales.MachineOffline()},
+		{"a failure above a question", tunnel.Machine{ID: "m2", Name: "db.local", Online: true},
+			[]protocol.Summary{
+				{SessionID: "r1", Status: "error", Alive: true},
+				{SessionID: "r2", Status: "waiting", Alive: true},
+				{SessionID: "r3", Status: "waiting", Alive: true},
+			},
+			"db\n" + locales.StatusFailed() + " 1 · " + locales.FooterNeedsYou() + " 2"},
+		{"a done session", tunnel.Machine{ID: "m2", Name: "db.local", Online: true},
+			[]protocol.Summary{{SessionID: "r1", Status: "idle", Alive: true, Unread: true}},
+			"db\n" + locales.StatusDone() + " 1"},
+		{"two states", tunnel.Machine{ID: "m2", Name: "db.local", Online: true,
+			Host: protocol.Host{Platform: "windows"}},
+			[]protocol.Summary{
+				{SessionID: "r1", Status: "waiting", Alive: true},
+				{SessionID: "r2", Status: "waiting", Alive: true},
+				{SessionID: "r3", Status: "working", Alive: true},
+			},
+			"db · Windows\n" + locales.FooterNeedsYou() + " 2 · " + locales.FooterWorking() + " 1"},
+	}
+	for _, tc := range cases {
+		w.roster = []tunnel.Machine{tc.m}
+		w.remoteSessions = map[string][]protocol.Summary{"m2": tc.sessions}
+		got := w.machineTooltip(tc.m)
+		if got != tc.want {
+			t.Errorf("%s: tooltip = %q, want %q", tc.name, got, tc.want)
+		}
+		// The tooltip's state line always begins with the word a screen reader
+		// says, so the red glyph and the hover copy cannot disagree.
+		last := got[strings.LastIndex(got, "\n")+1:]
+		if word := w.machineStatusWord(tc.m); !strings.HasPrefix(last, word) {
+			t.Errorf("%s: tooltip says %q but the label says %q", tc.name, last, word)
 		}
 	}
-	return n
 }
 
-// Folding a group by hand is movement, so a person who asked the system for
-// less motion gets the column where it lands in the first frame; and a click on
-// the header, the way a person makes it, is a fold by hand — the flag must not
-// be spent on the frame that draws the click.
-func TestFoldingAGroupByClickFollowsMotionPreferences(t *testing.T) {
-	for _, reduce := range []bool{false, true} {
-		w, _ := newTestShellWindow(t, "one")
-		w.fleet = newTestFleet(t)
-		w.collapsed = make(map[string]bool)
-		w.foldByHand = make(map[string]bool)
-		w.roster = []tunnel.Machine{{ID: "m2", Name: "second", Online: true}}
-		w.remoteSessions = map[string][]protocol.Summary{
-			"m2": {{SessionID: "r1", Title: "remote one", Alive: true}},
+// The rail's dot is the machine's highest state, ranked failed > needs-you >
+// running > done > offline. The ranking is why a machine with both a failure
+// and a question wears the failure, and why work in progress is not hidden by a
+// done shell that happens to be on the same machine.
+func TestTheMachineRailDotRanksStates(t *testing.T) {
+	w, _ := newTestShellWindow(t)
+	w.roster = []tunnel.Machine{
+		{ID: "m2", Name: "online", Online: true},
+		{ID: "m3", Name: "offline", Online: false},
+	}
+	cases := []struct {
+		machine string
+		list    []protocol.Summary
+		want    string
+	}{
+		{"m2", nil, ""},
+		{"m2", []protocol.Summary{{Status: "idle", Alive: true}}, ""},
+		{"m2", []protocol.Summary{{Status: "working", Alive: true}}, "running"},
+		{"m2", []protocol.Summary{{Status: "idle", Unread: true, Alive: true}}, "done"},
+		{"m2", []protocol.Summary{{Status: "waiting", Alive: true}}, "waiting"},
+		{"m2", []protocol.Summary{{Status: "error", Alive: true}}, "failed"},
+		{"m2", []protocol.Summary{
+			{Status: "waiting", Alive: true},
+			{Status: "error", Alive: true},
+		}, "failed"},
+		{"m3", nil, "offline"},
+		{"m3", []protocol.Summary{{Status: "idle", Unread: true, Alive: true}}, "done"},
+	}
+	for _, tc := range cases {
+		w.remoteSessions = map[string][]protocol.Summary{tc.machine: tc.list}
+		m, ok := w.machineByID(tc.machine)
+		if !ok {
+			t.Fatalf("machine %q is not in the roster", tc.machine)
 		}
+		if got := w.railDotState(m); got != tc.want {
+			t.Errorf("dot for %q with %d sessions = %q, want %q", tc.machine, len(tc.list), got, tc.want)
+		}
+	}
+}
 
-		tt := drawNav(t, w)
-		if reduce {
-			tt.SetPreferences(ui.Preferences{ReduceMotion: true})
-		}
-		tt.Frame()
-		start, ok := tt.Find("second")
-		if !ok {
-			t.Fatalf("the second machine is not in the column; texts = %v", tt.Texts())
-		}
+// ⌘1…⌘9 name machines in the rail's order, not tabs. A number past the last
+// machine does nothing rather than wrapping onto the first.
+func TestNumberKeysChooseMachinesInTheRail(t *testing.T) {
+	w, _ := newTestShellWindow(t)
+	w.roster = []tunnel.Machine{{ID: "m2", Name: "second", Online: true}}
+	// The machine has a link, so choosing it does not ask the relay for one in
+	// the middle of the test; the shortcut is about the rail's order.
+	w.remote = map[string]*relayLink{"m2": {link: newLink(), machine: "m2"}}
 
-		if err := tt.Click(w.machineName(machineLocal)); err != nil {
-			t.Fatal(err)
-		}
-		tt.Advance(16 * time.Millisecond)
-		tt.Frame()
-		early, ok := tt.Find("second")
-		if !ok {
-			t.Fatalf("reduce=%v: the second machine left the column", reduce)
-		}
-		tt.Advance(400 * time.Millisecond)
-		tt.Frame()
-		rest, ok := tt.Find("second")
-		if !ok {
-			t.Fatalf("reduce=%v: the second machine left the column", reduce)
-		}
-		if rest.Y >= start.Y {
-			t.Fatalf("reduce=%v: the group did not fold: rest y=%.1f, start y=%.1f", reduce, rest.Y, start.Y)
-		}
-		switch {
-		case reduce && early.Y != rest.Y:
-			t.Fatalf("less motion left the column moving: y=%.1f then %.1f", early.Y, rest.Y)
-		case !reduce && early.Y <= rest.Y:
-			t.Fatalf("the fold went in one frame though motion is allowed: y=%.1f then %.1f", early.Y, rest.Y)
-		}
+	tt := ui.NewTester(w.view, 900, 600)
+	tt.Frame()
+
+	tt.Key(ui.Cmd, ui.Key2)
+	tt.Frame()
+	if got := w.selectedMachine(); got != "m2" {
+		t.Fatalf("⌘2 chose %q, want the second machine", got)
+	}
+
+	tt.Key(ui.Cmd, ui.Key3)
+	tt.Frame()
+	if got := w.selectedMachine(); got != "m2" {
+		t.Fatalf("⌘3 with two machines chose %q, want no change", got)
+	}
+
+	tt.Key(ui.Cmd, ui.Key1)
+	tt.Frame()
+	if got := w.selectedMachine(); got != machineLocal {
+		t.Fatalf("⌘1 chose %q, want this machine", got)
 	}
 }
 
@@ -383,7 +631,7 @@ func TestFoldingAGroupLandsAtOnceWithLessMotion(t *testing.T) {
 			tt.SetPreferences(ui.Preferences{ReduceMotion: true})
 			tt.Frame()
 		}
-		if err := tt.Click(w.machineName(machineLocal)); err != nil {
+		if err := tt.Click(w.machineDisplayName(machineLocal)); err != nil {
 			t.Fatal(err)
 		}
 		tt.Advance(20 * time.Millisecond)
@@ -402,5 +650,57 @@ func TestFoldingAGroupLandsAtOnceWithLessMotion(t *testing.T) {
 		if !reduce && !mid {
 			t.Fatalf("the fold went in one frame though motion is allowed")
 		}
+	}
+}
+
+func TestMachineIconNameSpecificFirstAndWholeShortWords(t *testing.T) {
+	for name, want := range map[string]string{
+		"db-prod": "database", "docker-host": "container", "api-1": "terminal",
+		"darwin": "terminal", "pi-3": "cpu", "win-2024": "box", "mac-mini": "monitor",
+		"macbook": "laptop", "aws-eu": "cloud", "k8s-node": "container", "nas-1": "hard_drive",
+		"edge-router": "router", "print-hub": "printer", "web-server": "server",
+	} {
+		if got := machineIconName(name); got != want {
+			t.Errorf("machineIconName(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// The hot buttons lead the title row: search, settings, then the folding
+// control, all on the title's own line.
+func TestTheHotButtonsSitBesideTheFoldingButton(t *testing.T) {
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = newTestFleet(t)
+	// The toolbar is a fixed overlay owned by the full window, rather than a
+	// child of the clipping sidebar. Draw the real view so its absolute frame is
+	// the same one used by the desktop window.
+	tt := ui.NewTester(w.view, previewWidth, previewHeight)
+	tt.Frame()
+
+	fold, ok := tt.Find(locales.ActionToggleSidebar())
+	if !ok {
+		t.Fatal("the folding button is not on screen")
+	}
+	search, ok := tt.Find(locales.ActionPalette())
+	if !ok {
+		t.Fatal("the search button is not on screen")
+	}
+	gear, ok := tt.Find(locales.ActionSettings())
+	if !ok {
+		t.Fatal("the settings button is not on screen")
+	}
+	if got := gear.X - (search.X + search.W); got != 2 {
+		t.Errorf("settings is %v points from search, want 2", got)
+	}
+	if got := fold.X - (gear.X + gear.W); got != 2 {
+		t.Errorf("folding button is %v points from settings, want 2", got)
+	}
+	// Their boxes differ in size; the row centres them, so it is the centres
+	// that have to agree, not the tops.
+	if a, b := search.Y+search.H/2, fold.Y+fold.H/2; a != b {
+		t.Errorf("search is centred at y=%v and the folding button at y=%v", a, b)
+	}
+	if a, b := gear.Y+gear.H/2, fold.Y+fold.H/2; a != b {
+		t.Errorf("settings is centred at y=%v and the folding button at y=%v", a, b)
 	}
 }

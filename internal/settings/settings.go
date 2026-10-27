@@ -107,6 +107,12 @@ type Settings struct {
 	// preference rather than the window's state: a hidden machine that comes to
 	// need the user still appears, because quiet must not become silent.
 	HiddenMachines []string `json:"hiddenMachines,omitempty"`
+
+	// MachineIcons are the glyphs the person picked for machines, by machine id
+	// and by the key in the machine icon menu ("laptop", "server", …). A
+	// machine with no entry follows the name rule, so a fleet nobody has touched
+	// still gets glyphs that suggest what its machines are.
+	MachineIcons map[string]string `json:"machineIcons,omitempty"`
 }
 
 // Dir is where the desktop shell keeps its settings. BEACON_CONFIG_HOME or

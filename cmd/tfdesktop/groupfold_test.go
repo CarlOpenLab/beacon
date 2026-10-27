@@ -3,65 +3,46 @@ package main
 import (
 	"testing"
 	"time"
-
-	"github.com/CarlOpenLab/beacon/internal/protocol"
-	"github.com/CarlOpenLab/beacon/internal/tunnel"
 )
 
-// A group the person folds by hand takes its rows with it: the group below
-// slides up over the fold instead of the rows vanishing between two frames.
+// A group the person folds by hand takes its rows with it: they are clipped and
+// faded over the fold rather than vanishing between two frames. A group the
+// window opens for the person — a jump into one of its sessions — is there on
+// the next frame, with no fold to watch: the column the person turned back to is
+// already the one they expect.
 func TestAMachineGroupFoldsItsRowsWithAnAnimation(t *testing.T) {
 	w, _ := newTestShellWindow(t, "one")
 	w.fleet = newTestFleet(t)
 	w.collapsed = make(map[string]bool)
 	w.foldByHand = make(map[string]bool)
-	w.roster = []tunnel.Machine{{ID: "m2", Name: "second"}}
-	// The second machine has a session, so it keeps a header of its own rather
-	// than joining the other row: this is about one group folding, not about
-	// which machines earn a place.
-	w.remoteSessions = map[string][]protocol.Summary{
-		"m2": {{SessionID: "r1", Title: "remote one", Alive: true}},
-	}
 
 	tt := drawNav(t, w)
 	tt.Frame()
-	start, ok := tt.Find("second")
+	start, ok := tt.Find("one")
 	if !ok {
-		t.Fatalf("the second machine is not in the column; texts = %v", tt.Texts())
+		t.Fatalf("the shell is not in the column; texts = %v", tt.Texts())
 	}
 
-	// The person clicked the first group's header: its rows leave, and the
-	// second group is on its way up when the next frame lands.
+	// The person clicked the group's header: its rows leave over the fold.
 	w.foldByHand[machineLocal] = true
 	w.collapsed[machineLocal] = true
 	tt.Frame()
 	tt.Advance(60 * time.Millisecond)
-	mid, ok := tt.Find("second")
-	if !ok {
-		t.Fatalf("the second machine left the column while the first folded")
-	}
-	if mid.Y >= start.Y {
-		t.Fatalf("60ms into the fold the second group is at y=%.1f, want above %.1f", mid.Y, start.Y)
+	if _, ok := tt.Find("one"); !ok {
+		t.Fatal("the rows left in one frame, with no fold to watch")
 	}
 
 	tt.Advance(300 * time.Millisecond)
-	end, ok := tt.Find("second")
-	if !ok {
-		t.Fatalf("the second machine left the column")
-	}
-	if end.Y >= mid.Y {
-		t.Fatalf("the fold stopped at y=%.1f and rests at %.1f", mid.Y, end.Y)
+	tt.Frame()
+	if _, ok := tt.Find("one"); ok {
+		t.Fatalf("the rows stayed after the fold; texts = %v", tt.Texts())
 	}
 
-	// A group the window opens for the person — a jump into one of its
-	// sessions — is there on the next frame, with no fold to watch: the column
-	// the person turned back to is already the one they expect.
 	w.collapsed[machineLocal] = false
 	tt.Frame()
-	tt.Advance(20 * time.Millisecond)
-	now, ok := tt.Find("second")
+	now, ok := tt.Find("one")
 	if !ok {
-		t.Fatalf("the second machine left the column")
+		t.Fatalf("the group did not open for the window; texts = %v", tt.Texts())
 	}
 	if now.Y != start.Y {
 		t.Fatalf("the group opened to y=%.1f, want it back at %.1f on the same frame", now.Y, start.Y)

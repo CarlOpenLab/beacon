@@ -41,6 +41,8 @@ func openLocalLink(h *hub.Hub) *localLink {
 		return pipe.Send(b) == nil
 	})
 	go l.readLoop(pipe.Recv)
+	l.sendMsg(protocol.Msg{T: protocol.CTHello, V: protocol.Version,
+		Caps: []string{protocol.CapFile, protocol.CapDeflate}})
 	return l
 }
 

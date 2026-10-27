@@ -4,14 +4,17 @@ package main
 //
 // The clipboard belongs to the machine the person is sitting at; the shell may
 // be running somewhere else. A pasted screenshot is therefore not text to send
-// down the pipe: it has to become a file on the machine that owns the PTY, and
-// what the program is given is that file's path. The upload is the hub's
+// down the pipe: for a remote shell it becomes a file on the machine that owns
+// the PTY, and the program receives its path. A local image-only paste sends
+// Ctrl+V so image-aware CLI programs read the original system clipboard, as
+// they do in Gloss. The upload is the hub's
 // file.put (see internal/hub/upload.go), which writes into a private temp
 // directory and answers with an absolute path.
 //
 // The terminal hands every paste to OnPaste before the program sees it, which
-// is the hook this file fills: a paste that carries only text is left to the
-// terminal, and one that carries an image or files is taken here.
+// is the hook this file fills: a paste that carries only text is written here
+// as text (see pasteText for the Windows reason), and one that carries an
+// image or files is taken here too.
 
 import (
 	"fmt"
@@ -21,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
 
 	"github.com/CarlOpenLab/beacon/internal/diag"
@@ -47,8 +51,8 @@ type pasteItem struct {
 // decide at once, so it reads only the clipboard's format list here and does
 // the reading and the uploading on a goroutine.
 //
-// It reports whether it took the paste: true for an image or a file, false for
-// text, which the terminal pastes itself exactly as it always did.
+// It reports whether it took the paste: true for text, an image or a file;
+// false only when there is nothing worth sending.
 func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 	if tb == nil || tb.sess == nil || tb.sess.link == nil {
 		return false
@@ -66,29 +70,107 @@ func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 			}
 		}
 	}
+	// One line per paste, whatever it turns out to be: which machine, which
+	// session, what the clipboard offers, and what was recognised in it. A
+	// paste that does nothing has to leave a trace that says where it stopped.
+	diag.Infof("paste", "clipboard machine=%s session=%s formats=%v files=%v image=%v",
+		tb.machine, tb.id, formats, hasFile, hasImage)
 	if !hasFile && !hasImage {
+		if text, err := d.Read(transfer.Text); err == nil {
+			// What the terminal would do with this text is offer it as a paste
+			// event to a program that asked for one, and Windows cannot carry
+			// that event to the program (see pasteText). Write it here instead,
+			// which keeps a plain text paste as ordinary as it is elsewhere.
+			diag.Infof("paste", "text machine=%s session=%s bytes=%d", tb.machine, tb.id, len(text))
+			if pasteText(tb, string(text)) {
+				return true
+			}
+		}
+		// On Windows, reading every advertised representation can fail when a
+		// clipboard owner exposes a malformed rich format alongside valid text.
+		// The native text API reads CF_UNICODETEXT directly, so keep plain-text
+		// paste working instead of letting one unrelated format swallow it.
+		if runtime.GOOS == "windows" {
+			text := strings.TrimSuffix(mygo.Clipboard.ReadText(), "\x00")
+			if text != "" {
+				diag.Infof("paste", "text fallback machine=%s session=%s bytes=%d", tb.machine, tb.id, len(text))
+				if pasteText(tb, text) {
+					return true
+				}
+			}
+		}
+		diag.Infof("paste", "not a file or image: left to the terminal")
 		return false
 	}
 
 	if tb.known() && !tb.held() {
+		diag.Infof("paste", "refused: read-only machine=%s session=%s", tb.machine, tb.id)
 		w.update(func() { w.setNotice(locales.PasteReadOnly()) })
 		return true
 	}
+	// Local CLI agents own image attachment handling. A path pasted as text is
+	// not the same as their image-paste gesture. Only forward that gesture for
+	// an image-only clipboard; text and explicit file lists keep their normal
+	// paste paths. Remote processes cannot read this machine's clipboard.
+	if tb.machine == machineLocal && hasImage && !hasFile {
+		text, _ := d.Read(transfer.Text)
+		if len(text) == 0 {
+			if tb.term == nil {
+				return false
+			}
+			diag.Infof("paste", "forward image gesture machine=%s session=%s", tb.machine, tb.id)
+			tb.term.Send([]byte{0x16})
+			return true
+		}
+		return false
+	}
 	if !tb.sess.link.capable(protocol.CapFile) {
+		diag.Infof("paste", "refused: the machine does not take files machine=%s caps=%v",
+			tb.machine, tb.sess.link.capsList())
 		w.update(func() { w.setNotice(locales.PasteUnsupported()) })
 		return true
 	}
 
 	snapshot := d.Snapshot()
 	machine := tb.machine
-	go w.uploadPaste(tb, snapshot, hasFile, hasImage, machine)
+	platform := runtime.GOOS
+	if m, ok := w.machineByID(machine); ok && m.Host.Platform != "" {
+		platform = m.Host.Platform
+	}
+	go w.uploadPaste(tb, snapshot, hasFile, hasImage, machine, platform, tb.sess.link, tb.id)
+	return true
+}
+
+// pasteText writes text into the tab's terminal as a paste, and reports
+// whether it did.
+//
+// A program that asks for paste events (mode 5522, which omp and other agents
+// enable for images) is offered the clipboard's formats instead of its text,
+// and reads back what it wants. That offer cannot cross ConPTY: Windows reads
+// what a terminal writes to a console as keyboard input, and the console host
+// drops an OSC 5522 sequence rather than handing it to the program. A text
+// paste would then disappear while an image, which this file takes itself,
+// still arrived. Telling the terminal the events are off makes it write the
+// text as a paste — bracketed when the program asked for bracketed pastes —
+// which is what every program reads through the same ConPTY. A tab keeps that
+// off once told: no paste event can reach a Windows program, and the paths an
+// upload pastes are text too.
+func pasteText(tb *tab, text string) bool {
+	if tb == nil || tb.term == nil || text == "" {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		tb.term.Feed([]byte("\x1b[?5522l"))
+	}
+	tb.term.Paste(text)
 	return true
 }
 
 // uploadPaste turns the clipboard into items and sends them one at a time, then
 // pastes the paths into the shell.
-func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, machine string) {
+func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, machine, platform string, link *link, sessionID string) {
 	items, reason := pasteItems(d, hasFile, hasImage)
+	diag.Infof("paste", "read machine=%s session=%s items=%d reason=%q", machine, sessionID, len(items), reason)
 	if reason != "" {
 		w.update(func() { w.setNotice(reason) })
 		return
@@ -97,16 +179,15 @@ func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, m
 		items = items[:maxPasteFiles]
 	}
 
-	link := tb.sess.link
 	paths := make([]string, 0, len(items))
 	for _, item := range items {
-		path, code, message, ok := link.putFile(tb.id, item.name, item.data)
+		path, code, message, ok := link.putFile(sessionID, item.name, item.data)
 		if !ok {
 			line := message
 			if line == "" {
 				line = code
 			}
-			diag.Warnf("paste", "upload failed machine=%s session=%s code=%s message=%q", machine, tb.id, code, message)
+			diag.Warnf("paste", "upload failed machine=%s session=%s code=%s message=%q", machine, sessionID, code, message)
 			w.update(func() { w.setNotice(locales.PasteFailed(line)) })
 			return
 		}
@@ -117,20 +198,13 @@ func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, m
 	}
 
 	quoted := make([]string, 0, len(paths))
-	platform := runtime.GOOS
-	if m, ok := w.machineByID(machine); ok && m.Host.Platform != "" {
-		platform = m.Host.Platform
-	}
 	for _, path := range paths {
 		quoted = append(quoted, shellQuote(path, platform))
 	}
 	text := strings.Join(quoted, " ") + " "
-	diag.Infof("paste", "pasting machine=%s session=%s files=%d", machine, tb.id, len(paths))
+	diag.Infof("paste", "uploaded machine=%s session=%s paths=%v text=%q", machine, sessionID, paths, text)
 	w.update(func() {
-		if tb.term == nil {
-			return
-		}
-		tb.term.Paste(text)
+		pasteText(tb, text)
 	})
 }
 

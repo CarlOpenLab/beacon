@@ -59,7 +59,7 @@ func TestAMachineGroupRefreshesItsSessions(t *testing.T) {
 	if !tt.HasText(locales.SessionNewOnMachine()) {
 		t.Fatalf("the group has no new-terminal button at rest; texts = %v", tt.Texts())
 	}
-	name := w.machineName(machineLocal)
+	name := w.machineDisplayName(machineLocal)
 	header, ok := tt.Find(name)
 	if !ok {
 		t.Fatalf("this machine's group is missing; texts = %v", tt.Texts())

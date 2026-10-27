@@ -134,6 +134,14 @@ func (l *link) capable(capability string) bool {
 	return protocol.HasCap(l.caps, capability)
 }
 
+// capsList is what the hub said it can do, for a log line about a feature that
+// was refused for want of one.
+func (l *link) capsList() []string {
+	l.capsMu.Lock()
+	defer l.capsMu.Unlock()
+	return append([]string(nil), l.caps...)
+}
+
 // label is the machine this link speaks to, for a log line.
 func (l *link) label() string {
 	if l.name == "" {
