@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -139,9 +140,9 @@ func TestShellQuote(t *testing.T) {
 	}
 }
 
-// Exercise the actual clipboard hook, local handshake and hub upload, then
+// Exercise the actual file clipboard hook, local handshake and hub upload, then
 // verify the path delivered to the terminal's input stream names those bytes.
-func TestLocalImagePasteUploadsAndSendsPath(t *testing.T) {
+func TestLocalFilePasteUploadsAndSendsPath(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t)
 	w.fleet = f
@@ -169,8 +170,16 @@ func TestLocalImagePasteUploadsAndSendsPath(t *testing.T) {
 	}
 	w.local.sendMu.Unlock()
 	payload := []byte("clipboard image payload")
-	if !w.pasteInto(tb, transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, payload)))) {
-		t.Fatal("image paste was not handled")
+	source := filepath.Join(t.TempDir(), "screenshot.png")
+	if err := os.WriteFile(source, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := transfer.FileData(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !w.pasteInto(tb, data) {
+		t.Fatal("file paste was not handled")
 	}
 	var path string
 	waitForPaste(t, "uploaded path to reach terminal input", func() bool {
@@ -187,6 +196,85 @@ func TestLocalImagePasteUploadsAndSendsPath(t *testing.T) {
 	got, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(got, payload) {
 		t.Fatalf("pasted path %q: bytes=%q err=%v", path, got, err)
+	}
+}
+
+func TestLocalImagePasteForwardsAgentGesture(t *testing.T) {
+	reader, _ := io.Pipe()
+	conn := &pasteConn{reader: reader}
+	w := &window{}
+	tb := &tab{machine: machineLocal, id: "s1", role: protocol.RoleController,
+		sess: newSession("s1", newLink(), nil)}
+	term, err := terminal.New(terminal.Options{
+		Conn:     conn,
+		Keybinds: []terminal.Keybind{{Mods: ui.Cmd, Key: ui.KeyV, Action: terminal.ActionPaste}},
+		OnPaste:  func(d transfer.Data) bool { return w.pasteInto(tb, d) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tb.term = term
+	tt := ui.NewTester(func(c *ui.Context) {
+		terminal.View(c, term).Fill().AutoFocus()
+	}, 500, 240)
+	tt.SetClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, []byte("image")))))
+	tt.Key(ui.Cmd, ui.KeyV)
+	waitForPaste(t, "one raw Ctrl+V to reach the local agent", func() bool {
+		return conn.text() == "\x16"
+	})
+	// No upload capability is required for the local image gesture, and text
+	// alongside an image must still follow the ordinary terminal paste path.
+	tt.SetClipboardData(transfer.New(transfer.NewItem(
+		transfer.Bytes(transfer.PNG, []byte("image")),
+		transfer.Bytes(transfer.Text, []byte("some text")),
+	)))
+	tt.Key(ui.Cmd, ui.KeyV)
+	waitForPaste(t, "text paste without another image gesture", func() bool {
+		return conn.text() == "\x16some text"
+	})
+	tb.role = protocol.RoleViewer
+	if !w.pasteInto(tb, transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, []byte("image"))))) {
+		t.Fatal("read-only image paste should be consumed")
+	}
+	if got := conn.text(); got != "\x16some text" {
+		t.Fatalf("read-only paste sent input: %q", got)
+	}
+}
+
+func TestRemoteImagePasteStillUploadsInsteadOfForwardingGesture(t *testing.T) {
+	reader, _ := io.Pipe()
+	conn := &pasteConn{reader: reader}
+	term, err := terminal.New(terminal.Options{Conn: conn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	l := newLink()
+	l.setHost(nil, []string{protocol.CapFile})
+	var uploaded bytes.Buffer
+	l.setSend(func(m protocol.Msg) bool {
+		switch m.T {
+		case protocol.CTFileChunk:
+			uploaded.Write(m.Data)
+		case protocol.CTFileDone:
+			l.deliverFile(protocol.Msg{T: protocol.STFileSaved, ReqID: m.ReqID, Path: "/tmp/remote-shot.png"})
+		}
+		return true
+	})
+	w := &window{}
+	tb := &tab{machine: "remote", id: "s1", role: protocol.RoleController,
+		sess: newSession("s1", l, nil), term: term}
+	payload := []byte("remote image bytes")
+	if !w.pasteInto(tb, transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, payload)))) {
+		t.Fatal("remote image was not handled")
+	}
+	waitForPaste(t, "remote image path", func() bool {
+		w.drain()
+		return conn.text() == "'/tmp/remote-shot.png' "
+	})
+	if !bytes.Equal(uploaded.Bytes(), payload) {
+		t.Fatalf("uploaded %q, want %q", uploaded.Bytes(), payload)
 	}
 }
 

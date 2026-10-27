@@ -4,8 +4,10 @@ package main
 //
 // The clipboard belongs to the machine the person is sitting at; the shell may
 // be running somewhere else. A pasted screenshot is therefore not text to send
-// down the pipe: it has to become a file on the machine that owns the PTY, and
-// what the program is given is that file's path. The upload is the hub's
+// down the pipe: for a remote shell it becomes a file on the machine that owns
+// the PTY, and the program receives its path. A local image-only paste sends
+// Ctrl+V so image-aware CLI programs read the original system clipboard, as
+// they do in Gloss. The upload is the hub's
 // file.put (see internal/hub/upload.go), which writes into a private temp
 // directory and answers with an absolute path.
 //
@@ -81,6 +83,22 @@ func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 		w.update(func() { w.setNotice(locales.PasteReadOnly()) })
 		return true
 	}
+	// Local CLI agents own image attachment handling. A path pasted as text is
+	// not the same as their image-paste gesture. Only forward that gesture for
+	// an image-only clipboard; text and explicit file lists keep their normal
+	// paste paths. Remote processes cannot read this machine's clipboard.
+	if tb.machine == machineLocal && hasImage && !hasFile {
+		text, _ := d.Read(transfer.Text)
+		if len(text) == 0 {
+			if tb.term == nil {
+				return false
+			}
+			diag.Infof("paste", "forward image gesture machine=%s session=%s", tb.machine, tb.id)
+			tb.term.Send([]byte{0x16})
+			return true
+		}
+		return false
+	}
 	if !tb.sess.link.capable(protocol.CapFile) {
 		diag.Infof("paste", "refused: the machine does not take files machine=%s caps=%v",
 			tb.machine, tb.sess.link.capsList())
@@ -90,15 +108,19 @@ func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 
 	snapshot := d.Snapshot()
 	machine := tb.machine
-	go w.uploadPaste(tb, snapshot, hasFile, hasImage, machine)
+	platform := runtime.GOOS
+	if m, ok := w.machineByID(machine); ok && m.Host.Platform != "" {
+		platform = m.Host.Platform
+	}
+	go w.uploadPaste(tb, snapshot, hasFile, hasImage, machine, platform, tb.sess.link, tb.id)
 	return true
 }
 
 // uploadPaste turns the clipboard into items and sends them one at a time, then
 // pastes the paths into the shell.
-func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, machine string) {
+func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, machine, platform string, link *link, sessionID string) {
 	items, reason := pasteItems(d, hasFile, hasImage)
-	diag.Infof("paste", "read machine=%s session=%s items=%d reason=%q", machine, tb.id, len(items), reason)
+	diag.Infof("paste", "read machine=%s session=%s items=%d reason=%q", machine, sessionID, len(items), reason)
 	if reason != "" {
 		w.update(func() { w.setNotice(reason) })
 		return
@@ -107,16 +129,15 @@ func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, m
 		items = items[:maxPasteFiles]
 	}
 
-	link := tb.sess.link
 	paths := make([]string, 0, len(items))
 	for _, item := range items {
-		path, code, message, ok := link.putFile(tb.id, item.name, item.data)
+		path, code, message, ok := link.putFile(sessionID, item.name, item.data)
 		if !ok {
 			line := message
 			if line == "" {
 				line = code
 			}
-			diag.Warnf("paste", "upload failed machine=%s session=%s code=%s message=%q", machine, tb.id, code, message)
+			diag.Warnf("paste", "upload failed machine=%s session=%s code=%s message=%q", machine, sessionID, code, message)
 			w.update(func() { w.setNotice(locales.PasteFailed(line)) })
 			return
 		}
@@ -127,15 +148,11 @@ func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, m
 	}
 
 	quoted := make([]string, 0, len(paths))
-	platform := runtime.GOOS
-	if m, ok := w.machineByID(machine); ok && m.Host.Platform != "" {
-		platform = m.Host.Platform
-	}
 	for _, path := range paths {
 		quoted = append(quoted, shellQuote(path, platform))
 	}
 	text := strings.Join(quoted, " ") + " "
-	diag.Infof("paste", "uploaded machine=%s session=%s paths=%v text=%q", machine, tb.id, paths, text)
+	diag.Infof("paste", "uploaded machine=%s session=%s paths=%v text=%q", machine, sessionID, paths, text)
 	w.update(func() {
 		if tb.term == nil {
 			return

@@ -4,6 +4,19 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.5
+
+**Beacon 0.7.5: 本机图片粘贴交给 CLI 处理 — Native image paste for local CLI agents**
+
+- **Local image-only pastes now use the same gesture as Gloss.** Instead of uploading a screenshot and inserting its quoted path as text, the desktop forwards raw Ctrl+V to the local foreground program. Image-aware CLI agents can then read the original system clipboard and attach the image themselves. Text pastes, explicit file lists and read-only restrictions retain their existing behavior.
+  — 本机剪贴板只有图片时，桌面端按 Gloss 的方式向前台程序发送原始 Ctrl+V，让支持图片的 CLI agent 自己读取系统剪贴板并创建附件，不再把截图路径当普通文字插入。文字粘贴、显式文件列表及只读限制保持原有处理。
+- **Remote images still upload to the shell's machine.** Remote programs cannot read the local clipboard, so they continue receiving an uploaded file path. Regression tests cover the local image gesture, mixed text/image clipboard content, file uploads, remote images and read-only panes.
+  — 远程程序无法读取本机剪贴板，图片仍上传到 shell 所在机器后传入文件路径。新增回归覆盖本机图片按键、图文混合剪贴板、文件上传、远程图片与只读窗格。
+- **Snapshot upload metadata before starting background work.** The upload worker no longer reads machine roster and session metadata from UI-owned state, fixing a data race while session lists update during a paste.
+  — 上传开始前在界面线程获取机器平台、连接和会话信息，避免上传协程与会话列表更新并发读取界面状态，修复相关数据竞争。
+
+**Full Changelog**: https://github.com/CarlOpenLab/beacon/compare/v0.7.4...v0.7.5
+
 ## 0.7.4
 
 **Beacon 0.7.4: 底部机器切换栏与图片粘贴修复 — Machine rail and image paste fixes**
