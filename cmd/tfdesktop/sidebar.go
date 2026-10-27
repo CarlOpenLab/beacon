@@ -1,6 +1,7 @@
 package main
 
 import (
+	"hash/fnv"
 	"math"
 	"sort"
 	"strings"
@@ -274,6 +275,7 @@ const (
 	machineTileRadius = float32(7)
 	machineRailFade   = float32(14)
 	machineGlyphSize  = float32(14)
+	machinePetSize    = float32(16)
 	machineRailButton = float32(26)
 	machineTileGap    = float32(4)
 )
@@ -287,7 +289,10 @@ var machineSwitch = ui.Animation{Duration: machineSwitchDuration}
 
 // machineRail keeps every machine available without an overflow menu.
 func (w *window) machineRail(c *ui.Context, pal *uitokens.Palette) {
+	// The strip floats a little above the window's edge: a rail glued to the
+	// bottom reads as part of the frame, not as a row of machines.
 	ui.Row(c).Key("machine-rail").Label("machine rail").Height(machineRailH+2*machineRailPad).Shrink(0).
+		Margin(0, 0, 6, 0).
 		Padding(machineRailPad, 12).
 		AlignItems(ui.Center).Children(func() {
 		machines := w.railMachines(c.Now())
@@ -339,8 +344,11 @@ func (w *window) machineRailTile(c *ui.Context, pal *uitokens.Palette, m tunnel.
 	slot := ui.Box(c).Key("rail-slot:"+m.ID).Size(machineTileSize+8, machineRailH).Shrink(0).
 		AlignItems(ui.Center).Justify(ui.Center)
 	slot.Children(func() {
+		// The pet draws bottom-heavy — it sits on its canvas — so the tile
+		// carries two points of padding under it: centered, the drawing reads a
+		// point high of the circle's middle, the way a sitting pet does.
 		tile := ui.Box(c).Key("rail:"+m.ID).Size(machineTileSize, machineTileSize).
-			Radius(machineTileSize / 2).Center().Shrink(0).
+			Radius(machineTileSize / 2).Padding(0, 0, 2, 0).Center().Shrink(0).
 			Focusable().Role(ui.RoleTab).Selected(selected).
 			Label(w.machineRailLabel(m)).Tooltip(w.machineTooltip(m)).
 			Cursor(ui.CursorPointer)
@@ -354,7 +362,14 @@ func (w *window) machineRailTile(c *ui.Context, pal *uitokens.Palette, m tunnel.
 				bg = bg.Alpha(2.6)
 			}
 		case selected:
-			bg = machineActiveStateBg(c, state)
+			// An offline machine chosen is chosen all the same: the active wash
+			// is the blue every other machine gets — presence is what the
+			// faint pet already says, not something the wash must repeat.
+			if state == "offline" {
+				bg = machineActiveBg(c)
+			} else {
+				bg = machineActiveStateBg(c, state)
+			}
 			if tile.Hovered() {
 				bg = bg.Alpha(1.15)
 			}
@@ -369,24 +384,27 @@ func (w *window) machineRailTile(c *ui.Context, pal *uitokens.Palette, m tunnel.
 		fg := pal.TextMuted
 		if selected {
 			fg = pal.Text
-		}
-		// No badge: a machine that needs you or has failed is told by its own
-		// glyph's colour, so it stays readable when scrolled to the strip's edge.
-		switch state {
-		case "waiting":
-			fg = machineNeedsColor(c)
-		case "failed":
-			fg = machineFailedColor(c)
-		case "pending":
-			fg = machinePendingColor(c)
-		case "offline":
+		} else if state == "offline" {
+			// No badge: the pet is the machine's identity and carries no state
+			// of its own — the tile's wash already tells waiting from failed
+			// from pending, in one place and at full strength. An offline pet
+			// sleeps at the faint tier, presence rather than alarm — unless it
+			// is the chosen one, which reads as chosen first.
 			fg = pal.TextFaint
 		}
 		tile.TextColor(fg)
 		tile.Children(func() {
-			ui.Icon(c, w.railGlyph(m, state == "failed")).Size(machineGlyphSize, machineGlyphSize).TextColor(fg)
+			ui.Icon(c, w.railGlyph(m)).Size(machinePetSize, machinePetSize).TextColor(fg)
 		})
-		tile.ContextMenu(func(mu *ui.Menu) { w.machineIconMenu(mu, m) })
+		// Right-click is the picker: no middleman menu naming a pet anyone can
+		// already see. The builder adds no items, and a menu with none is one
+		// the engine never shows — the request ends here, and the panel below
+		// answers it in this same frame.
+		tile.ContextMenu(func(mu *ui.Menu) {
+			w.petPickerFor = m.ID
+			w.petPickerSite = petPickerRail
+			w.petPickerOpen = true
+		})
 		if selected {
 			// The chosen machine is the one fact the strip must never hide: if the
 			// person scrolls it out, it comes back rather than becoming merely one of
@@ -396,33 +414,10 @@ func (w *window) machineRailTile(c *ui.Context, pal *uitokens.Palette, m tunnel.
 		if tile.Clicked() {
 			w.chooseMachine(m)
 		}
+		if w.petPickerOpen && w.petPickerFor == m.ID && w.petPickerSite == petPickerRail {
+			w.petPicker(c, tile, m, true)
+		}
 	})
-}
-
-// machineNeedsColor and machineFailedColor are the rail's two coloured glyphs,
-// measured against the strip in each appearance: light 3.67:1 and 4.69:1 on the
-// column, dark with room to spare. They are the rail's own values rather than
-// the palette's, because the palette's orange is tuned for a dot beside text,
-// not for a glyph on the strip.
-func machineNeedsColor(c *ui.Context) ui.Color {
-	if c.Theme().Dark {
-		return ui.Hex("#f0a33a")
-	}
-	return ui.Hex("#ad6c0a")
-}
-
-func machineFailedColor(c *ui.Context) ui.Color {
-	if c.Theme().Dark {
-		return ui.Hex("#ff6961")
-	}
-	return ui.Hex("#c0392b")
-}
-
-func machinePendingColor(c *ui.Context) ui.Color {
-	if c.Theme().Dark {
-		return ui.Hex("#b8a7ff")
-	}
-	return ui.Hex("#5941b8")
 }
 
 // machineActiveBg is the selected tile's solid-but-quiet surface. It is kept
@@ -689,95 +684,33 @@ func shortestSuffix(id string, group []tunnel.Machine) string {
 	return id
 }
 
-// machineIconChoice is one glyph in the machine icon menu: its key in the
-// settings file, its word in both languages, and its drawing. The order is the
-// menu's order.
-var machineIconChoices = []struct {
-	key   string
-	label func() string
-	glyph *ui.SVG
-}{
-	{"laptop", locales.MachineIconLaptop, iconLaptop},
-	{"monitor", locales.MachineIconMonitor, iconMonitorRail},
-	{"server", locales.MachineIconServer, iconServer},
-	{"hard_drive", locales.MachineIconHardDrive, iconHardDrive},
-	{"cpu", locales.MachineIconCpu, iconCPU},
-	{"database", locales.MachineIconDatabase, iconDatabase},
-	{"cloud", locales.MachineIconCloud, iconCloud},
-	{"container", locales.MachineIconContainer, iconContainer},
-	{"router", locales.MachineIconRouter, iconRouter},
-	{"printer", locales.MachineIconPrinter, iconPrinter},
-	{"box", locales.MachineIconBox, iconBox},
-	{"terminal", locales.MachineIconTerminal, iconTerminalRail},
-}
-
-// machineIconGlyph finds a choice by its settings key.
+// machineIconGlyph finds a pet by its settings key.
 func machineIconGlyph(key string) (*ui.SVG, bool) {
-	for _, c := range machineIconChoices {
-		if c.key == key {
-			return c.glyph, true
-		}
-	}
-	return nil, false
+	g, ok := petGlyphs[key]
+	return g, ok
 }
 
-// machineIconName is the automatic rule: the machine's name, lowercased, first
-// match top to bottom. It is deliberately about the name and not the platform:
-// a fleet is named by the people who run it, and "db-2" is a better hint than
-// the fact that it happens to run Linux.
+// machineIconName is the automatic rule: the machine wears the pet its name
+// hashes to. Pets are identities, not kinds — a slime is not a database — so
+// the name's meaning does not matter, only that it is the name the person gave
+// it: the same name lands on the same pet across restarts, and a fleet spreads
+// across the catalog instead of everyone wearing the first pet. The suffix a
+// local network appends does not move the pet: studio and studio.local are one
+// machine. A pet picked in the menu wins over the hash.
 func machineIconName(name string) string {
-	n := strings.ToLower(name)
-	words := strings.FieldsFunc(n, func(r rune) bool {
-		return r == '-' || r == '_' || r == '.' || r == ' '
-	})
-	whole := make(map[string]bool, len(words))
-	for _, word := range words {
-		whole[word] = true
-	}
-	// Most specific first: db-prod is a database before it is a server, and
-	// docker-host a container before it is a host.
-	rules := []struct {
-		key  string
-		word []string
-	}{
-		{"laptop", []string{"book", "laptop", "本"}},
-		{"monitor", []string{"mini", "imac", "studio", "desktop", "pc", "台"}},
-		{"database", []string{"db", "sql", "postgres", "mysql", "redis", "库"}},
-		{"cloud", []string{"cloud", "aws", "azure", "gcp", "fly", "云"}},
-		{"container", []string{"docker", "k8s", "vm", "container", "容器"}},
-		{"hard_drive", []string{"nas", "disk", "storage", "backup"}},
-		{"cpu", []string{"pi", "raspberry", "arm"}},
-		{"router", []string{"router", "gateway", "net", "路由"}},
-		{"printer", []string{"print", "打印"}},
-		{"server", []string{"server", "srv", "prod", "host", "服务"}},
-		{"box", []string{"win", "windows"}},
-	}
-	for _, rule := range rules {
-		for _, word := range rule.word {
-			// Three letters or fewer match a whole word only: "api-1" is
-			// not a "pi", and "darwin" is not a "win".
-			if len([]rune(word)) <= 3 && word[0] < 0x80 {
-				if whole[word] {
-					return rule.key
-				}
-				continue
-			}
-			if strings.Contains(n, word) {
-				return rule.key
-			}
-		}
-	}
-	return "terminal"
+	h := fnv.New32a()
+	h.Write([]byte(strings.ToLower(machineDisplayHost(name, name))))
+	return petCatalog[h.Sum32()%uint32(len(petCatalog))].key
 }
 
-// railGlyph is the one seam between a machine and its drawing. A picked glyph
-// wins; a machine nobody picked for follows its name. A new rule for containers
-// or clouds belongs here and nowhere else.
-func (w *window) railGlyph(m tunnel.Machine, solid bool) *ui.SVG {
-	if glyph := machineGlyphSVG(w.machineIconKey(m), solid); glyph != nil {
+// railGlyph is the one seam between a machine and its drawing. A picked pet
+// wins; a machine nobody picked for wears the pet its name hashes to. A new
+// rule for how pets are assigned belongs here and nowhere else.
+func (w *window) railGlyph(m tunnel.Machine) *ui.SVG {
+	if glyph := petGlyphs[w.machineIconKey(m)]; glyph != nil {
 		return glyph
 	}
-	return machineGlyphSVG("terminal", solid)
+	return petGlyphs[petCatalog[0].key]
 }
 
 // machineIconKey is the glyph the menu ticks: the picked one, else the one the
@@ -816,16 +749,77 @@ func (w *window) setMachineIcon(id, key string) error {
 	return nil
 }
 
-func (w *window) machineIconMenu(mu *ui.Menu, m tunnel.Machine) {
-	currentIcon := w.machineIconKey(m)
-	mu.Submenu(locales.MachineIconMenu(), func(sub *ui.Menu) {
-		for _, choice := range machineIconChoices {
-			if sub.Item(choice.label()).Checked(choice.key == currentIcon).Chosen() {
-				if err := w.setMachineIcon(m.ID, choice.key); err != nil {
-					w.setNotice(err.Error())
-				}
-			}
+// The two places that offer the picker: the rail's tile draws the panel above
+// itself — the rail owns the window's bottom edge, so the panel has nowhere
+// else to go — and the machine group's header draws it below, as popovers
+// default to.
+const (
+	petPickerRail   = "rail"
+	petPickerHeader = "header"
+)
+
+// petPickerWidth fits one family of eight: cells of 34 with 6 between them,
+// and the panel's own padding of 14 on each side.
+const petPickerWidth = 8*34 + 7*6 + 2*14
+
+// petPicker is the panel that shows the catalog as drawings: four families of
+// eight, every pet on a tile of its own with its name under it. A pet is a
+// drawing, and a drawing chooses by being seen — the system menu this replaces
+// could name a 史莱姆 but never show one. The machine's current pet wears the
+// wash the rail's chosen tile wears, so the panel and the strip agree on which
+// pet is on.
+func (w *window) petPicker(c *ui.Context, anchor ui.Element, m tunnel.Machine, above bool) {
+	pal := paletteFor(c)
+	current := w.machineIconKey(m)
+	var families [][]petIcon
+	for _, p := range petCatalog {
+		if n := len(families); n > 0 && families[n-1][0].series == p.series {
+			families[n-1] = append(families[n-1], p)
+			continue
 		}
+		families = append(families, []petIcon{p})
+	}
+	ui.PopoverBase(c, anchor, &w.petPickerOpen, func(panel ui.Element) {
+		if above {
+			panel.AttachTo(anchor, ui.AnchorTop, ui.AnchorBottom)
+		}
+		panel.Label("pet-picker")
+		floating(panel.Width(petPickerWidth).Radius(14).Background(pal.Popover).Padding(14), pal)
+		ui.Column(c).Gap(12).Children(func() {
+			ui.Text(c, locales.MachineIconMenu()).FontSize(12).FontWeight(600).TextColor(pal.Text)
+			for _, family := range families {
+				ui.Row(c).Gap(6).Children(func() {
+					for _, p := range family {
+						w.petPickerCell(c, m, p, current)
+					}
+				})
+			}
+		})
+	})
+}
+
+// petPickerCell is one pet of the grid: the drawing on a tile of its own, the
+// name under it. Choosing one stores it with the machine and closes the panel.
+func (w *window) petPickerCell(c *ui.Context, m tunnel.Machine, p petIcon, current string) {
+	pal := paletteFor(c)
+	ui.Column(c).Gap(4).AlignItems(ui.Center).Children(func() {
+		cell := ui.Box(c).Size(34, 34).Radius(10).Center().
+			Label(p.zh + " " + p.en).Cursor(ui.CursorPointer)
+		if p.key == current {
+			cell.Background(machineActiveBg(c))
+		} else if cell.Hovered() {
+			cell.Background(machineHoverBg(c))
+		}
+		cell.Children(func() {
+			ui.Icon(c, petGlyphs[p.key]).Size(machinePetSize, machinePetSize).TextColor(pal.Text)
+		})
+		if cell.Clicked() {
+			if err := w.setMachineIcon(m.ID, p.key); err != nil {
+				w.setNotice(err.Error())
+			}
+			w.petPickerOpen = false
+		}
+		ui.Text(c, p.zh).FontSize(11).TextColor(pal.TextMuted).SingleLine()
 	})
 }
 
@@ -1081,25 +1075,23 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 		if mu.Item(locales.MachineRefresh()).Chosen() {
 			w.refreshMachines()
 		}
-		// The glyph is a hint and sometimes a wrong one. The menu is how a
+		// The pet is a hint and sometimes a wrong one. The picker is how a
 		// person corrects it; the choice is stored with the machine's other
 		// settings and outlives a reconnect.
-		currentIcon := w.machineIconKey(m)
-		mu.Submenu(locales.MachineIconMenu(), func(sub *ui.Menu) {
-			for _, choice := range machineIconChoices {
-				if sub.Item(choice.label()).Checked(choice.key == currentIcon).Chosen() {
-					if err := w.setMachineIcon(m.ID, choice.key); err != nil {
-						w.setNotice(err.Error())
-					}
-				}
-			}
-		})
+		if mu.Item(locales.MachineIconMenu()).Chosen() {
+			w.petPickerFor = m.ID
+			w.petPickerSite = petPickerHeader
+			w.petPickerOpen = true
+		}
 		if mu.Item(locales.ActionHideMachine()).Chosen() {
 			if err := w.setMachineHidden(m.ID, true); err != nil {
 				w.setNotice(err.Error())
 			}
 		}
 	})
+	if w.petPickerOpen && w.petPickerFor == m.ID && w.petPickerSite == petPickerHeader {
+		w.petPicker(c, hdr, m, false)
+	}
 	if hdr.Clicked() {
 		if !selected {
 			w.selectMachine(m)

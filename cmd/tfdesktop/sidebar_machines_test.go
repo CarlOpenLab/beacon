@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -106,85 +107,102 @@ func TestMachineDisplayHostStripsTheLocalSuffix(t *testing.T) {
 	}
 }
 
-// The glyph follows the machine's name, English or Chinese, in the menu's
-// order; the name the person gave it is the better hint than the platform it
-// happens to run.
-func TestMachineIconNameRule(t *testing.T) {
-	cases := []struct{ name, want string }{
-		{"carls-macbook", "laptop"},
-		{"笔记本", "laptop"},
-		{"mac-mini", "monitor"},
-		{"台式机", "monitor"},
-		{"prod-server", "server"},
-		{"服务", "server"},
-		{"nas", "hard_drive"},
-		{"raspberry-pi", "cpu"},
-		{"db-2", "database"},
-		{"数据库", "database"},
-		{"fly-cloud", "cloud"},
-		{"云", "cloud"},
-		{"docker-dev", "container"},
-		{"容器", "container"},
-		{"router-1", "router"},
-		{"路由", "router"},
-		{"printer", "printer"},
-		{"打印", "printer"},
-		{"windows-box", "box"},
-		{"something-else", "terminal"},
+// A machine nobody picked for wears the pet its name hashes to: the same name
+// lands on the same pet across restarts, casing and stray spaces do not move
+// it, and a fleet spreads across the catalog instead of everyone wearing the
+// first pet.
+func TestMachinePetFollowsTheNameStably(t *testing.T) {
+	keys := make(map[string]bool, len(petCatalog))
+	for _, p := range petCatalog {
+		keys[p.key] = true
 	}
-	for _, tc := range cases {
-		if got := machineIconName(tc.name); got != tc.want {
-			t.Errorf("machineIconName(%q) = %q, want %q", tc.name, got, tc.want)
+	first := machineIconName("studio")
+	if !keys[first] {
+		t.Fatalf("machineIconName(%q) = %q, which is not a pet in the catalog", "studio", first)
+	}
+	for _, variant := range []string{"Studio", "STUDIO", " studio ", "studio.local"} {
+		if got := machineIconName(variant); got != first {
+			t.Errorf("machineIconName(%q) = %q, want %q", variant, got, first)
+		}
+	}
+	seen := map[string]bool{}
+	for i := 0; i < 4*len(petCatalog); i++ {
+		seen[machineIconName(fmt.Sprintf("beacon-host-%d", i))] = true
+	}
+	if len(seen) < 2 {
+		t.Errorf("%d names all landed on one pet; the hash never spreads", 4*len(petCatalog))
+	}
+}
+
+// The catalog is four families of eight, every pet carrying a parsed drawing,
+// a name in both languages, and a key no other pet holds.
+func TestThePetCatalogIsFourFamiliesOfEight(t *testing.T) {
+	if len(petCatalog) != 32 {
+		t.Fatalf("the catalog holds %d pets, want 32", len(petCatalog))
+	}
+	seen := map[string]bool{}
+	families := map[string]int{}
+	for _, p := range petCatalog {
+		if seen[p.key] {
+			t.Errorf("pet %q appears twice", p.key)
+		}
+		seen[p.key] = true
+		families[p.series]++
+		if petGlyphs[p.key] == nil {
+			t.Errorf("pet %s has no drawing", p.key)
+		}
+		if p.zh == "" || p.en == "" {
+			t.Errorf("pet %s is missing a name", p.key)
+		}
+	}
+	if len(families) != 4 {
+		t.Fatalf("the catalog has %d families, want 4", len(families))
+	}
+	for family, n := range families {
+		if n != 8 {
+			t.Errorf("family %s holds %d pets, want 8", family, n)
 		}
 	}
 }
 
-// The icon menu is twelve options, in one order, named in both languages. They
-// are the menu's accessible names, so they may not be the internal keys.
-func TestTheMachineIconMenuOffersEveryIconInOrder(t *testing.T) {
-	wantKeys := []string{
-		"laptop", "monitor", "server", "hard_drive", "cpu", "database",
-		"cloud", "container", "router", "printer", "box", "terminal",
-	}
-	wantZh := []string{
-		"笔记本", "显示器", "服务器", "硬盘", "芯片", "数据库",
-		"云", "容器", "路由器", "打印机", "机箱", "终端",
-	}
-	wantEn := []string{
-		"Laptop", "Monitor", "Server", "Hard drive", "Chip", "Database",
-		"Cloud", "Container", "Router", "Printer", "Box", "Terminal",
-	}
-	zh, en := locales.In("zh-Hans"), locales.In("en")
-	zhLabels := []string{
-		zh.MachineIconLaptop(), zh.MachineIconMonitor(), zh.MachineIconServer(),
-		zh.MachineIconHardDrive(), zh.MachineIconCpu(), zh.MachineIconDatabase(),
-		zh.MachineIconCloud(), zh.MachineIconContainer(), zh.MachineIconRouter(),
-		zh.MachineIconPrinter(), zh.MachineIconBox(), zh.MachineIconTerminal(),
-	}
-	enLabels := []string{
-		en.MachineIconLaptop(), en.MachineIconMonitor(), en.MachineIconServer(),
-		en.MachineIconHardDrive(), en.MachineIconCpu(), en.MachineIconDatabase(),
-		en.MachineIconCloud(), en.MachineIconContainer(), en.MachineIconRouter(),
-		en.MachineIconPrinter(), en.MachineIconBox(), en.MachineIconTerminal(),
-	}
-
-	if len(machineIconChoices) != len(wantKeys) {
-		t.Fatalf("the menu has %d options, want %d", len(machineIconChoices), len(wantKeys))
-	}
-	for i, choice := range machineIconChoices {
-		if choice.key != wantKeys[i] {
-			t.Errorf("option %d key = %q, want %q", i, choice.key, wantKeys[i])
+// Every pet is 16 rows of 16 characters on the three-character palette, keeps
+// a transparent margin so it never touches its tile's rim, and draws enough
+// body to be seen at one pixel to a point.
+func TestEveryPetIsASixteenBySixteenDrawing(t *testing.T) {
+	for _, p := range petCatalog {
+		if len(p.rows) != 16 {
+			t.Errorf("%s has %d rows, want 16", p.key, len(p.rows))
+			continue
 		}
-		if zhLabels[i] != wantZh[i] {
-			t.Errorf("option %d Chinese = %q, want %q", i, zhLabels[i], wantZh[i])
+		ink := 0
+		minX, maxX := 16, -1
+		for y, row := range p.rows {
+			if len(row) != 16 {
+				t.Errorf("%s row %d is %d wide, want 16", p.key, y, len(row))
+				continue
+			}
+			for x := 0; x < 16; x++ {
+				ch := row[x]
+				if ch != '#' && ch != '+' && ch != '.' {
+					t.Errorf("%s row %d draws %q, want # + or .", p.key, y, ch)
+				}
+				if ch != '.' {
+					ink++
+					minX = min(minX, x)
+					maxX = max(maxX, x)
+				}
+			}
 		}
-		if enLabels[i] != wantEn[i] {
-			t.Errorf("option %d English = %q, want %q", i, enLabels[i], wantEn[i])
+		if ink == 0 {
+			t.Errorf("%s draws nothing", p.key)
+		}
+		if minX < 1 || maxX > 14 {
+			t.Errorf("%s reaches columns %d..%d: a pet keeps a margin inside its tile", p.key, minX, maxX)
 		}
 	}
 }
 
-// Picking a glyph in the machine header's menu stores it with the machine and
+// Picking a pet from the machine card's menu stores it with the machine and
 // applies it to the rail at once. The settings file is the source of truth, so
 // a restart keeps the choice.
 func TestTheMachineIconMenuStoresAChoice(t *testing.T) {
@@ -197,22 +215,31 @@ func TestTheMachineIconMenuStoresAChoice(t *testing.T) {
 	if err := tt.RightClick("studio"); err != nil {
 		t.Fatalf("right-click the machine: %v", err)
 	}
-	if err := tt.ChooseMenuItem(locales.MachineIconMenu(), locales.MachineIconServer()); err != nil {
+	// The machine card's menu keeps its other actions, so the picker is one
+	// item among them; choosing it lays the drawings out below the card.
+	if err := tt.ChooseMenuItem(locales.MachineIconMenu()); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()
 
-	if got := w.machineIcons["m2"]; got != "server" {
-		t.Fatalf("the window holds %q, want server", got)
+	if err := tt.Click("史莱姆 Gloop"); err != nil {
+		t.Fatal(err)
 	}
-	if got := settings.Load(dir).MachineIcons["m2"]; got != "server" {
-		t.Fatalf("the settings file holds %q, want server", got)
+	tt.Frame()
+
+	if got := w.machineIcons["m2"]; got != "gloop" {
+		t.Fatalf("the window holds %q, want gloop", got)
 	}
-	if got := w.machineIconKey(w.roster[0]); got != "server" {
-		t.Fatalf("the rail draws %q, want server", got)
+	if got := settings.Load(dir).MachineIcons["m2"]; got != "gloop" {
+		t.Fatalf("the settings file holds %q, want gloop", got)
+	}
+	if got := w.machineIconKey(w.roster[0]); got != "gloop" {
+		t.Fatalf("the rail draws %q, want gloop", got)
 	}
 }
 
+// The rail tile needs no menu at all: right-click is the picker, and the pets
+// on it are the choices.
 func TestRailIconMenuStoresAChoice(t *testing.T) {
 	w, dir := newTestShellWindow(t)
 	w.roster = []tunnel.Machine{{ID: "m2", Name: "studio", Online: true}}
@@ -220,11 +247,12 @@ func TestRailIconMenuStoresAChoice(t *testing.T) {
 	if err := tt.RightClick(w.machineRailLabel(w.roster[0])); err != nil {
 		t.Fatal(err)
 	}
-	if err := tt.ChooseMenuItem(locales.MachineIconMenu(), locales.MachineIconCloud()); err != nil {
+	tt.Frame()
+	if err := tt.Click("圆雀 Cheep"); err != nil {
 		t.Fatal(err)
 	}
-	if got := settings.Load(dir).MachineIcons["m2"]; got != "cloud" {
-		t.Fatalf("rail icon choice saved as %q, want cloud", got)
+	if got := settings.Load(dir).MachineIcons["m2"]; got != "cheep" {
+		t.Fatalf("rail icon choice saved as %q, want cheep", got)
 	}
 }
 
@@ -649,19 +677,6 @@ func TestFoldingAGroupLandsAtOnceWithLessMotion(t *testing.T) {
 		}
 		if !reduce && !mid {
 			t.Fatalf("the fold went in one frame though motion is allowed")
-		}
-	}
-}
-
-func TestMachineIconNameSpecificFirstAndWholeShortWords(t *testing.T) {
-	for name, want := range map[string]string{
-		"db-prod": "database", "docker-host": "container", "api-1": "terminal",
-		"darwin": "terminal", "pi-3": "cpu", "win-2024": "box", "mac-mini": "monitor",
-		"macbook": "laptop", "aws-eu": "cloud", "k8s-node": "container", "nas-1": "hard_drive",
-		"edge-router": "router", "print-hub": "printer", "web-server": "server",
-	} {
-		if got := machineIconName(name); got != want {
-			t.Errorf("machineIconName(%q) = %q, want %q", name, got, want)
 		}
 	}
 }

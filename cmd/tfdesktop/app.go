@@ -221,6 +221,15 @@ type window struct {
 	// is the window's own state, so the panel stays where the user left it.
 	leaseOpen bool
 
+	// petPickerOpen is whether the pet picker is showing, petPickerFor the
+	// machine it opened on, and petPickerSite where it opened — the rail's tile
+	// or the machine group's header, the two places that offer it. It is the
+	// window's own state, so the panel stays while the pointer wanders off the
+	// tile it grew from, and only the site that opened it draws it.
+	petPickerOpen bool
+	petPickerFor  string
+	petPickerSite string
+
 	// posted is what the links have reported and the UI thread has not applied
 	// yet. Everything the links say reaches the window's state through it, so
 	// that state belongs to one thread: the UI thread in the app, and whichever
