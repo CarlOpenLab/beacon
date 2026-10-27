@@ -93,7 +93,7 @@ func TestTheChromeClearsTheSystemsLights(t *testing.T) {
 			}
 		}
 	}
-	if got, want := cardTitleLead(ui.TitleBar{Left: 68}), float32(68+8)+toolbarButton+8; got != want {
+	if got, want := cardTitleLead(ui.TitleBar{Left: 68}), float32(68+8)+topControlInset+topControlsWidth+8; got != want {
 		t.Errorf("cardTitleLead = %v, want %v", got, want)
 	}
 

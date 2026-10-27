@@ -64,40 +64,39 @@ func TestSidebarGroupsMachinesInOrder(t *testing.T) {
 		{ID: "m1", Name: "carl-windows", Online: false},
 		{ID: "m2", Name: "win-20240410OWZ", Online: true},
 	}
-	// Both have a session, so the test reads the order of the machine headers
-	// rather than the order of their names inside the other row.
+	// Both have a session, so the rail's order is the order of the machines
+	// rather than the order of their names in a folded list.
 	w.remoteSessions = map[string][]protocol.Summary{
 		"m1": {{SessionID: "r1", Title: "windows shell", Alive: true}},
 		"m2": {{SessionID: "r2", Title: "windows shell two", Alive: true}},
 	}
 	tt := drawNav(t, w)
 
-	// This machine's group first, then the roster's order: the column is a list
-	// of machines, and the machine a person is sitting at leads it.
-	local, ok := tt.Find(w.machineName(machineLocal))
-	if !ok {
-		t.Fatalf("this machine's group is missing; texts = %v", tt.Texts())
+	// This machine first, then the roster's order: the strip is the fleet, and
+	// the machine a person is sitting at leads it.
+	machines := w.groups()
+	var xs []float32
+	for _, m := range machines {
+		r, ok := tt.Find(w.machineRailLabel(m))
+		if !ok {
+			t.Fatalf("%q is missing from the rail; texts = %v", w.machineRailLabel(m), tt.Texts())
+		}
+		xs = append(xs, r.X)
 	}
-	first, ok := tt.Find("carl-windows")
-	if !ok {
-		t.Fatalf("carl-windows missing; texts = %v", tt.Texts())
-	}
-	second, ok := tt.Find("win-20240410OWZ")
-	if !ok {
-		t.Fatalf("win-20240410OWZ missing; texts = %v", tt.Texts())
-	}
-	if !(local.Y < first.Y && first.Y < second.Y) {
-		t.Fatalf("groups are out of order: local %.1f, carl-windows %.1f, win %.1f", local.Y, first.Y, second.Y)
+	for i := 1; i < len(xs); i++ {
+		if xs[i] <= xs[i-1] {
+			t.Fatalf("the rail is out of order: x = %v", xs)
+		}
 	}
 
-	// The foot is pinned to the bottom of the column, under every group: the
-	// palette and the settings do not scroll away with the sessions.
+	// Settings is a fixed top control, independent from the horizontally
+	// scrolling machine rail.
 	setRect, ok := tt.Find(locales.ActionSettings())
 	if !ok {
-		t.Fatalf("设置 is missing from the footer; texts = %v", tt.Texts())
+		t.Fatalf("设置 is missing from the rail; texts = %v", tt.Texts())
 	}
-	if setRect.Y <= second.Y {
-		t.Fatalf("the footer is not under the groups: win %.1f, 设置 %.1f", second.Y, setRect.Y)
+	if setRect.Y > previewHeight/3 {
+		t.Fatalf("settings is not in the top controls: y %.1f", setRect.Y)
 	}
 }
 
@@ -394,7 +393,7 @@ func TestSidebarNamesEveryMachine(t *testing.T) {
 	// This machine leads the column as its own group, named as the roster names
 	// it. There is no separate machines panel any more: a machine is a group,
 	// and its sessions hang under it.
-	if !tt.HasText(f.Host().Hostname) {
+	if !tt.HasText(w.machineDisplayName(machineLocal)) {
 		t.Fatalf("the column does not name this machine; texts = %v", tt.Texts())
 	}
 
@@ -594,7 +593,7 @@ func TestSidebarNamesThisMachineOnce(t *testing.T) {
 	// would be the roster entry for this machine, which is what the device-id
 	// check skips.
 	named := 0
-	wantHost := f.Host().Hostname
+	wantHost := w.machineDisplayName(machineLocal)
 	for _, text := range tt.Texts() {
 		if strings.TrimSpace(text) == wantHost {
 			named++
@@ -763,7 +762,7 @@ func TestTheGroupMenuOffersBothRefreshes(t *testing.T) {
 	// The refreshes live on the group a person is looking at, not in a panel
 	// title: right-clicking this machine asks about this machine, and the whole
 	// roster has its own answer in the same menu.
-	if err := tt.RightClick(w.machineName(machineLocal)); err != nil {
+	if err := tt.RightClick(w.machineDisplayName(machineLocal)); err != nil {
 		t.Fatalf("right-click the group: %v", err)
 	}
 	menu := strings.Join(tt.Menu(), " ")

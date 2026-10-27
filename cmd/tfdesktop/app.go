@@ -198,9 +198,19 @@ type window struct {
 	hiddenNeed map[string]bool
 	hideAt     map[string]time.Time
 
-	// othersOpen is whether the quiet machines are spread out under their row.
-	// It is this window's own state: it is a look, not a setting.
-	othersOpen bool
+	// machineIcons are the glyphs picked for machines, by machine id. They are
+	// the settings file's copy, read once so drawing a tile does not walk the
+	// store every frame; a machine without an entry follows the name rule.
+	machineIcons map[string]string
+
+	// railScroll is where the machine rail's strip is scrolled. It is this
+	// window's own place in the strip, kept so a machine picked with a key can be
+	// brought into view without resetting the strip on the next frame.
+	railScroll ui.ScrollState
+	// railLand is the session row a switch to a machine should bring into view:
+	// "machine\x00row". It is set by the switch and cleared by the frame that
+	// scrolls the row into view, so the sidebar does not stay pinned to it.
+	railLand string
 
 	// tabSeq numbers the tabs of this window, so two shells of the same kind
 	// can be told apart ("zsh 1", "zsh 2") before either reports a title.
@@ -235,6 +245,7 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 		dismissed:    make(map[string]bool),
 		sessionOrder: store.Get().SessionOrder,
 		hidden:       hiddenSet(store.Get().HiddenMachines),
+		machineIcons: store.Get().MachineIcons,
 	}
 	// The window is a client of its own hub from the moment it opens, so every
 	// shell it shows — including one a browser took over — arrives as frames
@@ -673,12 +684,12 @@ func (w *window) view(c *ui.Context) {
 
 	// Every shortcut comes from the action list, so one rebound in Settings is
 	// the one the window reads: see actions.go. ⌘1…⌘9 are the window's own —
-	// they name a row, not an action — and are read here.
+	// they name a machine in the rail, not an action — and are read here.
 	w.runShortcuts(c)
 	if !w.settingsOpen && w.reachPrompt == "" && !w.pal.open {
-		for i, key := range tabDigits {
+		for i, key := range railDigits {
 			if c.Shortcut(ui.Cmd, key) {
-				w.jumpTab(i)
+				w.jumpRail(c, i)
 				break
 			}
 		}
@@ -703,10 +714,9 @@ func (w *window) view(c *ui.Context) {
 			Padding(uitokens.CardGap, uitokens.CardGap, uitokens.CardGap, ch.mainPad).DragWindow().Children(func() {
 			w.body(c, pal)
 		})
-		// The column's buttons over the cards while it folds away, so they stay
-		// where the pointer found them; the card's header takes their place.
-		if ch.shown < 0.75 {
-			w.sidebarPeek(c)
+		// One persistent toolbar stays out of the sidebar's moving/clipped tree.
+		if ch.shown < 0.5 {
+			w.sidebarToolbar(c, w.sidebarHidden, topControlsWidth)
 		}
 		w.settingsDialog(c)
 		w.reachDialog(c)

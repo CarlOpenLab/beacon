@@ -2726,6 +2726,152 @@ func (msgs Messages) MachineOffline() string {
 	return Catalog.Format(msgs.locale, "machine_offline", nil)
 }
 
+// MachineListSep says "，"
+// in the language the app shows.
+//
+// Between a machine's name and its state when spoken aloud. A full-width
+// comma in Chinese, a comma and a space in English.
+func MachineListSep() string { return In(i18n.Locale()).MachineListSep() }
+
+// MachineListSep says "，"
+// in the language of msgs.
+//
+// Between a machine's name and its state when spoken aloud. A full-width
+// comma in Chinese, a comma and a space in English.
+func (msgs Messages) MachineListSep() string {
+	return Catalog.Format(msgs.locale, "machine_list_sep", nil)
+}
+
+// MachineIconMenu says "图标"
+// in the language the app shows.
+func MachineIconMenu() string { return In(i18n.Locale()).MachineIconMenu() }
+
+// MachineIconMenu says "图标"
+// in the language of msgs.
+func (msgs Messages) MachineIconMenu() string {
+	return Catalog.Format(msgs.locale, "machine_icon_menu", nil)
+}
+
+// MachineIconLaptop says "笔记本"
+// in the language the app shows.
+func MachineIconLaptop() string { return In(i18n.Locale()).MachineIconLaptop() }
+
+// MachineIconLaptop says "笔记本"
+// in the language of msgs.
+func (msgs Messages) MachineIconLaptop() string {
+	return Catalog.Format(msgs.locale, "machine_icon_laptop", nil)
+}
+
+// MachineIconMonitor says "显示器"
+// in the language the app shows.
+func MachineIconMonitor() string { return In(i18n.Locale()).MachineIconMonitor() }
+
+// MachineIconMonitor says "显示器"
+// in the language of msgs.
+func (msgs Messages) MachineIconMonitor() string {
+	return Catalog.Format(msgs.locale, "machine_icon_monitor", nil)
+}
+
+// MachineIconServer says "服务器"
+// in the language the app shows.
+func MachineIconServer() string { return In(i18n.Locale()).MachineIconServer() }
+
+// MachineIconServer says "服务器"
+// in the language of msgs.
+func (msgs Messages) MachineIconServer() string {
+	return Catalog.Format(msgs.locale, "machine_icon_server", nil)
+}
+
+// MachineIconHardDrive says "硬盘"
+// in the language the app shows.
+func MachineIconHardDrive() string { return In(i18n.Locale()).MachineIconHardDrive() }
+
+// MachineIconHardDrive says "硬盘"
+// in the language of msgs.
+func (msgs Messages) MachineIconHardDrive() string {
+	return Catalog.Format(msgs.locale, "machine_icon_hard_drive", nil)
+}
+
+// MachineIconCpu says "芯片"
+// in the language the app shows.
+func MachineIconCpu() string { return In(i18n.Locale()).MachineIconCpu() }
+
+// MachineIconCpu says "芯片"
+// in the language of msgs.
+func (msgs Messages) MachineIconCpu() string {
+	return Catalog.Format(msgs.locale, "machine_icon_cpu", nil)
+}
+
+// MachineIconDatabase says "数据库"
+// in the language the app shows.
+func MachineIconDatabase() string { return In(i18n.Locale()).MachineIconDatabase() }
+
+// MachineIconDatabase says "数据库"
+// in the language of msgs.
+func (msgs Messages) MachineIconDatabase() string {
+	return Catalog.Format(msgs.locale, "machine_icon_database", nil)
+}
+
+// MachineIconCloud says "云"
+// in the language the app shows.
+func MachineIconCloud() string { return In(i18n.Locale()).MachineIconCloud() }
+
+// MachineIconCloud says "云"
+// in the language of msgs.
+func (msgs Messages) MachineIconCloud() string {
+	return Catalog.Format(msgs.locale, "machine_icon_cloud", nil)
+}
+
+// MachineIconContainer says "容器"
+// in the language the app shows.
+func MachineIconContainer() string { return In(i18n.Locale()).MachineIconContainer() }
+
+// MachineIconContainer says "容器"
+// in the language of msgs.
+func (msgs Messages) MachineIconContainer() string {
+	return Catalog.Format(msgs.locale, "machine_icon_container", nil)
+}
+
+// MachineIconRouter says "路由器"
+// in the language the app shows.
+func MachineIconRouter() string { return In(i18n.Locale()).MachineIconRouter() }
+
+// MachineIconRouter says "路由器"
+// in the language of msgs.
+func (msgs Messages) MachineIconRouter() string {
+	return Catalog.Format(msgs.locale, "machine_icon_router", nil)
+}
+
+// MachineIconPrinter says "打印机"
+// in the language the app shows.
+func MachineIconPrinter() string { return In(i18n.Locale()).MachineIconPrinter() }
+
+// MachineIconPrinter says "打印机"
+// in the language of msgs.
+func (msgs Messages) MachineIconPrinter() string {
+	return Catalog.Format(msgs.locale, "machine_icon_printer", nil)
+}
+
+// MachineIconBox says "机箱"
+// in the language the app shows.
+func MachineIconBox() string { return In(i18n.Locale()).MachineIconBox() }
+
+// MachineIconBox says "机箱"
+// in the language of msgs.
+func (msgs Messages) MachineIconBox() string {
+	return Catalog.Format(msgs.locale, "machine_icon_box", nil)
+}
+
+// MachineIconTerminal says "终端"
+// in the language the app shows.
+func MachineIconTerminal() string { return In(i18n.Locale()).MachineIconTerminal() }
+
+// MachineIconTerminal says "终端"
+// in the language of msgs.
+func (msgs Messages) MachineIconTerminal() string {
+	return Catalog.Format(msgs.locale, "machine_icon_terminal", nil)
+}
+
 // MachinePlatformUnknown says "平台未知"
 // in the language the app shows.
 //
@@ -4322,4 +4468,36 @@ func AttachTruncated() string { return In(i18n.Locale()).AttachTruncated() }
 // in the language of msgs.
 func (msgs Messages) AttachTruncated() string {
 	return Catalog.Format(msgs.locale, "attach_truncated", nil)
+}
+
+// RailHiddenNeeds says "滚出去的还有 {count} 台需要你"
+// in the language the app shows.
+//
+// The machine rail's edge dot: machines scrolled out of sight that need you
+// or failed.
+func RailHiddenNeeds(count int) string { return In(i18n.Locale()).RailHiddenNeeds(count) }
+
+// RailHiddenNeeds says "滚出去的还有 {count} 台需要你"
+// in the language of msgs.
+//
+// The machine rail's edge dot: machines scrolled out of sight that need you
+// or failed.
+func (msgs Messages) RailHiddenNeeds(count int) string {
+	return Catalog.Format(msgs.locale, "rail_hidden_needs", map[string]any{"count": count})
+}
+
+// RailHiddenFailed says "滚出去的有 {count} 台失败"
+// in the language the app shows.
+//
+// The machine rail's edge dot: machines scrolled out of sight that need you
+// or failed.
+func RailHiddenFailed(count int) string { return In(i18n.Locale()).RailHiddenFailed(count) }
+
+// RailHiddenFailed says "滚出去的有 {count} 台失败"
+// in the language of msgs.
+//
+// The machine rail's edge dot: machines scrolled out of sight that need you
+// or failed.
+func (msgs Messages) RailHiddenFailed(count int) string {
+	return Catalog.Format(msgs.locale, "rail_hidden_failed", map[string]any{"count": count})
 }

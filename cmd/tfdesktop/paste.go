@@ -66,15 +66,24 @@ func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 			}
 		}
 	}
+	// One line per paste, whatever it turns out to be: which machine, which
+	// session, what the clipboard offers, and what was recognised in it. A
+	// paste that does nothing has to leave a trace that says where it stopped.
+	diag.Infof("paste", "clipboard machine=%s session=%s formats=%v files=%v image=%v",
+		tb.machine, tb.id, formats, hasFile, hasImage)
 	if !hasFile && !hasImage {
+		diag.Infof("paste", "not a file or image: left to the terminal")
 		return false
 	}
 
 	if tb.known() && !tb.held() {
+		diag.Infof("paste", "refused: read-only machine=%s session=%s", tb.machine, tb.id)
 		w.update(func() { w.setNotice(locales.PasteReadOnly()) })
 		return true
 	}
 	if !tb.sess.link.capable(protocol.CapFile) {
+		diag.Infof("paste", "refused: the machine does not take files machine=%s caps=%v",
+			tb.machine, tb.sess.link.capsList())
 		w.update(func() { w.setNotice(locales.PasteUnsupported()) })
 		return true
 	}
@@ -89,6 +98,7 @@ func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 // pastes the paths into the shell.
 func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, machine string) {
 	items, reason := pasteItems(d, hasFile, hasImage)
+	diag.Infof("paste", "read machine=%s session=%s items=%d reason=%q", machine, tb.id, len(items), reason)
 	if reason != "" {
 		w.update(func() { w.setNotice(reason) })
 		return
@@ -125,7 +135,7 @@ func (w *window) uploadPaste(tb *tab, d transfer.Data, hasFile, hasImage bool, m
 		quoted = append(quoted, shellQuote(path, platform))
 	}
 	text := strings.Join(quoted, " ") + " "
-	diag.Infof("paste", "pasting machine=%s session=%s files=%d", machine, tb.id, len(paths))
+	diag.Infof("paste", "uploaded machine=%s session=%s paths=%v text=%q", machine, tb.id, paths, text)
 	w.update(func() {
 		if tb.term == nil {
 			return

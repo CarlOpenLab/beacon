@@ -59,21 +59,19 @@ func TestEmptyStateInvitesTheFirstShell(t *testing.T) {
 	}
 }
 
-// The service and the fleet live in the sidebar's foot now: a dot for the local
-// service and how many machines answer, with the address in its tooltip. It is
-// the one line the old status bar was for, in the corner the footer keeps it.
-func TestTheSidebarFootNamesTheService(t *testing.T) {
+// The palette and the settings live in the top bar, beside the button that
+// folds the column: the rail at the bottom is machines only.
+func TestTheSidebarTopBarHoldsThePaletteAndSettings(t *testing.T) {
 	w, _ := newTestShellWindow(t)
 	tt := ui.NewTester(func(c *ui.Context) {
 		applyTheme(c, w.store.Get().Theme)
-		w.sidebarFooter(c, paletteFor(c))
-	}, 300, uitokens.FooterH)
+		w.sidebar(c, paletteFor(c))
+	}, 300, 400)
 
-	if !tt.HasText(w.serviceLine()) {
-		t.Fatalf("the foot does not name the service; it shows %v", tt.Texts())
-	}
-	if _, ok := tt.Find(locales.ServiceOff()); !ok {
-		t.Fatalf("the service line is not a chip a pointer can rest on; texts = %v", tt.Texts())
+	for _, want := range []string{locales.ActionPalette(), locales.ActionSettings()} {
+		if _, ok := tt.Find(want); !ok {
+			t.Fatalf("the rail does not hold %q; it shows %v", want, tt.Texts())
+		}
 	}
 }
 

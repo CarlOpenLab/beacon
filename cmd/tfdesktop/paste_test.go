@@ -9,12 +9,17 @@ package main
 import (
 	"bytes"
 	"io"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
+
+	"github.com/CarlOpenLab/beacon/internal/protocol"
 )
 
 // pasteConn records what the terminal sends and blocks on reads, so the test
@@ -131,5 +136,69 @@ func TestShellQuote(t *testing.T) {
 		if got := shellQuote(tc.path, tc.platform); got != tc.want {
 			t.Errorf("shellQuote(%q, %q) = %q, want %q", tc.path, tc.platform, got, tc.want)
 		}
+	}
+}
+
+// Exercise the actual clipboard hook, local handshake and hub upload, then
+// verify the path delivered to the terminal's input stream names those bytes.
+func TestLocalImagePasteUploadsAndSendsPath(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t)
+	w.fleet = f
+	w.local = openLocalLink(f.Hub())
+	w.local.onSessions = w.sessionsArrived
+	t.Cleanup(func() { w.local.close("test done") })
+	tb := w.openTab(machineLocal, "")
+	w.local.create(80, 24, "", "", "")
+	waitForPaste(t, "session control and file capability", func() bool {
+		w.drain()
+		return tb.held() && w.local.capable(protocol.CapFile)
+	})
+
+	// Capture the final terminal input while all upload frames still travel
+	// through the real local pipe and hub.
+	inputs := make(chan string, 1)
+	w.local.sendMu.Lock()
+	send := w.local.send
+	w.local.send = func(m protocol.Msg) bool {
+		if m.T == protocol.CTInput {
+			inputs <- string(m.Data)
+			return true
+		}
+		return send(m)
+	}
+	w.local.sendMu.Unlock()
+	payload := []byte("clipboard image payload")
+	if !w.pasteInto(tb, transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, payload)))) {
+		t.Fatal("image paste was not handled")
+	}
+	var path string
+	waitForPaste(t, "uploaded path to reach terminal input", func() bool {
+		w.drain()
+		select {
+		case text := <-inputs:
+			path = strings.TrimSuffix(strings.TrimPrefix(text, "'"), "' ")
+			return true
+		default:
+			return false
+		}
+	})
+	t.Cleanup(func() { _ = os.Remove(path) })
+	got, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("pasted path %q: bytes=%q err=%v", path, got, err)
+	}
+}
+
+func TestRemoteHelloAnnouncesFileUploadCapability(t *testing.T) {
+	l := &relayLink{link: newLink(), machine: "remote"}
+	var sent []protocol.Msg
+	l.setSend(func(m protocol.Msg) bool {
+		sent = append(sent, m)
+		return true
+	})
+	(relayHandlers{l: l}).Open()
+	if len(sent) == 0 || sent[0].T != protocol.CTHello || !protocol.HasCap(sent[0].Caps, protocol.CapFile) {
+		t.Fatalf("remote handshake did not announce upload support: %+v", sent)
 	}
 }

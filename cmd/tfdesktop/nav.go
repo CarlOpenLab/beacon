@@ -590,6 +590,11 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		}
 	})
 	row.Children(func() {
+		// The state leads the row: it is the column a person scans down when the
+		// question is "which of these wants me", and at the trailing edge it was
+		// read only after the name. It sits at 10 with an 8 gap, so every name
+		// starts at 30 whichever state the row is in.
+		statusGlyph(c, pal, e.status, e.unread, e.progress, 12)
 		if w.renamingIs(e.machine, e.session) {
 			// The name, being edited: a field in the name's place, which Enter
 			// or a press elsewhere commits and Escape lets go of.
@@ -612,13 +617,12 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 				badgeChip(c, badge, color)
 			}
 		}
-		// The state, then the way out — which waits for the pointer: closing is
-		// destructive, and it should not stand in the reading path. The menu and
-		// ⌘W carry it for a hand that never hovers. A pane in a split draws its
-		// own row under this one and has no close of its own.
+		// The way out waits for the pointer: closing is destructive, and it should
+		// not stand in the reading path. The menu and ⌘W carry it for a hand that
+		// never hovers. A pane in a split draws its own row under this one and has
+		// no close of its own.
 		if e.close != nil {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-				statusGlyph(c, pal, e.status, e.unread, e.progress, 14)
 				// The button's own square stays in the row at rest as empty room,
 				// so a name never moves when the pointer arrives.
 				slot := ui.Box(c).Size(20, 20).Shrink(0)
@@ -630,10 +634,15 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 					})
 				}
 			})
-			return
 		}
-		statusGlyph(c, pal, e.status, e.unread, e.progress, 14)
 	})
+	if w.railLand == e.machine+"\x00"+key && selected {
+		// A machine picked in the rail lands on the session that needs the
+		// person, not merely on the machine: the row is chosen and scrolled into
+		// view once, and then the sidebar is theirs to scroll again.
+		row.ScrollIntoView()
+		w.railLand = ""
+	}
 	if row.Clicked() && !dragged {
 		e.pick()
 	}
@@ -655,7 +664,7 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 // row every pane should show where it is in the list.
 func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, last bool, top float32) {
 	key := sessionKey(e)
-	row := ui.Row(c).Key("pane:"+e.machine+"\x00"+key).Height(uitokens.PaneH).FillWidth().Padding(0, 8, 0, 10).Gap(6).
+	row := ui.Row(c).Key("pane:"+e.machine+"\x00"+key).Height(uitokens.PaneH).FillWidth().Padding(0, 8, 0, 10).Gap(8).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
 	if pal.Dark {
@@ -675,27 +684,34 @@ func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, l
 		chosen(row, pal)
 	}
 	row.Children(func() {
-		tree := ui.Box(c).Width(18).FillHeight().Shrink(0)
-		tree.Draw(func(p *ui.Painter, r ui.Rect) {
+		// The branch and the state share the state's 12-point column: the tree
+		// is drawn in it, and the mark sits on top, so a pane's name starts at
+		// the same 30 as its workspace's name instead of one column further in.
+		lead := ui.Box(c).Width(12).FillHeight().Shrink(0)
+		lead.Draw(func(p *ui.Painter, r ui.Rect) {
 			mid := r.Y + r.H/2
 			bottom := r.Y + r.H
 			if last {
 				bottom = mid
 			}
 			line := pal.Text.Alpha(0.22)
-			// A dotted trunk, and a dashed elbow that reaches the state mark.
+			// A dotted trunk, and a dashed elbow that reaches the name.
 			for y := r.Y; y < bottom; y += 4 {
 				p.Fill(ui.Rect{X: r.X + 6, Y: y, W: 1, H: 1.5}, line, 0.5)
 			}
-			for x := r.X + 6; x < r.X+r.W+4; x += 3 {
+			for x := r.X + 6; x < r.X+r.W; x += 3 {
 				p.Fill(ui.Rect{X: x, Y: mid, W: 1.5, H: 1}, line, 0.5)
 			}
 		})
-		if e.status == "" || e.status == "idle" && !e.unread {
-			idleRing(c, pal, 12)
-		} else {
-			statusGlyph(c, pal, e.status, e.unread, e.progress, 12)
-		}
+		lead.Children(func() {
+			mark := ui.Element{}
+			if e.status == "" || e.status == "idle" && !e.unread {
+				mark = idleRing(c, pal, 12)
+			} else {
+				mark = statusGlyph(c, pal, e.status, e.unread, e.progress, 12)
+			}
+			mark.Absolute().Left(0).Top((uitokens.PaneH - 12) / 2)
+		})
 		name := ui.Text(c, e.label).FontSize(12.5).TextColor(pal.TextMuted).
 			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if selected {
@@ -988,25 +1004,12 @@ func (w *window) stepTab(delta int) {
 	}
 }
 
-// tabDigits are the keys ⌘1…⌘9 answer to, in the order the numbers run. They are
-// the browser client's own shortcut, and the shortcut list the empty window
-// prints promises them, so the window has to keep the promise.
-var tabDigits = []ui.Key{
+// railDigits are the keys ⌘1…⌘9 answer to, in the order the numbers run. They
+// name a machine in the rail, not a tab: machines are what a person switches
+// between now, and the strip's order is the order the keys follow.
+var railDigits = []ui.Key{
 	ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5,
 	ui.Key6, ui.Key7, ui.Key8, ui.Key9,
-}
-
-// jumpTab puts the nth tab on screen, counting from zero. A number past the last
-// tab does nothing rather than wrapping: a person pressing ⌘7 with three shells
-// open is asking for a tab that is not there, and the nearest one is not what
-// they asked for.
-func (w *window) jumpTab(n int) {
-	if n < 0 || n >= len(w.order) {
-		return
-	}
-	if tb := w.tabs[w.order[n]]; tb != nil {
-		w.selectTab(tb)
-	}
 }
 
 // ownMachine reports whether a roster entry is this machine. A roster is keyed
@@ -1063,16 +1066,17 @@ func (w *window) machineByID(id string) (tunnel.Machine, bool) {
 	return tunnel.Machine{}, false
 }
 
-// machineName is what the panels call a machine: its own name, or the id when
-// the roster has never heard of it.
+// machineName is what the panels call a machine: its own name without the
+// mDNS suffix a local network adds, or the id when the roster has never heard
+// of it.
 func (w *window) machineName(id string) string {
 	if m, ok := w.machineByID(id); ok && m.Name != "" {
-		return m.Name
+		return machineDisplayHost(m.Name, id)
 	}
 	if id == machineLocal {
 		return locales.MachineLocal()
 	}
-	return id
+	return machineDisplayHost(id, id)
 }
 
 // lookAtMachine opens the window's link to a machine and asks what it runs. A
@@ -1082,14 +1086,6 @@ func (w *window) machineName(id string) string {
 // must never do.
 func (w *window) lookAtMachine(machine string) {
 	w.ensureSessionList(machine)
-}
-
-// machineState is what a roster machine's tooltip says about it.
-func machineState(m tunnel.Machine) string {
-	if m.Online {
-		return locales.MachineOnline()
-	}
-	return locales.MachineOffline()
 }
 
 // leaseColor is a shell's dot: the same three states the row's words and badge

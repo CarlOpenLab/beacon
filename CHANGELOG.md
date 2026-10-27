@@ -4,6 +4,21 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.4
+
+**Beacon 0.7.4: 底部机器切换栏与图片粘贴修复 — Machine rail and image paste fixes**
+
+- **Switch machines from a centered, scrollable rail.** The desktop sidebar now shows the selected machine's sessions, with circular machine controls along the bottom. Right-click a machine to choose a persistent icon. Machine names omit local network suffixes and distinguish duplicate names. Command+1 through Command+9 switch machines in rail order.
+  — 桌面侧栏按所选机器展示会话，底部圆形机器栏居中排列，机器较多时支持横向滚动。右键可更换图标并保存；机器名去除本地域名后缀，同名机器补充标识。Command+1 至 Command+9 按栏内顺序切换机器。
+- **Separate selection, hover and machine states without borders.** Active controls use stronger fills; needs-you, pending, running, completed, failed and offline states have distinct treatments. Session status marks lead their rows, and choosing a machine can take you to its waiting session.
+  — 选中与悬停采用不同强度的无边框填充，需要你、创建中、运行中、已完成、失败和离线状态使用不同配色。会话状态标记前置，切换机器时可定位到等待回答的会话。
+- **Keep search, settings and sidebar controls together.** The top controls appear in search/settings/fold order, align to the sidebar's right edge while expanded, and remain available when folded. Fixed button sizes and additional title space prevent compression and title overlap during resizing.
+  — 顶部按搜索、设置、折叠排列，展开时靠侧栏右侧对齐，折叠后仍可操作。固定按钮尺寸并预留完整标题空间，改善拖动时的图标压缩和标题重叠。
+- **Negotiate image and file paste support on both desktop transports.** The local connection now sends a hello handshake, and remote connections announce file upload and compression capabilities. This fixes screenshots being recognized but rejected with an empty capability list. Pasted files are uploaded to the shell's machine and their quoted paths are inserted into the terminal. Regression coverage exercises the local clipboard-to-upload-to-input path and remote handshake.
+  — 本地连接补齐 hello 握手，远程连接声明文件上传及压缩能力，修复截图已被读取却因能力列表为空而遭拒绝的问题。图片或文件上传至 shell 所在机器后，以加引号的路径粘入终端；新增本地粘贴完整链路及远程握手回归测试。
+
+**Full Changelog**: https://github.com/CarlOpenLab/beacon/compare/v0.7.3...v0.7.4
+
 ## 0.7.3
 
 **Beacon 0.7.3: 侧栏只留正在用的机器 — the column keeps the machines in use**

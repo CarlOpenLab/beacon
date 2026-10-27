@@ -190,6 +190,23 @@
   "machine_local": "This machine",
   "machine_online": "Online",
   "machine_offline": "Offline",
+  "machine_list_sep": ", ",
+  "@machine_list_sep": {
+    "description": "Between a machine's name and its state when spoken aloud. A full-width comma in Chinese, a comma and a space in English."
+  },
+  "machine_icon_menu": "Machine icon",
+  "machine_icon_laptop": "Laptop",
+  "machine_icon_monitor": "Monitor",
+  "machine_icon_server": "Server",
+  "machine_icon_hard_drive": "Hard drive",
+  "machine_icon_cpu": "Chip",
+  "machine_icon_database": "Database",
+  "machine_icon_cloud": "Cloud",
+  "machine_icon_container": "Container",
+  "machine_icon_router": "Router",
+  "machine_icon_printer": "Printer",
+  "machine_icon_box": "Box",
+  "machine_icon_terminal": "Terminal",
   "machine_platform_unknown": "Unknown platform",
   "machine_sessions_count": "{count} sessions",
   "machine_note_local_only": "This machine only: join a relay in Settings → Remote and the other machines on it appear here.",
@@ -591,5 +608,23 @@
   "paste_unsupported": "The Beacon on this machine is too old to receive files",
   "paste_failed": "Paste failed: {reason}",
   "paste_too_large": "Too large: {name} (32 MB limit)",
-  "attach_truncated": "You were away too long: the screen may be incomplete (latest output replayed)"
+  "attach_truncated": "You were away too long: the screen may be incomplete (latest output replayed)",
+  "rail_hidden_needs": "Needs you, scrolled out: {count}",
+  "@rail_hidden_needs": {
+    "description": "The machine rail's edge dot: machines scrolled out of sight that need you or failed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "rail_hidden_failed": "Failed, scrolled out: {count}",
+  "@rail_hidden_failed": {
+    "description": "The machine rail's edge dot: machines scrolled out of sight that need you or failed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
 }
