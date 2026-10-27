@@ -87,7 +87,9 @@ def main():
         os.makedirs(os.path.dirname(path), exist_ok=True)
         return path
 
-    mark(1024).save(out("resources/icon.png"))
+    # MyGo derives Windows' 16-256px icon slots from this master with a generic
+    # resizer, so give the lamp and beams stronger optics before that downscale.
+    mark(1024, optical=1.30).save(out("resources/icon.png"))
     mark(512).save(out(".github/assets/logo.png"))
     mark(128, optical=1.12).save(out("web/public/favicon.png"))
     mark(32, optical=1.30).save(out("web/public/favicon-32.png"))

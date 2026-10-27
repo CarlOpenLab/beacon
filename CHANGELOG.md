@@ -4,6 +4,13 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.9
+
+**Beacon 0.7.9: Windows 图标小尺寸更清晰 — Sharper Windows icon at small sizes**
+
+- **Give the app icon stronger small-size optics.** Windows derives its 16–256px icon variants from one master image; the lamp and beams now carry more visual weight so they remain clear in Explorer and desktop shortcuts. macOS keeps using the same shared app icon.
+  — 加强应用图标在小尺寸下的视觉重量：Windows 从同一主图生成 16–256px 图标，放大的灯头和光束在资源管理器与桌面快捷方式中更清晰；macOS 继续使用共用应用图标。
+
 ## 0.7.8
 
 **Beacon 0.7.8: 文字粘贴不再被吞 — Text paste reaches the program**
