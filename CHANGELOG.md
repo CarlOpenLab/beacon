@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.7
+
+**Beacon 0.7.7: 修复 Windows 文字粘贴 — Restore Windows text paste**
+
+- **Keep plain-text paste working when another clipboard format is malformed.** Windows now falls back to the native Unicode text clipboard when reading all advertised formats fails, while image and file pastes keep their existing handling.
+  — Windows 剪贴板同时提供异常富文本格式时，桌面端改用原生 Unicode 文本兜底，恢复本机与远程终端的文字粘贴；图片和文件粘贴流程保持不变。
+- Verified the desktop paste path, Windows cross-compilation, and the Go test suite.
+  — 已验证桌面粘贴路径、Windows 交叉编译和 Go 测试套件。
+
 ## 0.7.6
 
 **Beacon 0.7.6: 底部机器栏上下留白一致 — Balanced machine rail spacing**

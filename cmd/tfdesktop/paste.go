@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/transfer"
 
 	"github.com/CarlOpenLab/beacon/internal/diag"
@@ -74,6 +75,24 @@ func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 	diag.Infof("paste", "clipboard machine=%s session=%s formats=%v files=%v image=%v",
 		tb.machine, tb.id, formats, hasFile, hasImage)
 	if !hasFile && !hasImage {
+		if _, err := d.Read(transfer.Text); err == nil {
+			// The terminal already has a valid text representation and will
+			// preserve its normal bracketed-paste handling below.
+			diag.Infof("paste", "text representation available: left to the terminal")
+			return false
+		}
+		// On Windows, reading every advertised representation can fail when a
+		// clipboard owner exposes a malformed rich format alongside valid text.
+		// The native text API reads CF_UNICODETEXT directly, so keep plain-text
+		// paste working instead of letting one unrelated format swallow it.
+		if runtime.GOOS == "windows" {
+			text := strings.TrimSuffix(mygo.Clipboard.ReadText(), "\x00")
+			if text != "" && tb.term != nil {
+				diag.Infof("paste", "text fallback machine=%s session=%s bytes=%d", tb.machine, tb.id, len(text))
+				tb.term.Paste(text)
+				return true
+			}
+		}
 		diag.Infof("paste", "not a file or image: left to the terminal")
 		return false
 	}
