@@ -6,6 +6,17 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
 
 ## 0.7.9
 
+## 0.7.10
+
+**Beacon 0.7.10: 图标不再比别人大一号 — The app icon fits its slot**
+
+- **The machines of the rail are pixel pets now.** Every machine wears one of thirty-two hand-drawn 16×16 pets — four families of eight, from companion animals to the brand's own lamp — so the shape says which machine is which while the colour only follows the tile: at rest, hovered, chosen. A machine's name picks its pet by a stable hash, and right-clicking the rail tile is the picker itself — a panel of the drawings, no menu in between; the machine card offers the same among its actions. A 史莱姆 is chosen by being seen, not by its name, and a chosen machine wears the active blue whatever its state, offline included. A machine that needs you or has failed is told by its tile's wash alone — one fact, in one place, instead of a second copy in the glyph's colour.
+  — 底栏的机器现在是像素宠物：三十二只手绘 16×16 小家伙，四个家族各八只，从陪伴动物到品牌自己的那盏灯。形状认机器，颜色只跟随交互状态——静置、悬停、选中。机器名经稳定哈希认领宠物（本地网络追加的后缀不改变它）；右键底栏圆片就是选择面板本身，中间不再隔一层菜单，机器卡片则在菜单里提供同样的面板——史莱姆是被看见的，不是被念出名字的；选中就是选中，离线也一样是那身 active 蓝。需要处理或失败的机器只靠底色表达，状态这件事始终只有一个出处。
+- **The app icon keeps the transparent margin its neighbours have.** The dark tile was drawn edge to edge, and an OS draws an app icon at the size of its slot — so the plate filled the slot completely and Beacon read about a tenth larger than the apps beside it on the Windows desktop and in the macOS Dock. The tile now covers 80% of the canvas, the proportion of Apple's grid and of the icons next to it, and the mark inside is drawn at that scale rather than scaled after the fact. Tests hold the margin, its proportion and its centring, so the icon cannot go back to full-bleed.
+  — 暗色底板此前满画布绘制，而系统按图标槽位尺寸绘制应用图标，底板便占满整个槽位：在 Windows 桌面和 macOS Dock 里，Beacon 都比旁边的应用大出约一成。现在底板只占画布 80%，与 Apple 图标网格及邻居的比例一致，内部图形按该比例直接绘制而非事后缩放。测试锁住留白、占比与居中，图标不会退回满版。
+
+## 0.7.9
+
 **Beacon 0.7.9: Windows 图标小尺寸更清晰 — Sharper Windows icon at small sizes**
 
 - **Give the app icon stronger small-size optics.** Windows derives its 16–256px icon variants from one master image; the lamp and beams now carry more visual weight so they remain clear in Explorer and desktop shortcuts. macOS keeps using the same shared app icon.
