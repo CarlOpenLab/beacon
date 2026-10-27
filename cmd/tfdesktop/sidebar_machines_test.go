@@ -249,6 +249,15 @@ func TestShortMachineRailIsCenteredAndInset(t *testing.T) {
 		if bottomGap := 420 - (first.Y + first.H); bottomGap < 8 {
 			t.Errorf("width %v: bottom gap = %v, want at least 8", width, bottomGap)
 		}
+		rail, ok := tt.Find("machine rail")
+		if !ok {
+			t.Fatal("machine rail missing")
+		}
+		topGap := first.Y - rail.Y
+		bottomGap := rail.Y + rail.H - first.Y - first.H
+		if topGap != bottomGap || topGap != 8 {
+			t.Errorf("width %v: rail padding top=%v bottom=%v, want 8 on both sides", width, topGap, bottomGap)
+		}
 	}
 }
 

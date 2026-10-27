@@ -4,6 +4,17 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.6
+
+**Beacon 0.7.6: 底部机器栏上下留白一致 — Balanced machine rail spacing**
+
+- **Remove the separator above the machine rail.** Circular machine controls retain their borderless state fills, and now sit with equal 8-point space above and below instead of extra padding at the bottom. The resize handle respects the same rail bounds. Layout tests verify the spacing at narrow, default and wide sidebar widths.
+  — 移除底部机器栏上方的分隔线，保留圆形图标的无边框状态背景。图标上下各留 8 点距离，不再额外偏向底部；拖动句柄同步避开机器栏，布局测试覆盖窄、默认和宽侧栏。
+- Includes the local CLI image-paste fix from v0.7.5.
+  — 包含 v0.7.5 的本机 CLI 图片粘贴修复。
+
+**Full Changelog**: https://github.com/CarlOpenLab/beacon/compare/v0.7.5...v0.7.6
+
 ## 0.7.5
 
 **Beacon 0.7.5: 本机图片粘贴交给 CLI 处理 — Native image paste for local CLI agents**

@@ -177,7 +177,7 @@ func (w *window) sidebarToolbar(c *ui.Context, hidden bool, width float32) {
 // back.
 func (w *window) resizeHandle(c *ui.Context, pal *uitokens.Palette) {
 	h := ui.Box(c).Key("sidebar-resize").Absolute().Left(w.sideWidth() - 4).
-		Top(max(float32(uitokens.TopBar), c.TitleBar().Height)).Bottom(machineRailH + 8).
+		Top(max(float32(uitokens.TopBar), c.TitleBar().Height)).Bottom(machineRailH + 2*machineRailPad).
 		Width(8).Cursor(ui.CursorResizeEW)
 	if dx, _, ok := h.Dragged(); ok {
 		if w.sideDrag == 0 {
@@ -269,6 +269,7 @@ func (w *window) railMachine(now time.Time) (tunnel.Machine, bool) {
 // The machine rail centers short rosters and scrolls longer ones sideways.
 const (
 	machineRailH      = float32(34)
+	machineRailPad    = float32(4)
 	machineTileSize   = float32(26)
 	machineTileRadius = float32(7)
 	machineRailFade   = float32(14)
@@ -286,8 +287,8 @@ var machineSwitch = ui.Animation{Duration: machineSwitchDuration}
 
 // machineRail keeps every machine available without an overflow menu.
 func (w *window) machineRail(c *ui.Context, pal *uitokens.Palette) {
-	ui.Box(c).Height(0.5).Shrink(0).FillWidth().Background(pal.Text.Alpha(0.12))
-	ui.Row(c).Height(machineRailH+8).Shrink(0).Padding(0, 12, 8, 12).
+	ui.Row(c).Key("machine-rail").Label("machine rail").Height(machineRailH+2*machineRailPad).Shrink(0).
+		Padding(machineRailPad, 12).
 		AlignItems(ui.Center).Children(func() {
 		machines := w.railMachines(c.Now())
 		selected := w.selectedMachine()
