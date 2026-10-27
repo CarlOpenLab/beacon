@@ -373,4 +373,37 @@
     });
   })();
 
+  /* ========================================================================
+     Section spy — the rail and the header nav agree on where the reader is
+     ======================================================================== */
+
+  (function () {
+    var rail = Array.prototype.slice.call(document.querySelectorAll('.side-link'));
+    var top = Array.prototype.slice.call(document.querySelectorAll('.nav a'));
+    if (!rail.length || !('IntersectionObserver' in window)) return;
+
+    var sections = rail.map(function (l) { return document.querySelector(l.getAttribute('href')); });
+    if (sections.some(function (s) { return !s; })) return;
+    var current = -1;
+
+    function mark(index) {
+      if (index === current) return;
+      current = index;
+      rail.forEach(function (l, i) { l.classList.toggle('is-active', i === index); });
+      top.forEach(function (l, i) { l.classList.toggle('is-active', i === index); });
+    }
+
+    // The page's upper third is where a reader is judged to be: the section
+    // crossing that band is the one the rail names, and the band's narrowness
+    // keeps two chapters from claiming the frame at once.
+    var spy = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var i = sections.indexOf(entry.target);
+        if (entry.isIntersecting) mark(i);
+        else if (i === current) mark(-1);
+      });
+    }, { rootMargin: '-30% 0px -58% 0px' });
+    sections.forEach(function (s) { spy.observe(s); });
+  })();
+
 })();

@@ -186,6 +186,63 @@ svg { display: block; }
 }
 .nav a:hover { color: var(--ink); }
 .nav a:hover::after { transform: scaleX(1); }
+.nav a.is-active { color: var(--ink); }
+.nav a.is-active::after { transform: scaleX(1); }
+
+/* The section rail: the page's chapters as a column of ticks at the right
+   edge, the one in view wearing the signal red. It waits for a screen wide
+   enough that the outer margin is the rail's own room. */
+.side-nav {
+  display: none;
+  position: fixed;
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 55;
+  flex-direction: column;
+  gap: 2px;
+}
+.side-link {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 6px 0;
+  font-family: var(--mono);
+}
+.side-link .t {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--ink-2);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease, color 0.18s ease;
+}
+.side-link .n {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  transition: color 0.18s ease;
+}
+.side-link::after {
+  content: "";
+  width: 14px;
+  height: 1px;
+  background: var(--rule);
+  transition: width 0.22s ease, background 0.18s ease;
+}
+.side-link:hover .t,
+.side-link.is-active .t { opacity: 1; transform: none; }
+.side-link:hover .n { color: var(--ink-2); }
+.side-link:hover::after { width: 22px; background: var(--ink-2); }
+.side-link.is-active .t { color: var(--ink); }
+.side-link.is-active .n { color: var(--signal); }
+.side-link.is-active::after { width: 26px; background: var(--signal); }
+
+@media (min-width: 1320px) {
+  .side-nav { display: flex; }
+}
 
 .head-actions {
   display: flex;
