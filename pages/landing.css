@@ -1714,6 +1714,7 @@ pre.code[hidden] { display: none; }
 
 .k-top .lights i { width: 8px; height: 8px; }
 .k-tools { display: flex; gap: 12px; color: #83838f; font-size: 11px; }
+.k-tools svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .k-ico { display: inline-flex; align-items: center; }
 .k-ico svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
 
@@ -1784,6 +1785,21 @@ pre.code[hidden] { display: none; }
 }
 .k-tally .k-glyph { margin-left: 4px; }
 .k-tally .k-glyph:first-child { margin-left: 0; }
+
+/* The rail: what the app's bottom strip is now — the machines as pets, the
+   chosen one on the active wash. */
+.k-rail { margin-inline: auto; display: flex; align-items: center; gap: 5px; }
+.k-pet {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(154, 190, 242, 0.08);
+  color: #a9a9b4;
+}
+.k-pet svg { width: 14px; height: 14px; display: block; }
+.k-pet.is-active { background: rgba(154, 190, 242, 0.28); color: #ececf0; }
 
 /* --- the card: a header, and the terminal under it ------------------------ */
 
