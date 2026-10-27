@@ -84,3 +84,65 @@ func TestTheAppIconHasNoOpaquePlate(t *testing.T) {
 		})
 	}
 }
+
+// The packaging icon must keep a transparent margin around the tile.
+//
+// The tile used to fill the canvas edge to edge. The OS draws an app icon at
+// the size of its slot, so the art is the size of the icon on screen: a
+// full-bleed plate covered the whole slot and Beacon came out about a tenth
+// larger than the apps beside it on the Windows desktop. The report was a
+// screenshot, so the proportion was measured off it — the neighbour's plate
+// covered 79% of its slot, Beacon's 100%.
+//
+// The margin is what every icon grid expects: Apple's squircle is 824 of 1024,
+// and the icons next to Beacon on Windows land on the same proportion. This
+// holds the file the packager reads, in a band wide enough for a designer to
+// nudge the optical size without the test arguing with them.
+func TestTheAppIconKeepsItsSafeMargin(t *testing.T) {
+	data, err := os.ReadFile("../../resources/icon.png")
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	b := img.Bounds()
+
+	// The tile's extent, from the pixels that are actually painted.
+	minX, minY, maxX, maxY := b.Max.X, b.Max.Y, b.Min.X, b.Min.Y
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if _, _, _, a := img.At(x, y).RGBA(); a > 0x8000 {
+				minX, minY = min(minX, x), min(minY, y)
+				maxX, maxY = max(maxX, x), max(maxY, y)
+			}
+		}
+	}
+
+	side, tall := maxX-minX+1, maxY-minY+1
+	if side != tall {
+		t.Fatalf("tile is %dx%d, want a square", side, tall)
+	}
+	ratio := float64(side) / float64(b.Dx())
+	if ratio < 0.76 || ratio > 0.86 {
+		t.Fatalf("the tile covers %.1f%% of the canvas (%d of %d px): want 76-86%%, or the icon reads too large (or too small) beside other apps",
+			ratio*100, side, b.Dx())
+	}
+
+	// A margin has to be on every side, not just one: a tile pushed to a corner
+	// keeps the ratio above while sitting off-centre in the slot.
+	for _, m := range []struct {
+		name string
+		px   int
+	}{
+		{"left", minX - b.Min.X},
+		{"right", b.Max.X - 1 - maxX},
+		{"top", minY - b.Min.Y},
+		{"bottom", b.Max.Y - 1 - maxY},
+	} {
+		if m.px < b.Dx()/14 {
+			t.Fatalf("%s margin is %dpx of %d: the tile is not centred in its slot", m.name, m.px, b.Dx())
+		}
+	}
+}

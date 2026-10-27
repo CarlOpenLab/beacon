@@ -7,7 +7,8 @@ times the target size and scaled down, so the 16px favicon is the same drawing
 as the app icon rather than a blurred copy of it.
 
 Sizes and where they land
-    1024  resources/icon.png            app icon (macOS/Windows packaging)
+    1024  resources/icon.png            app icon (macOS/Windows packaging),
+                                       inset by APP_ICON_PAD on each side
      512  .github/assets/logo.png       README header
      128  web/public/favicon.png        browser tab
       32  web/public/favicon-32.png
@@ -38,26 +39,38 @@ INK = (22, 26, 34)        # the desktop shell's ink, which the window and rail u
 CREAM = (242, 238, 228)   # landing --paper
 SIGNAL = (196, 68, 28)    # landing --signal
 TILE_RADIUS = 0.204       # the corner the app icon has worn since v0.2.0
+# An app icon is not a wallpaper: the OS draws it in a slot that is larger than
+# the artwork is meant to be, and every other icon in that slot carries a
+# transparent margin. A full-bleed tile fills the slot edge to edge and reads a
+# tenth larger than its neighbours on the desktop and in the Dock, which is how
+# it was reported. 10% a side puts the tile at 80% of the canvas — the macOS
+# grid's proportion, and what the icons beside it on Windows already do.
+APP_ICON_PAD = 0.10
 
 
-def mark(size, tile=True, optical=1.0, lamp=CREAM):
+def mark(size, tile=True, optical=1.0, lamp=CREAM, pad=0.0):
     """Draw the mark at `size` px. `optical` > 1 fattens the drawing for tiny sizes.
 
     `lamp` is the disc's colour: CREAM for the tile and for dark ground, INK for
 the bare mark on light ground, where a cream lamp on paper is a hole, not a lamp.
+    `pad` is the transparent margin on each side, as a fraction of `size`: the
+tile (and with it the lamp and beams) is drawn inside the remaining square.
     """
     ss = 4
     n = size * ss
     img = Image.new("RGBA", (n, n), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
+    margin = round(n * pad)
+    box = n - 2 * margin                      # the tile's side, inside the margin
     if tile:
-        d.rounded_rectangle([0, 0, n - 1, n - 1], radius=TILE_RADIUS * n, fill=INK + (255,))
+        d.rounded_rectangle([margin, margin, margin + box - 1, margin + box - 1],
+                            radius=TILE_RADIUS * box, fill=INK + (255,))
 
-    u = n / 1024.0                            # one design unit
-    cx, cy = 300 * u, 512 * u
+    u = box / 1024.0                          # one design unit
+    cx, cy = margin + 300 * u, margin + 512 * u
     r = (168 + 46 * (optical - 1)) * u        # the lamp grows with optical correction
-    reach = 1024 * u                          # the beams run off the tile's edge
+    reach = margin + box                      # the beams run off the tile's edge
 
     # Two beams leaving the lamp: narrow where they leave it, wide where they
     # run off the tile. Fattened at small sizes, or they turn into grey dust.
@@ -87,9 +100,7 @@ def main():
         os.makedirs(os.path.dirname(path), exist_ok=True)
         return path
 
-    # MyGo derives Windows' 16-256px icon slots from this master with a generic
-    # resizer, so give the lamp and beams stronger optics before that downscale.
-    mark(1024, optical=1.30).save(out("resources/icon.png"))
+    mark(1024, pad=APP_ICON_PAD).save(out("resources/icon.png"))
     mark(512).save(out(".github/assets/logo.png"))
     mark(128, optical=1.12).save(out("web/public/favicon.png"))
     mark(32, optical=1.30).save(out("web/public/favicon-32.png"))
