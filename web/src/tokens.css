@@ -25,11 +25,9 @@
   --overlay: rgba(10, 10, 30, 0.12);
   --popover: #ffffff;
   --term-bg: #ffffff;
-  --wash-1: #ebe0f3;
-  --wash-2: #f3e7f1;
-  --wash-3: #f7eee4;
-  --wash-4: #f6efcf;
-  --wash-glow: rgba(247, 220, 241, 0.75);
+  --wash-1: #eceef4;
+  --wash-2: #eceef4;
+  --wash-glow: rgba(0, 0, 0, 0.00);
 }
 
 [data-theme="dark"] {
@@ -56,9 +54,8 @@
   --overlay: rgba(0, 0, 0, 0.35);
   --popover: #232327;
   --term-bg: #232328;
-  --wash-1: #17141f;
-  --wash-2: #191620;
-  --wash-3: #1b1916;
-  --wash-glow: rgba(120, 70, 120, 0.22);
+  --wash-1: #141418;
+  --wash-2: #141418;
+  --wash-glow: rgba(0, 0, 0, 0.00);
 }
 

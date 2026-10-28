@@ -16,13 +16,9 @@ func raised(e ui.Element, pal *uitokens.Palette) ui.Element {
 	if pal.Dark {
 		return darkShadow(litEdge(e, pal))
 	}
-	// A light card gets a 1px hard edge too. The window's own edge is a hard
-	// line; a card lifted only by a shadow reads as a soft grey smudge, so the
-	// corner has the right curve and the wrong material. The edge is a
-	// zero-blur shadow rather than a Border because a border takes a pixel out
-	// of the card's inside and every 8px gap around it would be off by one.
-	return e.Shadow(0, 0, 0, 1, pal.CardBorder).
-		Shadow(0, 1, 2, 0, pal.CardShadow).
+	// Borderless elevation in light mode: avoid harsh 1px borders or hard stroke
+	// edges; surfaces stand out via compound subtle drop shadows.
+	return e.Shadow(0, 1, 2, 0, pal.CardShadow).
 		Shadow(0, 1, 6, 0, pal.CardShadow2)
 }
 

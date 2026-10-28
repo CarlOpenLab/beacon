@@ -13,15 +13,20 @@ import (
 )
 
 // liveCwd asks the operating system where a process stands. Linux keeps it in
-// /proc; macOS has no /proc and answers with lsof, which ships with the system.
-// Anything else, and any failure, is "": the caller falls back to the directory
-// the session was started in.
+// /proc; macOS queries the kernel directly via proc_pidinfo. Anything else,
+// and any failure, falls back to lsof, and finally to the started directory.
 func liveCwd(pid int) string {
+	if pid <= 0 {
+		return ""
+	}
 	if _, err := os.Stat("/proc"); err == nil {
 		if dir, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd"); err == nil && dir != "" {
 			return dir
 		}
 		return ""
+	}
+	if dir := darwinLiveCwd(pid); dir != "" {
+		return dir
 	}
 	return lsofCwd(pid)
 }

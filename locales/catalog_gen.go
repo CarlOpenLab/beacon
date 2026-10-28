@@ -2742,11 +2742,11 @@ func (msgs Messages) MachineListSep() string {
 	return Catalog.Format(msgs.locale, "machine_list_sep", nil)
 }
 
-// MachineIconMenu says "图标"
+// MachineIconMenu says "宠物"
 // in the language the app shows.
 func MachineIconMenu() string { return In(i18n.Locale()).MachineIconMenu() }
 
-// MachineIconMenu says "图标"
+// MachineIconMenu says "宠物"
 // in the language of msgs.
 func (msgs Messages) MachineIconMenu() string {
 	return Catalog.Format(msgs.locale, "machine_icon_menu", nil)

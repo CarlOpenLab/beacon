@@ -194,7 +194,7 @@
   "@machine_list_sep": {
     "description": "Between a machine's name and its state when spoken aloud. A full-width comma in Chinese, a comma and a space in English."
   },
-  "machine_icon_menu": "Machine icon",
+  "machine_icon_menu": "Pets",
   "machine_icon_laptop": "Laptop",
   "machine_icon_monitor": "Monitor",
   "machine_icon_server": "Server",

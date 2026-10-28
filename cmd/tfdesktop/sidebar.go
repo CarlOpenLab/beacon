@@ -381,6 +381,9 @@ func (w *window) machineRailTile(c *ui.Context, pal *uitokens.Palette, m tunnel.
 			}
 		}
 		tile.Background(tile.AnimateColor("bg", bg, machineSwitch))
+		if state == "waiting" && !selected {
+			tile.Shadow(0, 0, 0, 1.5, pal.Attention.Alpha(0.55)).Shadow(0, 1, 3, 0, pal.AttnSoft)
+		}
 		fg := pal.TextMuted
 		if selected {
 			fg = pal.Text
@@ -805,10 +808,15 @@ func (w *window) petPickerCell(c *ui.Context, m tunnel.Machine, p petIcon, curre
 	ui.Column(c).Gap(4).AlignItems(ui.Center).Children(func() {
 		cell := ui.Box(c).Size(34, 34).Radius(10).Center().
 			Label(p.zh + " " + p.en).Cursor(ui.CursorPointer)
+		bg := ui.Transparent
 		if p.key == current {
-			cell.Background(machineActiveBg(c))
+			bg = machineActiveBg(c)
 		} else if cell.Hovered() {
-			cell.Background(machineHoverBg(c))
+			bg = machineHoverBg(c)
+		}
+		cell.Background(cell.AnimateColor("bg", bg, ui.Animation{Duration: 90e6}))
+		if p.key == current {
+			chosen(cell, pal)
 		}
 		cell.Children(func() {
 			ui.Icon(c, petGlyphs[p.key]).Size(machinePetSize, machinePetSize).TextColor(pal.Text)

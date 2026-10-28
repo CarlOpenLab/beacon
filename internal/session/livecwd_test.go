@@ -34,12 +34,17 @@ func TestLiveCwdFollowsTheShell(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		if got := resolve(t, sess.LiveCwd()); got == want {
-			return
+			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("LiveCwd = %q, want the directory the shell cd'd to %q", sess.LiveCwd(), want)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Summary must also report the updated directory.
+	if got := resolve(t, sess.Summary().Cwd); got != want {
+		t.Fatalf("Summary().Cwd = %q, want %q", got, want)
 	}
 }
 

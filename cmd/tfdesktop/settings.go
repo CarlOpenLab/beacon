@@ -152,6 +152,8 @@ type settingsWindow struct {
 
 	pane int
 
+	search string
+
 	family  string
 	size    float64
 	relay   string
@@ -380,6 +382,15 @@ func (s *settingsWindow) view(c *ui.Context) {
 			// Settings: the pages down the left, the chosen one on a card
 			// of its own at the right.
 			ui.Column(c).Width(184).Shrink(0).FillHeight().Padding(8, 8, 8, 4).Gap(2).Children(func() {
+				ui.Row(c).Height(28).Radius(7).Padding(0, 8).Gap(6).AlignItems(ui.Center).
+					Background(pal.Chip).Margin(0, 0, 4, 0).Children(func() {
+					ui.Icon(c, iconSearch).Size(12, 12).TextColor(pal.TextMuted)
+					in := ui.TextInputBase(c.Key("settings-search"), &s.search).Grow(1).FontSize(12).
+						Placeholder(locales.PalettePlaceholder())
+					if in.Changed() {
+						s.onSearchChanged()
+					}
+				})
 				for _, page := range settingsPages {
 					s.settingsNav(c, pal, page)
 				}
@@ -390,7 +401,8 @@ func (s *settingsWindow) view(c *ui.Context) {
 				card.Children(func() {
 					// The page names itself once, in a header that stays while the
 					// settings below scroll, as the platform's settings windows do.
-					ui.Row(c).Height(44).Shrink(0).Padding(0, 18).AlignItems(ui.Center).Children(func() {
+					ui.Row(c).Height(44).Shrink(0).Padding(0, 18).AlignItems(ui.Center).
+						Radius(uitokens.CardRadius, uitokens.CardRadius, 0, 0).Children(func() {
 						ui.Text(c, settingsPageTitle(s.pane)).FontSize(15).FontWeight(650).TextColor(pal.Text)
 					})
 					// The pane is the whole card, so it scrolls rather than clips:
@@ -471,14 +483,67 @@ var settingsPages = []settingsPage{
 	{paneDiagnostics, locales.SettingsPaneDiagnostics, iconInfo},
 }
 
+func (s *settingsWindow) onSearchChanged() {
+	q := strings.TrimSpace(s.search)
+	if q == "" {
+		return
+	}
+	if !settingsPageMatches(s.pane, q) {
+		for _, page := range settingsPages {
+			if settingsPageMatches(page.id, q) {
+				s.pane = page.id
+				break
+			}
+		}
+	}
+}
+
+func settingsPageMatches(pane int, q string) bool {
+	q = strings.ToLower(strings.TrimSpace(q))
+	if q == "" {
+		return true
+	}
+	var keywords []string
+	switch pane {
+	case paneTerminal:
+		keywords = []string{"terminal", "font", "family", "size", "pt", "jetbrains", "menlo", "终端", "字体", "字号"}
+	case paneRelay:
+		keywords = []string{"relay", "url", "device", "secret", "ca", "cert", "token", "中继", "设备", "密钥", "证书"}
+	case paneServer:
+		keywords = []string{"server", "browser", "control", "viewer", "fit", "scale", "web", "服务", "浏览器", "控制", "自适应"}
+	case paneUpdates:
+		keywords = []string{"update", "version", "check", "github", "更新", "版本", "检查更新"}
+	case paneAppearance:
+		keywords = []string{"appearance", "theme", "light", "dark", "system", "background", "wash", "plain", "rex", "mist", "meadow", "dusk", "外观", "主题", "浅色", "深色", "背景", "纯色"}
+	case paneSidebar:
+		keywords = []string{"sidebar", "machine", "toggle", "hide", "show", "rail", "侧栏", "机器", "主机", "隐藏"}
+	case paneNotifications:
+		keywords = []string{"notification", "waiting", "done", "error", "badge", "dock", "sound", "bell", "通知", "徽标", "响铃", "审批"}
+	case paneKeyboard:
+		keywords = []string{"keyboard", "shortcut", "key", "hotkey", "split", "tab", "pane", "快捷键", "键位", "分屏"}
+	case paneDiagnostics:
+		keywords = []string{"diagnostic", "log", "debug", "copy", "report", "诊断", "日志", "调试", "报告"}
+	}
+	for _, kw := range keywords {
+		if strings.Contains(kw, q) {
+			return true
+		}
+	}
+	return false
+}
+
 // settingsNav is one page in the window's own list, with the chosen page raised
 // off the column.
 func (s *settingsWindow) settingsNav(c *ui.Context, pal *uitokens.Palette, page settingsPage) {
 	selected := s.pane == page.id
+	matches := settingsPageMatches(page.id, s.search)
 	item := ui.Row(c).Height(32).Padding(0, 10).Gap(10).AlignItems(ui.Center).
 		Radius(uitokens.RowRadius).Label(page.title())
 	if pal.Dark {
 		item.Border(1, ui.Transparent) // room for the chosen row's edge
+	}
+	if !matches && s.search != "" {
+		item.Opacity(0.4)
 	}
 	bg := ui.Transparent
 	switch {
@@ -518,6 +583,7 @@ func settingsFormGroup(c *ui.Context, pal *uitokens.Palette, fn func()) {
 // settingsGroup is a titled set of settings on a soft panel, as the settings are
 // grouped: a chip of a card, its rows divided by hairlines.
 func settingsGroup(c *ui.Context, pal *uitokens.Palette, title string, fn func()) {
+	groupRows = 0
 	ui.Column(c).Gap(8).Children(func() {
 		if title != "" {
 			groupTitle(c, pal, title)
@@ -658,7 +724,7 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 		background = s.store.Get().Background
 	}
 	if background == "" {
-		background = "rex"
+		background = "plain"
 	}
 
 	groupRows = 0

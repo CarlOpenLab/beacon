@@ -4,7 +4,14 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
-## 0.7.9
+## 0.7.11
+
+**Beacon 0.7.11: 实时路径跟踪与分屏包裹树 — Live CWD tracking and split tab brackets**
+
+- **Live CWD tracking follows the shell through every directory change.** macOS now polls the kernel directly via `__proc_info(PROC_PIDVNODEPATHINFO)` in ~2µs with zero subprocess overhead, updating `cd` movements in real time in the card header and sidebar instead of freezing on the initial launch path.
+  — 实时路径跟踪跟随 Shell 目录变化：macOS 下采用内核直接系统调用 `__proc_info` 毫秒级读取前台进程当前目录，零子进程开销。在终端中执行 `cd` 切换到任何路径，顶部卡片栏与侧边栏目录标签立即实时同步，不再停留在首次打开路径。
+- **Split tabs are unified with main tabs, framed by symmetric dashed brackets.** Split child panes now share the exact same 34px row height, 13.5px font size, rename interactions, and hover close buttons as main session rows, with the hollow idle ring removed. Split groups are wrapped in a clean, symmetric bracket (`┌┄┄┄` on the first pane, `├┄┄┄` on middle panes, `└┄┄┄` on the last pane) using delicate 1.0px hairline dashed lines, and all pane labels align strictly in a single column.
+  — 分屏 Tab 全面对齐主 Tab 并以对称虚线树包裹：分屏子项统一 34px 行高、13.5px 字号、双击重命名与悬停关闭按钮，移除了空闲状态下的空心圈圈。分屏组以对称的精致微点虚线括号完整包裹（首项 `┌┄┄┄`、中间项 `├┄┄┄`、尾项 `└┄┄┄`），文字标签纵向严格对齐。
 
 ## 0.7.10
 

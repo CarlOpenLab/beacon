@@ -1009,7 +1009,7 @@
   "@machine_offline": {
     "description": "A roster machine's state."
   },
-  "machine_icon_menu": "图标",
+  "machine_icon_menu": "宠物",
   "machine_icon_laptop": "笔记本",
   "machine_icon_monitor": "显示器",
   "machine_icon_server": "服务器",

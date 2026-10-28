@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/CarlOpenLab/beacon/internal/protocol"
 	"github.com/CarlOpenLab/beacon/internal/uitokens"
@@ -236,12 +237,16 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 					focus()
 				}
 			})
-			if multi && !focused {
-				// The panes the user is not in fade, text and all. It is drawn at
-				// its full strength rather than faded in: the frame that first
-				// shows a split is the frame a person reads it in, and a veil
-				// still fading would say the wrong pane had the keyboard.
-				ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).PassThrough().Background(pal.Veil)
+			if multi {
+				veil := ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).PassThrough()
+				targetAlpha := float32(0)
+				if !focused {
+					targetAlpha = 1
+				}
+				cur := veil.Animate("veil-alpha", targetAlpha, 160*time.Millisecond)
+				if cur > 0.005 {
+					veil.Background(pal.Veil.Alpha(float32(pal.Veil.A) / 255 * cur))
+				}
 			}
 		})
 
@@ -285,7 +290,7 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 		right += windowButtonsRoom
 	}
 	h := ui.Row(c).Height(uitokens.HeaderH).Shrink(0).AlignItems(ui.Center).
-		Padding(0, right, 0, left).Gap(8)
+		Padding(0, right, 0, left).Gap(8).Radius(cardRadius(), cardRadius(), 0, 0)
 	hovered := h.Hovered()
 	h.DragWindow()
 

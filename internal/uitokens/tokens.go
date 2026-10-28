@@ -163,7 +163,7 @@ const (
 	CardGap = 8
 	HeaderH = 2 * (BarMid - CardGap) // a card's header, 44
 	RowH    = 34                     // a session's row
-	PaneH   = 30                     // a pane's row, under a split's
+	PaneH   = 34                     // a pane's row, under a split's (unified with RowH)
 	GroupH  = 28                     // a group's header
 	FooterH = 36                     // the sidebar's foot
 
@@ -191,17 +191,17 @@ type Wash struct {
 }
 
 // Washes are the backgrounds the appearance settings offer, in their order.
-// rex is the default: pink lavender above, rose at the top right, butter
-// cream below.
+// plain is the default: clean, solid distraction-free background. rex, mist,
+// meadow and dusk are optional washes.
 var Washes = []Wash{
+	{"plain", []string{"#eceef4", "#eceef4"}, []string{"#141418", "#141418"}, ui.Transparent, ui.Transparent},
 	{"rex", []string{"#ebe0f3", "#f3e7f1", "#f7eee4", "#f6efcf"}, []string{"#17141f", "#191620", "#1b1916"}, ui.RGBA(247, 220, 241, 0.75), ui.RGBA(120, 70, 120, 0.22)},
 	{"mist", []string{"#e3e9f4", "#ebeff6", "#f1f2f3", "#f2f1ec"}, []string{"#12151b", "#14171d", "#17181b"}, ui.RGBA(210, 225, 248, 0.75), ui.RGBA(70, 100, 150, 0.22)},
 	{"meadow", []string{"#e2eee5", "#ebf2e7", "#f3f2e2", "#f5f0d6"}, []string{"#111814", "#141a16", "#181a14"}, ui.RGBA(214, 240, 222, 0.75), ui.RGBA(70, 130, 95, 0.2)},
 	{"dusk", []string{"#e4dbf3", "#efdeee", "#f6e3dc", "#f7e6cf"}, []string{"#191321", "#1e161e", "#221a17"}, ui.RGBA(246, 206, 222, 0.8), ui.RGBA(150, 80, 110, 0.25)},
-	{"plain", []string{"#eceef4", "#eceef4"}, []string{"#141418", "#141418"}, ui.Transparent, ui.Transparent},
 }
 
-// WashFor returns a wash by id, falling back to rex for an id the settings file
+// WashFor returns a wash by id, falling back to plain for an id the settings file
 // no longer knows.
 func WashFor(id string) Wash {
 	for _, w := range Washes {

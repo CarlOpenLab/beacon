@@ -22,12 +22,15 @@ type paletteState struct {
 
 // paletteItem is a session or a command the palette offers.
 type paletteItem struct {
-	title   string
-	detail  string
-	keys    string
-	session bool
-	run     func()
-	score   int
+	title    string
+	detail   string
+	keys     string
+	session  bool
+	status   string
+	unread   bool
+	progress int
+	run      func()
+	score    int
 }
 
 func (w *window) openPalette() { w.pal = paletteState{open: true} }
@@ -38,10 +41,13 @@ func (w *window) paletteItems() []paletteItem {
 		for _, e := range w.entriesFor(m.ID) {
 			entry := e
 			items = append(items, paletteItem{
-				title:   entry.label,
-				detail:  w.machineName(entry.machine) + " · " + entry.meta,
-				session: true,
-				run:     entry.pick,
+				title:    entry.label,
+				detail:   w.machineName(entry.machine) + " · " + entry.meta,
+				session:  true,
+				status:   entry.status,
+				unread:   entry.unread,
+				progress: entry.progress,
+				run:      entry.pick,
 			})
 		}
 	}
@@ -157,7 +163,7 @@ func (w *window) paletteView(c *ui.Context, pal *uitokens.Palette) {
 				lastKind = isSession
 				row := ui.Row(c.Key(i)).Height(38).Padding(0, 10).Gap(10).AlignItems(ui.Center).Radius(8)
 				if i == w.pal.index {
-					row.Background(pal.Accent.Alpha(0.12))
+					row.Background(pal.Accent.Alpha(0.20))
 					row.ScrollIntoView()
 				} else if row.Hovered() {
 					row.Background(pal.RowHover)
@@ -167,7 +173,11 @@ func (w *window) paletteView(c *ui.Context, pal *uitokens.Palette) {
 				}
 				row.Children(func() {
 					if isSession {
-						ui.Box(c).Size(8, 8).Radius(4).Background(pal.Success)
+						if it.status != "" && (it.status != "idle" || it.unread) {
+							statusGlyph(c, pal, it.status, it.unread, it.progress, 12)
+						} else {
+							ui.Box(c).Size(8, 8).Radius(4).Background(pal.Success)
+						}
 					} else {
 						ui.Icon(c, iconChevron).Size(14, 14).TextColor(pal.TextFaint)
 					}

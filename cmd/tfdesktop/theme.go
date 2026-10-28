@@ -217,7 +217,7 @@ func windowGround(mode string, dark bool) string {
 	case themeDark:
 		dark = true
 	}
-	w := uitokens.WashFor("rex")
+	w := uitokens.WashFor("plain")
 	stops := w.Light
 	if dark {
 		stops = w.Dark

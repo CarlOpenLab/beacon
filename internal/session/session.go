@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -132,23 +133,64 @@ func startDir(cwd string) string {
 // StatusChanges is signalled whenever what the session is doing changes.
 func (s *Session) StatusChanges() <-chan struct{} { return s.statusChanges }
 
-// pollForeground asks what is running in the pane, once a second, and tells the
-// status tracker when it changes: the chip on a card's header, and the one
-// signal an agent that reports nothing still leaves behind.
+// pollForeground asks what is running in the pane and which directory the shell
+// stands in now, and tells the status tracker when either changes: the chip and
+// the live path on a card's header follow along.
 func (s *Session) pollForeground() {
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
 		select {
 		case <-s.exited:
 			return
 		case <-tick.C:
-			if s.st == nil {
-				continue
+			if s.st != nil {
+				s.st.SetProcess(s.Foreground())
 			}
-			s.st.SetProcess(s.Foreground())
+			s.checkLiveCwd()
 		}
 	}
+}
+
+// checkLiveCwd updates s.cwd if the shell has moved to another directory, and
+// notifies the status channel so the hub broadcasts the new path to all clients.
+func (s *Session) checkLiveCwd() {
+	live := s.LiveCwd()
+	if live == "" {
+		return
+	}
+	s.mu.Lock()
+	changed := false
+	if !sameDir(live, s.cwd) {
+		s.cwd = live
+		changed = true
+	}
+	s.mu.Unlock()
+	if changed {
+		s.notifyStatus()
+	}
+}
+
+// sameDir reports whether a and b name the same directory, accounting for symlinks
+// such as macOS's /var -> /private/var and /tmp -> /private/tmp.
+func sameDir(a, b string) bool {
+	if a == b {
+		return true
+	}
+	if a == "" || b == "" {
+		return false
+	}
+	fiA, errA := os.Stat(a)
+	fiB, errB := os.Stat(b)
+	if errA == nil && errB == nil {
+		return os.SameFile(fiA, fiB)
+	}
+	ra, errA := filepath.EvalSymlinks(a)
+	rb, errB := filepath.EvalSymlinks(b)
+	if errA == nil && errB == nil {
+		return ra == rb
+	}
+	return false
 }
 
 // Foreground is the program in the foreground of the pane, or "" when the
@@ -257,6 +299,11 @@ func (s *Session) Summary() protocol.Summary {
 	// is how an agent names the task it is on. An empty title from both leaves
 	// the clients their own fallback.
 	title := s.title
+	if s.alive && s.pid > 0 {
+		if live := liveCwd(s.pid); live != "" && !sameDir(live, s.cwd) {
+			s.cwd = live
+		}
+	}
 	sum := protocol.Summary{
 		SessionID: s.ID,
 		PID:       s.pid,
