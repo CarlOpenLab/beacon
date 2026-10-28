@@ -191,10 +191,12 @@ type Wash struct {
 }
 
 // Washes are the backgrounds the appearance settings offer, in their order.
-// plain is the default: clean, solid distraction-free background. rex, mist,
-// meadow and dusk are optional washes.
+// plain is the default: clean, solid distraction-free background. frosted is
+// the translucent frosted glass background. rex, mist, meadow and dusk are
+// optional washes.
 var Washes = []Wash{
 	{"plain", []string{"#eceef4", "#eceef4"}, []string{"#141418", "#141418"}, ui.Transparent, ui.Transparent},
+	{"frosted", []string{"#e6ecf5", "#edf1f8"}, []string{"#141418", "#1a1a22"}, ui.RGBA(255, 255, 255, 0.45), ui.RGBA(255, 255, 255, 0.08)},
 	{"rex", []string{"#ebe0f3", "#f3e7f1", "#f7eee4", "#f6efcf"}, []string{"#17141f", "#191620", "#1b1916"}, ui.RGBA(247, 220, 241, 0.75), ui.RGBA(120, 70, 120, 0.22)},
 	{"mist", []string{"#e3e9f4", "#ebeff6", "#f1f2f3", "#f2f1ec"}, []string{"#12151b", "#14171d", "#17181b"}, ui.RGBA(210, 225, 248, 0.75), ui.RGBA(70, 100, 150, 0.22)},
 	{"meadow", []string{"#e2eee5", "#ebf2e7", "#f3f2e2", "#f5f0d6"}, []string{"#111814", "#141a16", "#181a14"}, ui.RGBA(214, 240, 222, 0.75), ui.RGBA(70, 130, 95, 0.2)},

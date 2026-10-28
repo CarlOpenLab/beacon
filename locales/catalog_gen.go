@@ -3198,6 +3198,104 @@ func (msgs Messages) BgPlain() string {
 	return Catalog.Format(msgs.locale, "bg_plain", nil)
 }
 
+// BgFrosted says "亚克力磨砂"
+// in the language the app shows.
+//
+// Beacon UI: bg frosted
+func BgFrosted() string { return In(i18n.Locale()).BgFrosted() }
+
+// BgFrosted says "亚克力磨砂"
+// in the language of msgs.
+//
+// Beacon UI: bg frosted
+func (msgs Messages) BgFrosted() string {
+	return Catalog.Format(msgs.locale, "bg_frosted", nil)
+}
+
+// SettingsBgOpacity says "背景透明度"
+// in the language the app shows.
+//
+// Beacon UI: settings background opacity
+func SettingsBgOpacity() string { return In(i18n.Locale()).SettingsBgOpacity() }
+
+// SettingsBgOpacity says "背景透明度"
+// in the language of msgs.
+//
+// Beacon UI: settings background opacity
+func (msgs Messages) SettingsBgOpacity() string {
+	return Catalog.Format(msgs.locale, "settings_bg_opacity", nil)
+}
+
+// SettingsBgBlur says "亚克力模糊"
+// in the language the app shows.
+//
+// Beacon UI: settings background blur
+func SettingsBgBlur() string { return In(i18n.Locale()).SettingsBgBlur() }
+
+// SettingsBgBlur says "亚克力模糊"
+// in the language of msgs.
+//
+// Beacon UI: settings background blur
+func (msgs Messages) SettingsBgBlur() string {
+	return Catalog.Format(msgs.locale, "settings_bg_blur", nil)
+}
+
+// BlurNone says "无模糊"
+// in the language the app shows.
+//
+// Beacon UI: blur none
+func BlurNone() string { return In(i18n.Locale()).BlurNone() }
+
+// BlurNone says "无模糊"
+// in the language of msgs.
+//
+// Beacon UI: blur none
+func (msgs Messages) BlurNone() string {
+	return Catalog.Format(msgs.locale, "blur_none", nil)
+}
+
+// BlurSubtle says "柔和"
+// in the language the app shows.
+//
+// Beacon UI: blur subtle
+func BlurSubtle() string { return In(i18n.Locale()).BlurSubtle() }
+
+// BlurSubtle says "柔和"
+// in the language of msgs.
+//
+// Beacon UI: blur subtle
+func (msgs Messages) BlurSubtle() string {
+	return Catalog.Format(msgs.locale, "blur_subtle", nil)
+}
+
+// BlurMedium says "标准"
+// in the language the app shows.
+//
+// Beacon UI: blur medium
+func BlurMedium() string { return In(i18n.Locale()).BlurMedium() }
+
+// BlurMedium says "标准"
+// in the language of msgs.
+//
+// Beacon UI: blur medium
+func (msgs Messages) BlurMedium() string {
+	return Catalog.Format(msgs.locale, "blur_medium", nil)
+}
+
+// BlurDeep says "强力"
+// in the language the app shows.
+//
+// Beacon UI: blur deep
+func BlurDeep() string { return In(i18n.Locale()).BlurDeep() }
+
+// BlurDeep says "强力"
+// in the language of msgs.
+//
+// Beacon UI: blur deep
+func (msgs Messages) BlurDeep() string {
+	return Catalog.Format(msgs.locale, "blur_deep", nil)
+}
+
 // BgRex says "粉紫"
 // in the language the app shows.
 //

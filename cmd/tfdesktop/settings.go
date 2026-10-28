@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -186,6 +188,11 @@ type settingsWindow struct {
 	language string
 	applied  string
 
+	// opacity is the background opacity (0.30 - 1.0).
+	opacity float64
+	// blur is the frosted background blur intensity ("none", "subtle", "medium", "deep").
+	blur string
+
 	// caNote is the one line under the CA field: which certificate is pinned,
 	// or why the last attempt failed. It is state, not a transient message,
 	// because ui has no other place to show "this is the file you picked".
@@ -237,6 +244,8 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 		dockBadge:     !cur.DockBadgeOff,
 		language:      normalizeLanguage(cur.Language),
 		applied:       normalizeLanguage(cur.Language),
+		opacity:       cur.Opacity(),
+		blur:          cur.Blur(),
 	}
 	if s.size <= 0 {
 		s.size = settings.DefaultFontSize
@@ -514,7 +523,7 @@ func settingsPageMatches(pane int, q string) bool {
 	case paneUpdates:
 		keywords = []string{"update", "version", "check", "github", "更新", "版本", "检查更新"}
 	case paneAppearance:
-		keywords = []string{"appearance", "theme", "light", "dark", "system", "background", "wash", "plain", "rex", "mist", "meadow", "dusk", "外观", "主题", "浅色", "深色", "背景", "纯色"}
+		keywords = []string{"appearance", "theme", "light", "dark", "system", "background", "wash", "plain", "frosted", "vibrancy", "blur", "rex", "mist", "meadow", "dusk", "外观", "主题", "浅色", "深色", "背景", "纯色", "磨砂", "毛玻璃"}
 	case paneSidebar:
 		keywords = []string{"sidebar", "machine", "toggle", "hide", "show", "rail", "侧栏", "机器", "主机", "隐藏"}
 	case paneNotifications:
@@ -722,6 +731,12 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 	if s.store != nil {
 		mode = normalizeTheme(s.store.Get().Theme)
 		background = s.store.Get().Background
+		if s.opacity <= 0 {
+			s.opacity = s.store.Get().Opacity()
+		}
+		if s.blur == "" {
+			s.blur = s.store.Get().Blur()
+		}
 	}
 	if background == "" {
 		background = "plain"
@@ -736,6 +751,38 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 			seg.Track.OnChange(func() {
 				if s.desk != nil {
 					s.desk.setTheme(themeChoices[choice].id)
+				}
+			})
+		})
+		settingRow(c, pal, locales.SettingsBgOpacity(), "", func() {
+			slider := ui.Slider(c.Key("bg-opacity"), &s.opacity, 0.30, 1.0).Step(0.05).Width(150)
+			slider.OnChange(func() {
+				if s.desk != nil {
+					s.desk.setBackgroundOpacity(s.opacity)
+				} else if s.store != nil {
+					s.store.Update(func(st *settings.Settings) { st.BackgroundOpacity = s.opacity })
+				}
+			})
+			pct := fmt.Sprintf("%d%%", int(math.Round(s.opacity*100)))
+			ui.Text(c, pct).FontSize(12.5).TextColor(pal.TextMuted).Width(38).TextAlign(ui.End)
+		})
+		settingRow(c, pal, locales.SettingsBgBlur(), "", func() {
+			labels := []string{
+				locales.BlurNone(),
+				locales.BlurSubtle(),
+				locales.BlurMedium(),
+				locales.BlurDeep(),
+			}
+			choice := blurIndex(s.blur)
+			seg := segmentedChoice(c, pal, "bg-blur", &choice, labels)
+			seg.Track.OnChange(func() {
+				if choice >= 0 && choice < len(blurChoices) {
+					s.blur = blurChoices[choice].id
+					if s.desk != nil {
+						s.desk.setBackgroundBlur(s.blur)
+					} else if s.store != nil {
+						s.store.Update(func(st *settings.Settings) { st.BackgroundBlur = s.blur })
+					}
 				}
 			})
 		})
@@ -823,6 +870,7 @@ func (s *settingsWindow) washTile(c *ui.Context, pal *uitokens.Palette, wsh uito
 		if _, err := s.store.Update(func(st *settings.Settings) { st.Background = wsh.ID }); err != nil {
 			s.status, s.statusErr = err.Error(), true
 		}
+		s.opacity = s.store.Get().Opacity()
 		if s.desk != nil {
 			s.desk.invalidate()
 		}
@@ -832,6 +880,8 @@ func (s *settingsWindow) washTile(c *ui.Context, pal *uitokens.Palette, wsh uito
 // washName is a wash's name in the language the app shows.
 func washName(id string) string {
 	switch id {
+	case "frosted":
+		return locales.BgFrosted()
 	case "rex":
 		return locales.BgRex()
 	case "mist":

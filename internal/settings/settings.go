@@ -67,10 +67,17 @@ type Settings struct {
 	// first run gets — follows the system.
 	Theme string `json:"theme,omitempty"`
 
-	// Background is the window's wash: "rex", "mist", "meadow", "dusk" or
-	// "plain". Empty — what a first run and a missing key both give — is rex,
-	// the pink lavender one.
+	// Background is the window's wash: "rex", "mist", "meadow", "dusk", "frosted" or
+	// "plain". Empty — what a first run and a missing key both give — is plain.
 	Background string `json:"background,omitempty"`
+
+	// BackgroundOpacity is the terminal card and window opacity, between 0.30 and 1.0.
+	// Zero keeps the default (0.85 when frosted, 1.0 when solid plain).
+	BackgroundOpacity float64 `json:"backgroundOpacity,omitempty"`
+
+	// BackgroundBlur is the blur intensity of the frosted material: "none", "subtle",
+	// "medium" or "deep". Empty follows "subtle" (sidebar vibrancy).
+	BackgroundBlur string `json:"backgroundBlur,omitempty"`
 
 	// The four notifications below are on unless they are turned off, so each
 	// field names what turns it off rather than what turns it on: a first run,
@@ -113,6 +120,26 @@ type Settings struct {
 	// machine with no entry follows the name rule, so a fleet nobody has touched
 	// still gets glyphs that suggest what its machines are.
 	MachineIcons map[string]string `json:"machineIcons,omitempty"`
+}
+
+// Opacity returns the background opacity between 0.30 and 1.0.
+func (s Settings) Opacity() float64 {
+	if s.BackgroundOpacity > 0 {
+		return min(max(s.BackgroundOpacity, 0.30), 1.0)
+	}
+	if s.Background == "frosted" {
+		return 0.80
+	}
+	return 1.0
+}
+
+// Blur returns the blur intensity ("none", "subtle", "medium", "deep").
+func (s Settings) Blur() string {
+	switch s.BackgroundBlur {
+	case "none", "subtle", "medium", "deep":
+		return s.BackgroundBlur
+	}
+	return "subtle"
 }
 
 // Dir is where the desktop shell keeps its settings. BEACON_CONFIG_HOME or

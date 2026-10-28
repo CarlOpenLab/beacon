@@ -54,6 +54,9 @@ var controlsAtRight = runtime.GOOS != "darwin"
 // window whose chrome the app draws.
 func framedWindow(o mygo.WindowOptions) mygo.WindowOptions {
 	o.AutoHideMenuBar = true
+	// Translucent materials (Vibrancy) require a non-opaque window backing so
+	// that the system compositor can blur the desktop/windows behind the frame.
+	o.Transparent = true
 	if controlsAtRight {
 		o.TitleBarStyle = mygo.TitleBarHidden
 		o.HideWindowButtons = true

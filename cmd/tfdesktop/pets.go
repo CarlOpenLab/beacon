@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -28,6 +29,14 @@ type petIcon struct {
 	en     string // the menu's English name
 	series string // the family the menu groups the pet under
 	rows   []string
+}
+
+// name returns the pet's display name according to the active locale.
+func (p petIcon) name() string {
+	if strings.HasPrefix(i18n.Locale(), "en") {
+		return p.en
+	}
+	return p.zh
 }
 
 var petCatalog = []petIcon{

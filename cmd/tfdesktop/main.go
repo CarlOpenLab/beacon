@@ -56,7 +56,7 @@ func main() {
 	cwd := flag.String("cwd", "",
 		"working directory for new tabs (default: this machine's home directory)")
 	logLevel := flag.String("log-level", "",
-		"diagnostic log level: error, warn, info or debug (default: info, or debug when 设置 → 诊断 asked for it)")
+		"diagnostic log level: error, warn, info or debug (default: info, or debug when Settings → Diagnostics asked for it)")
 	logDir := flag.String("log-dir", "",
 		"where diagnostic logs are written (default: <settings dir>/logs)")
 	flag.Parse()
@@ -192,7 +192,7 @@ func main() {
 			MinWidth:        720,
 			MinHeight:       420,
 			BackgroundColor: windowGround(saved.Theme, mygo.Theme.IsDark()),
-			Vibrancy:        mygo.VibrancySidebar,
+			Vibrancy:        vibrancyFor(saved.Blur()),
 			StateKey:        "main",
 			Content:         ui.View(app.view),
 		}))

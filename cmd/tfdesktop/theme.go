@@ -57,6 +57,27 @@ func themeName(mode string) string {
 	return themeChoices[themeIndex(mode)].label
 }
 
+// blurChoices are the frosted blur intensity options.
+var blurChoices = []struct {
+	id    string
+	label func() string
+}{
+	{"none", locales.BlurNone},
+	{"subtle", locales.BlurSubtle},
+	{"medium", locales.BlurMedium},
+	{"deep", locales.BlurDeep},
+}
+
+// blurIndex returns the index of the blur setting in blurChoices.
+func blurIndex(id string) int {
+	for i, choice := range blurChoices {
+		if choice.id == id {
+			return i
+		}
+	}
+	return 1 // default to subtle
+}
+
 // themeFor is the palette an explicit mode asks for, or nil to follow the
 // system. It is the appearance the window's material follows, before any frame
 // runs.
@@ -114,21 +135,30 @@ func applyTheme(c *ui.Context, mode string) {
 
 // backdrop paints the window's wash: the base on the root, and the glow from
 // the top right on the row that holds everything else. Over the window's
-// material, which shows through a little when the window is translucent; the
-// plain wash is the material alone.
-func backdrop(c *ui.Context, pal *uitokens.Palette, row ui.Element, washID string) {
+// material, which shows through when the window is translucent; the plain
+// wash is solid, while the frosted wash (or a reduced opacity) lets the vibrancy
+// material blur through.
+func backdrop(c *ui.Context, pal *uitokens.Palette, row ui.Element, washID string, opacity float32) {
 	w := uitokens.WashFor(washID)
-	if w.ID == "plain" {
-		bg := pal.Sidebar
+	if w.ID == "frosted" || opacity < 1.0 {
 		if c.Vibrancy() {
-			bg = bg.Alpha(0.82)
+			c.Root().Background(ui.Transparent)
+			return
+		}
+		bg := pal.Sidebar
+		if opacity < 1.0 {
+			bg = bg.Alpha(opacity)
 		}
 		c.Root().Background(bg)
 		return
 	}
+	if w.ID == "plain" {
+		c.Root().Background(pal.Sidebar)
+		return
+	}
 	alpha := float32(1)
 	if c.Vibrancy() {
-		alpha = 0.95
+		alpha = min(opacity, 0.95)
 	}
 	base := w.Base(pal.Dark)
 	for i := range base.Stops {
@@ -196,15 +226,86 @@ func themeActionLabel(mode string, dark bool) string {
 // every window the shell has open, so a switch made in the settings window is
 // visible in the terminal at once.
 func (w *window) setTheme(mode string) {
+	if w == nil {
+		return
+	}
 	mode = normalizeTheme(mode)
-	if _, err := w.store.Update(func(s *settings.Settings) { s.Theme = mode }); err != nil {
-		log.Printf("tfdesktop: save appearance: %v", err)
+	if w.store != nil {
+		if _, err := w.store.Update(func(s *settings.Settings) { s.Theme = mode }); err != nil {
+			log.Printf("tfdesktop: save appearance: %v", err)
+		}
 	}
 	applyAppearance(mode)
 	if win := w.win; win != nil {
 		win.Invalidate()
 	}
 	w.invalidateSettings()
+}
+
+// vibrancyFor maps a blur setting ("none", "subtle", "medium", "deep") to a MyGo Vibrancy material.
+func vibrancyFor(blur string) mygo.Vibrancy {
+	switch blur {
+	case "none":
+		return mygo.VibrancyNone
+	case "subtle":
+		return mygo.VibrancySidebar
+	case "medium":
+		return mygo.VibrancyPopover
+	case "deep":
+		return mygo.VibrancyAcrylic
+	}
+	return mygo.VibrancySidebar
+}
+
+// setBackgroundOpacity updates the background opacity preference and repaints.
+func (w *window) setBackgroundOpacity(v float64) {
+	if w == nil {
+		return
+	}
+	v = min(max(v, 0.30), 1.0)
+	if w.store != nil {
+		if _, err := w.store.Update(func(s *settings.Settings) { s.BackgroundOpacity = v }); err != nil {
+			log.Printf("tfdesktop: save background opacity: %v", err)
+		}
+	}
+	if win := w.win; win != nil {
+		win.Invalidate()
+	}
+	w.invalidateSettings()
+}
+
+// setBackgroundBlur updates the blur material preference, updates the window's
+// vibrancy immediately, and repaints.
+func (w *window) setBackgroundBlur(b string) {
+	if w == nil {
+		return
+	}
+	if w.store != nil {
+		if _, err := w.store.Update(func(s *settings.Settings) { s.BackgroundBlur = b }); err != nil {
+			log.Printf("tfdesktop: save background blur: %v", err)
+		}
+	}
+	if win := w.win; win != nil {
+		win.SetVibrancy(vibrancyFor(b))
+		win.Invalidate()
+	}
+	w.invalidateSettings()
+}
+
+// backgroundOpacity returns the active background opacity.
+func (w *window) backgroundOpacity() float64 {
+	if w == nil || w.store == nil {
+		return 1.0
+	}
+	return w.store.Get().Opacity()
+}
+
+// backgroundBlur returns the active background blur.
+func (w *window) backgroundBlur() string {
+	if w == nil || w.store == nil {
+		return "subtle"
+	}
+	return w.store.Get().Blur()
 }
 
 // windowGround is the color the window is painted before its first frame: the

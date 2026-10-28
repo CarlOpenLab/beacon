@@ -184,7 +184,11 @@ func (w *window) body(c *ui.Context, pal *uitokens.Palette) {
 		// on the wash.
 		ui.Box(c).Fill().Children(func() {
 			card := ui.Column(c).Fill().Radius(cardRadius()).Clip()
-			raised(card.Background(pal.Card), pal)
+			cardBg := pal.Card
+			if op := float32(w.backgroundOpacity()); op < 1.0 {
+				cardBg = cardBg.Alpha(op)
+			}
+			raised(card.Background(cardBg), pal)
 			card.Children(func() {
 				// The card still has a header, even with no shell in it: it is
 				// where the window's own controls sit, and where the pointer
@@ -215,6 +219,9 @@ func (w *window) paneCard(c *ui.Context, pal *uitokens.Palette, tb *tab, focused
 		bg := pal.Card
 		if multi && !focused {
 			bg = pal.CardDim
+		}
+		if op := float32(w.backgroundOpacity()); op < 1.0 {
+			bg = bg.Alpha(op)
 		}
 		card := ui.Column(c).Fill().MinWidth(0).MinHeight(0).Radius(cardRadius()).Clip()
 		raised(card.Background(card.AnimateColor("bg", bg, ui.Animation{Duration: 140e6})), pal)

@@ -827,7 +827,7 @@ func (w *window) petPickerCell(c *ui.Context, m tunnel.Machine, p petIcon, curre
 			}
 			w.petPickerOpen = false
 		}
-		ui.Text(c, p.zh).FontSize(11).TextColor(pal.TextMuted).SingleLine()
+		ui.Text(c, p.name()).FontSize(11).TextColor(pal.TextMuted).SingleLine()
 	})
 }
 

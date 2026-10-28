@@ -1119,6 +1119,34 @@
   "@bg_plain": {
     "description": "Beacon UI: bg plain"
   },
+  "bg_frosted": "亚克力磨砂",
+  "@bg_frosted": {
+    "description": "Beacon UI: bg frosted"
+  },
+  "settings_bg_opacity": "背景透明度",
+  "@settings_bg_opacity": {
+    "description": "Beacon UI: settings background opacity"
+  },
+  "settings_bg_blur": "亚克力模糊",
+  "@settings_bg_blur": {
+    "description": "Beacon UI: settings background blur"
+  },
+  "blur_none": "无模糊",
+  "@blur_none": {
+    "description": "Beacon UI: blur none"
+  },
+  "blur_subtle": "柔和",
+  "@blur_subtle": {
+    "description": "Beacon UI: blur subtle"
+  },
+  "blur_medium": "标准",
+  "@blur_medium": {
+    "description": "Beacon UI: blur medium"
+  },
+  "blur_deep": "强力",
+  "@blur_deep": {
+    "description": "Beacon UI: blur deep"
+  },
   "bg_rex": "粉紫",
   "@bg_rex": {
     "description": "Beacon UI: bg rex"

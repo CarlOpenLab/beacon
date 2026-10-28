@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.12
+
+**Beacon 0.7.12: 亚克力磨砂背景与全量英文国际化 — Acrylic frosted blur background and complete English localization**
+
+- **Desktop acrylic frosted blur background with adjustable blur and opacity.** Added macOS system vibrancy (`NSVisualEffectView`) integration with dynamic material switching (`None`, `Subtle`, `Medium`, `Acrylic`), an opacity slider (30% to 100%) in Appearance settings, and clean single-layer composition so that desktop wallpapers and background windows blur through the terminal canvas without opaque stacking.
+  — 桌面端亚克力磨砂背景效果（支持调节模糊与透明度）：接入系统级磨砂材质（macOS NSVisualEffectView / Vibrancy），支持无模糊、柔和、标准、强力（Acrylic）四档模糊强度切换，并在外观设置中提供 30%～100% 背景透明度无级实时调节。终端卡片以纯净单层半透明透光，彻底消除多层叠加遮挡，让壁纸与背后窗口产生通透灵动的亚克力磨砂效果。
+- **Complete English localization across the entire desktop app and 32 pixel pets.** Added authentic English names for all thirty-two pixel pets (Sooty, Gloop, Pikachu, Nekomata, etc.), displaying localized names in English environments. Completed full English translations for all desktop preferences, blur controls, and appearance presets.
+  — 桌面端全量英文国际化与 32 款像素宠物英文命名：为全部 32 款手绘像素宠物补充地道英文命名（Sooty、Gloop、Pikachu、Nekomata 等），英文语言环境下直接显示对应英文名称；补全所有桌面端设置、外观、模糊调节及语言包词条，中英文词条 100% 对应。
+
 ## 0.7.11
 
 **Beacon 0.7.11: 实时路径跟踪与分屏包裹树 — Live CWD tracking and split tab brackets**

@@ -56,6 +56,9 @@ func TestFramedWindowKeepsOneSetOfControls(t *testing.T) {
 	if !o.AutoHideMenuBar {
 		t.Error("the window kept a menu bar under a hidden title bar")
 	}
+	if !o.Transparent {
+		t.Error("the window must be transparent to allow vibrancy to show through")
+	}
 	if controlsAtRight {
 		if o.TitleBarStyle != mygo.TitleBarHidden {
 			t.Errorf("TitleBarStyle = %q, want %q", o.TitleBarStyle, mygo.TitleBarHidden)

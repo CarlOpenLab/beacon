@@ -30,7 +30,7 @@ func newTestSettingsWindow(t *testing.T) (*settingsWindow, *settings.Store) {
 	t.Helper()
 	f := newTestFleet(t)
 	store := settings.Open(t.TempDir())
-	return newSettingsWindow(&window{}, store, f), store
+	return newSettingsWindow(&window{store: store}, store, f), store
 }
 
 // The three panes are what the request was about: the terminal's font, the
@@ -762,5 +762,45 @@ func TestSettingsControlSwitchReachesTheHub(t *testing.T) {
 	tt.Frame()
 	if !f.Hub().ControlAllowed() || store.Get().ControlOff {
 		t.Fatal("turning the switch back on did not reach the hub and the store")
+	}
+}
+
+func TestSettingsAppearancePaneControls(t *testing.T) {
+	sw, store := newTestSettingsWindow(t)
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+
+	if err := tt.Click(locales.SettingsPaneAppearance()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.SettingsPaneAppearance(), err)
+	}
+	tt.Frame()
+
+	if !tt.HasText(locales.SettingsBgOpacity()) || !tt.HasText(locales.SettingsBgBlur()) {
+		t.Fatalf("the appearance pane is missing opacity/blur controls; texts = %v", tt.Texts())
+	}
+
+	if !tt.HasText(locales.BlurNone()) || !tt.HasText(locales.BlurSubtle()) || !tt.HasText(locales.BlurMedium()) || !tt.HasText(locales.BlurDeep()) {
+		t.Fatalf("the appearance pane is missing blur choices; texts = %v", tt.Texts())
+	}
+
+	// Click Frosted background wash
+	if err := tt.Click(locales.BgFrosted()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.BgFrosted(), err)
+	}
+	tt.Frame()
+	if store.Get().Background != "frosted" {
+		t.Fatalf("expected store background to be 'frosted', got %q", store.Get().Background)
+	}
+	if sw.opacity != 0.80 {
+		t.Fatalf("expected window opacity to default to 0.80 when frosted, got %v", sw.opacity)
+	}
+
+	// Click Deep blur
+	if err := tt.Click(locales.BlurDeep()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.BlurDeep(), err)
+	}
+	tt.Frame()
+	if store.Get().Blur() != "deep" {
+		t.Fatalf("expected store blur to be 'deep', got %q", store.Get().Blur())
 	}
 }

@@ -707,7 +707,7 @@ func (w *window) view(c *ui.Context) {
 	// The window's wash: the root's gradient, and the glow the cards sit in.
 	pal := paletteFor(c)
 	row := ui.Row(c).Fill().AlignItems(ui.Stretch)
-	backdrop(c, pal, row, w.store.Get().Background)
+	backdrop(c, pal, row, w.store.Get().Background, float32(w.backgroundOpacity()))
 	// The column's fold: one progress drives the sidebar's width, the cards'
 	// left padding and the header's inset, so the three move as one surface.
 	ch := chromeFor(row.AnimateTo("sidebar", b2f(!w.sidebarHidden), sidebarMotion), w.sideWidth(), c.TitleBar())
@@ -1424,9 +1424,10 @@ func (w *window) watchTab(tb *tab, l *link, machine, sessionID string) {
 	conn.machine = machine
 	sess.handlers = tabHandlers{w: w, sess: sess, conn: conn}
 	term, err := terminal.New(terminal.Options{
-		Conn:    conn,
-		OnTitle: func(string) {},
-		OnExit:  func(int) {},
+		Conn:        conn,
+		OnTitle:     func(string) {},
+		OnExit:      func(int) {},
+		Transparent: true,
 		// The font saved in settings, so a tab opened after a change — or on a
 		// later run — is lettered the same as the ones already on screen.
 		Font: w.font,

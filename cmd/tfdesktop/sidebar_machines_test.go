@@ -163,6 +163,12 @@ func TestThePetCatalogIsFourFamiliesOfEight(t *testing.T) {
 			t.Errorf("family %s holds %d pets, want 8", family, n)
 		}
 	}
+	// Every pet reports a non-empty name matching the language in force.
+	for _, p := range petCatalog {
+		if p.name() == "" {
+			t.Errorf("pet %s has empty name", p.key)
+		}
+	}
 }
 
 // Every pet is 16 rows of 16 characters on the three-character palette, keeps
