@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.14
+
+**Beacon 0.7.14: 亚克力成为唯一背景 — Acrylic is the only window background**
+
+- **The window is acrylic, and the wash picker is gone.** Appearance settings no longer offer a background to choose: the solid Plain and the rex, mist, meadow and dusk gradients are removed, and the acrylic material is what a first run gets, at 80% opacity, with the blur control still there. A settings file that still names an old wash loads fine and resolves to acrylic.
+  — 窗口现在只有亚克力背景：外观设置不再提供背景样式的选择，纯色 Plain 与 rex、mist、meadow、dusk 四种渐变全部移除；首次运行即为亚克力材质，默认 80% 透明度，模糊档位照旧保留。旧配置文件里残留的背景字段仍可正常读取，并直接落到亚克力。
+- **The browser client follows the same material.** The generated color tokens now carry the acrylic wash, so the web client's background matches the desktop's instead of the old solid one.
+  — 浏览器客户端跟随同一材质：生成的颜色 token 改为亚克力 wash，网页端的背景与桌面端一致，不再是旧的纯色。
+
 ## 0.7.13
 
 **Beacon 0.7.13: 圆角微点分屏括号与缩放控制 — Rounded micro-dot split brackets and zoom controls**
