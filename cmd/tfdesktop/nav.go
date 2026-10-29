@@ -527,7 +527,7 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 	hasSplit := len(e.panes) > 1
 	padLeft := float32(10)
 	if hasSplit {
-		padLeft = 32
+		padLeft = 24
 	}
 	row := ui.Row(c).Key("row:"+e.machine+"\x00"+key).
 		Height(uitokens.RowH).FillWidth().Padding(0, 8, 0, padLeft).Gap(8).
@@ -538,23 +538,28 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		// moves no text.
 		row.Border(1, ui.Transparent)
 	}
+	firstPane := len(e.panes) == 0 || e.panes[0].active
+	selected := e.active && firstPane
 	if hasSplit {
 		row.Draw(func(p *ui.Painter, r ui.Rect) {
 			mid := r.Y + r.H/2
-			trunkX := r.X + 11
-			branchEnd := r.X + 30
-			width := float32(1.0)
-			dash := float32(3.0)
-			gap := float32(2.0)
-			line := pal.Text.Alpha(0.24)
+			trunkX := r.X + 10
+			branchEnd := r.X + 19
+			width := float32(1.3)
+			dash := float32(1.8)
+			gap := float32(2.6)
+			line := pal.Text.Alpha(0.28)
 			if pal.Dark {
-				line = pal.Text.Alpha(0.34)
+				line = pal.Text.Alpha(0.38)
+			}
+			if selected {
+				line = pal.Accent.Alpha(0.75)
 			}
 			bottomY := r.Y + r.H + 1
-			// Vertical dashed trunk descending to split child panes: ┊
-			drawTreeDashV(p, trunkX, mid-width/2, bottomY, width, dash, gap, line)
-			// Horizontal dashed branch runner leading towards the first pane: ┈
-			drawTreeDashH(p, trunkX, branchEnd, mid, width, dash, gap, line)
+			// Rounded top-left corner micro-dot bracket: ╭··
+			drawTreeDashV(p, trunkX, mid+3, bottomY, width, dash, gap, line)
+			p.Fill(ui.Rect{X: trunkX + 0.9 - width/2, Y: mid + 0.9 - width/2, W: width, H: width}, line, width/2)
+			drawTreeDashH(p, trunkX+3, branchEnd, mid, width, dash, gap, line)
 		})
 	}
 	// The copy that follows the pointer is the framework's; this row stays where
@@ -574,8 +579,6 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 	hovered := row.Hovered() && !dragged && w.rowDrag == nil
 	// A split's top row is its first pane's row and the tab's own: it is chosen
 	// when that pane is on screen, and the panes after it are the rows under it.
-	firstPane := len(e.panes) == 0 || e.panes[0].active
-	selected := e.active && firstPane
 	bg := ui.Transparent
 	switch {
 	case dragged:
@@ -699,25 +702,25 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 	return dragging, dropFrom
 }
 
-// drawTreeDashV draws crisp dashes vertically along a tree trunk.
+// drawTreeDashV draws rounded micro-dot dashes vertically along a tree trunk.
 func drawTreeDashV(p *ui.Painter, x, y0, y1, width, dash, gap float32, c ui.Color) {
 	if y1 <= y0 {
 		return
 	}
 	for y := y0; y < y1; y += dash + gap {
 		h := min(dash, y1-y)
-		p.Fill(ui.Rect{X: x - width/2, Y: y, W: width, H: h}, c, 0)
+		p.Fill(ui.Rect{X: x - width/2, Y: y, W: width, H: h}, c, width/2)
 	}
 }
 
-// drawTreeDashH draws crisp dashes horizontally along a tree branch.
+// drawTreeDashH draws rounded micro-dot dashes horizontally along a tree branch.
 func drawTreeDashH(p *ui.Painter, x0, x1, y, height, dash, gap float32, c ui.Color) {
 	if x1 <= x0 {
 		return
 	}
 	for x := x0; x < x1; x += dash + gap {
 		w := min(dash, x1-x)
-		p.Fill(ui.Rect{X: x, Y: y - height/2, W: w, H: height}, c, 0)
+		p.Fill(ui.Rect{X: x, Y: y - height/2, W: w, H: height}, c, height/2)
 	}
 }
 
@@ -726,7 +729,7 @@ func drawTreeDashH(p *ui.Painter, x0, x1, y, height, dash, gap float32, c ui.Col
 func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, last bool, top float32) {
 	key := sessionKey(e)
 	row := ui.Row(c).Key("pane:"+e.machine+"\x00"+key).Height(uitokens.RowH).FillWidth().
-		Padding(0, 8, 0, 32).Gap(8).
+		Padding(0, 8, 0, 24).Gap(8).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
 	if pal.Dark {
@@ -761,23 +764,28 @@ func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, l
 	})
 	row.Draw(func(p *ui.Painter, r ui.Rect) {
 		mid := r.Y + r.H/2
-		trunkX := r.X + 11
-		branchEnd := r.X + 30
-		width := float32(1.0)
-		dash := float32(3.0)
-		gap := float32(2.0)
-		line := pal.Text.Alpha(0.24)
+		trunkX := r.X + 10
+		branchEnd := r.X + 19
+		width := float32(1.3)
+		dash := float32(1.8)
+		gap := float32(2.6)
+		line := pal.Text.Alpha(0.28)
 		if pal.Dark {
-			line = pal.Text.Alpha(0.34)
+			line = pal.Text.Alpha(0.38)
+		}
+		if selected {
+			line = pal.Accent.Alpha(0.75)
 		}
 		topY := r.Y - 1
-		bottomY := r.Y + r.H + 1
 		if last {
-			bottomY = mid + width/2
+			// Rounded bottom-left corner micro-dot bracket: ╰··
+			drawTreeDashV(p, trunkX, topY, mid-3, width, dash, gap, line)
+			p.Fill(ui.Rect{X: trunkX + 0.9 - width/2, Y: mid - 0.9 - width/2, W: width, H: width}, line, width/2)
+			drawTreeDashH(p, trunkX+3, branchEnd, mid, width, dash, gap, line)
+			return
 		}
-		// Vertical dashed trunk: ┊
-		drawTreeDashV(p, trunkX, topY, bottomY, width, dash, gap, line)
-		// Horizontal dashed branch runner leading towards the child pane: ┈
+		// Middle T-branch micro-dot bracket: ├··
+		drawTreeDashV(p, trunkX, topY, r.Y+r.H+1, width, dash, gap, line)
 		drawTreeDashH(p, trunkX, branchEnd, mid, width, dash, gap, line)
 	})
 	row.Children(func() {

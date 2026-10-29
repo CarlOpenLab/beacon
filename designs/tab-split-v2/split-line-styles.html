@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beacon · 侧栏分屏 Tab 前导虚线/连接线样式对比</title>
+<style>
+:root {
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  min-height: 100vh;
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  background: #0d0e12;
+  color: #ececf0;
+  padding: 28px 32px 48px;
+  transition: background 0.2s, color 0.2s;
+}
+body[data-theme="light"] {
+  background: #e4e7f0;
+  color: #1d1d1f;
+}
+
+.topbar {
+  max-width: 1200px;
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.title-wrap h1 {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.title-wrap p {
+  font-size: 12.5px;
+  color: #8b8d9b;
+  margin-top: 4px;
+}
+body[data-theme="light"] .title-wrap p { color: #646672; }
+
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.seg {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 9px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+body[data-theme="light"] .seg {
+  background: rgba(0,0,0,0.05);
+  border-color: rgba(0,0,0,0.08);
+}
+.seg button {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.65;
+  transition: all 0.14s;
+}
+.seg button.on {
+  opacity: 1;
+  font-weight: 600;
+  background: rgba(255,255,255,0.14);
+}
+body[data-theme="light"] .seg button.on {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Grid of 6 sidebar cards */
+.grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+.card {
+  --side-bg: #16161c;
+  --side-border: rgba(255,255,255,0.08);
+  --text: #ececf0;
+  --muted: #9e9eae;
+  --faint: #6e6e7e;
+  --row-sel: rgba(255,255,255,0.10);
+  --row-sel-edge: rgba(255,255,255,0.13);
+  --row-hover: rgba(255,255,255,0.045);
+  --accent: #6b93ff;
+  --ok: #4fd17a;
+  --warn: #f0a33a;
+
+  background: var(--side-bg);
+  border: 1px solid var(--side-border);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.35);
+}
+body[data-theme="light"] .card {
+  --side-bg: #eceef4;
+  --side-border: rgba(0,0,0,0.08);
+  --text: #1d1d1f;
+  --muted: #6e6e78;
+  --faint: #9898a4;
+  --row-sel: #ffffff;
+  --row-sel-edge: rgba(0,0,0,0.06);
+  --row-hover: rgba(0,0,0,0.04);
+  --accent: #3b6cf6;
+  --ok: #22863a;
+  --warn: #c27b0f;
+  box-shadow: 0 10px 26px rgba(20,20,50,0.08);
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 4px 8px;
+  border-bottom: 1px solid var(--side-border);
+}
+.card-title {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.badge {
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.card-desc {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  padding: 0 4px;
+}
+
+/* Mock Sidebar List inside each card */
+.sidebar-mock {
+  width: 268px;
+  margin: 4px auto 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--side-bg) 92%, #000 8%);
+  border: 1px solid var(--side-border);
+  user-select: none;
+}
+body[data-theme="light"] .sidebar-mock {
+  background: #e7eaf2;
+}
+
+.mach-hdr {
+  height: 26px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+.mach-dot { width: 6.5px; height: 6.5px; border-radius: 50%; background: var(--ok); }
+.mach-cnt { font-size: 11px; font-weight: 400; color: var(--faint); }
+
+.row {
+  position: relative;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  font-size: 13.5px;
+  color: var(--text);
+  margin-bottom: 1px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.row:hover { background: var(--row-hover); }
+.row.selected {
+  background: var(--row-sel);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12), inset 0 0 0 1px var(--row-sel-edge);
+  font-weight: 550;
+}
+.row-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row-tag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+/* Status glyphs */
+.st-work {
+  width: 11px; height: 11px; border-radius: 50%; flex: none;
+  border: 1.6px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-top-color: var(--text);
+}
+.st-wait {
+  width: 7.5px; height: 7.5px; border-radius: 50%; flex: none;
+  background: var(--warn);
+  margin: 0 1.75px;
+}
+.st-idle {
+  width: 4.5px; height: 4.5px; border-radius: 50%; flex: none;
+  background: color-mix(in srgb, var(--faint) 55%, transparent);
+  margin: 0 3.25px;
+}
+
+/* =========================================================================
+   STYLE A: 圆角微距点线括号 (Refined Micro-Dot Bracket)
+   保留“虚线括号”语义，但收紧宽度（从 19px 缩至 9px），改用圆点虚线 + 圆角转折
+   ========================================================================= */
+.style-a .split-row { padding-left: 24px; }
+.style-a .guide-svg {
+  position: absolute; left: 8px; top: 0; width: 12px; height: 35px;
+  pointer-events: none; overflow: visible;
+}
+
+/* =========================================================================
+   STYLE B: 连续圆角树脊 (Smooth Rounded Spine · 类似 Linear / Arc)
+   1.5px 实心圆角柔和折线（╭ / ├ / ╰），激活分屏分支自动高亮为主色
+   ========================================================================= */
+.style-b .split-row { padding-left: 24px; }
+.style-b .guide-svg {
+  position: absolute; left: 8px; top: 0; width: 12px; height: 35px;
+  pointer-events: none; overflow: visible;
+}
+
+/* =========================================================================
+   STYLE C: 主行平齐 + 子窗格缩进虚线 (Parent Aligned + Indented Dashed Sub-branch)
+   第一个窗格与普通 Tab 完全平齐（不跳动），从主行状态图标正下方垂下精致虚线挂载子窗格
+   ========================================================================= */
+.style-c .split-sub { padding-left: 26px; }
+.style-c .guide-svg {
+  position: absolute; left: 10px; top: 0; width: 14px; height: 35px;
+  pointer-events: none; overflow: visible;
+}
+
+/* =========================================================================
+   STYLE D: 左侧双轨胶囊条 (Minimalist Vertical Split Pill / Track)
+   完全去掉横向分叉线，用左侧一条连贯的垂直分段轨道条（虚线段）表达“同一分屏组”
+   ========================================================================= */
+.style-d .split-row { padding-left: 18px; }
+.style-d .track-seg {
+  position: absolute;
+  left: 7px;
+  width: 2.5px;
+  border-radius: 1.5px;
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+}
+.style-d .split-row.first .track-seg { top: 8px; bottom: 2px; }
+.style-d .split-row.mid .track-seg   { top: 2px; bottom: 2px; }
+.style-d .split-row.last .track-seg  { top: 2px; bottom: 8px; }
+.style-d .split-row.selected .track-seg {
+  background: var(--accent);
+  width: 3px;
+}
+
+/* =========================================================================
+   STYLE E: Git 节点轨道风 (Node & Dotted Track · 类似 Git Graph / Warp)
+   直接把状态圆点串在一条垂直微虚线上，省去多余的横向折线，极致紧凑且对齐
+   ========================================================================= */
+.style-e .split-row { padding-left: 14px; }
+.style-e .node-line {
+  position: absolute;
+  left: 19.5px;
+  width: 1.5px;
+  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--text) 32%, transparent) 55%, transparent 45%);
+  background-size: 1.5px 4px;
+}
+.style-e .split-row.first .node-line { top: 24px; bottom: -1px; }
+.style-e .split-row.mid .node-line   { top: 0; bottom: 10px; }
+.style-e .split-row.mid .node-line-down {
+  position: absolute; left: 19.5px; top: 24px; bottom: -1px; width: 1.5px;
+  background-image: linear-gradient(to bottom, color-mix(in srgb, var(--text) 32%, transparent) 55%, transparent 45%);
+  background-size: 1.5px 4px;
+}
+.style-e .split-row.last .node-line  { top: 0; height: 11px; }
+
+/* =========================================================================
+   STYLE F: 虚线外框工作区组 (Dashed Group Container Card)
+   把属于同一个分屏的多个窗格包裹在一个轻量虚线/细边胶囊盒子里，左侧带组括号
+   ========================================================================= */
+.style-f .split-box {
+  margin: 2px 0 3px;
+  padding: 2px;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--text) 20%, transparent);
+  background: color-mix(in srgb, var(--text) 2.5%, transparent);
+}
+.style-f .split-row { padding-left: 10px; height: 32px; }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="topbar">
+  <div class="title-wrap">
+    <h1>侧栏分屏 Tab · 前导虚线与树结构 6 种设计方案对比</h1>
+    <p>仅展示侧栏 HTML 原型对比（未改动项目代码）· 点击任意行可切换选中态效果</p>
+  </div>
+  <div class="controls">
+    <div class="seg" id="themeSeg">
+      <button type="button" data-theme="dark" class="on">深色模式</button>
+      <button type="button" data-theme="light">浅色模式</button>
+    </div>
+  </div>
+</div>
+
+<div class="grid">
+
+  <!-- 方案 A -->
+  <section class="card style-a">
+    <div class="card-head">
+      <div class="card-title">方案 A · 圆角微点虚线括号 <span class="badge">当前版改良</span></div>
+    </div>
+    <p class="card-desc">
+      解决原先 <code>┌┄┄┄</code> 横线过长（19px）太散的问题：将缩进从 <code>32px</code> 收紧到 <code>24px</code>，改用 <b>圆角转折 + 2px 精致圆点虚线</b>，保留包裹感但不再抢戏。
+    </p>
+    <div class="sidebar-mock">
+      <div class="mach-hdr"><span class="mach-dot"></span><span>carls-Mac-mini</span><span class="mach-cnt">4</span></div>
+      <!-- Split 1 -->
+      <div class="row split-row">
+        <svg class="guide-svg" viewBox="0 0 12 35">
+          <path d="M 2 35 L 2 20 Q 2 17 5 17 L 11 17" fill="none" stroke="currentColor" stroke-opacity="0.38" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="1.8 2.6"/>
+        </svg>
+        <span class="st-work"></span>
+        <span class="row-label">~/carl-github/term-fleet</span>
+        <span class="row-tag">左</span>
+      </div>
+      <!-- Split 2 -->
+      <div class="row split-row selected">
+        <svg class="guide-svg" viewBox="0 0 12 35">
+          <path d="M 2 0 L 2 35 M 2 17 L 11 17" fill="none" stroke="var(--accent)" stroke-opacity="0.75" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="1.8 2.6"/>
+        </svg>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/api</span>
+        <span class="row-tag">右</span>
+      </div>
+      <!-- Split 3 -->
+      <div class="row split-row">
+        <svg class="guide-svg" viewBox="0 0 12 35">
+          <path d="M 2 0 L 2 14 Q 2 17 5 17 L 11 17" fill="none" stroke="currentColor" stroke-opacity="0.38" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="1.8 2.6"/>
+        </svg>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/worker</span>
+        <span class="row-tag">下</span>
+      </div>
+      <!-- Normal row -->
+      <div class="row">
+        <span class="st-wait"></span>
+        <span class="row-label">review -- fix login</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 方案 B -->
+  <section class="card style-b">
+    <div class="card-head">
+      <div class="card-title">方案 B · 连续圆角柔和括号 <span class="badge">干净现代</span></div>
+    </div>
+    <p class="card-desc">
+      去掉碎裂的虚线空隙，改用 <b>1.4px 连续圆角括号（╭ / ├ / ╰）</b>，未激活分支保持 28% 低对比度，当前聚焦的分屏子项分支高亮为强调色。
+    </p>
+    <div class="sidebar-mock">
+      <div class="mach-hdr"><span class="mach-dot"></span><span>carls-Mac-mini</span><span class="mach-cnt">4</span></div>
+      <div class="row split-row">
+        <svg class="guide-svg" viewBox="0 0 12 35">
+          <path d="M 2.5 35 L 2.5 21 Q 2.5 17 6.5 17 L 10.5 17" fill="none" stroke="currentColor" stroke-opacity="0.28" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <span class="st-work"></span>
+        <span class="row-label">~/carl-github/term-fleet</span>
+      </div>
+      <div class="row split-row selected">
+        <svg class="guide-svg" viewBox="0 0 12 35">
+          <path d="M 2.5 0 L 2.5 35" fill="none" stroke="currentColor" stroke-opacity="0.28" stroke-width="1.4"/>
+          <path d="M 2.5 17 L 10.5 17" fill="none" stroke="var(--accent)" stroke-opacity="0.85" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/api</span>
+      </div>
+      <div class="row split-row">
+        <svg class="guide-svg" viewBox="0 0 12 35">
+          <path d="M 2.5 0 L 2.5 13 Q 2.5 17 6.5 17 L 10.5 17" fill="none" stroke="currentColor" stroke-opacity="0.28" stroke-width="1.4" stroke-linecap="round"/>
+        </svg>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/worker</span>
+      </div>
+      <div class="row">
+        <span class="st-wait"></span>
+        <span class="row-label">review -- fix login</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 方案 C -->
+  <section class="card style-c">
+    <div class="card-head">
+      <div class="card-title">方案 C · 主窗格不缩进 + 子窗格虚线树 <span class="badge">零跳动</span></div>
+    </div>
+    <p class="card-desc">
+      按 <code>⌘D</code> 分屏时<b>第一行保持原位不向右跳动</b>，从第一行的状态图标正下方垂下精细虚线连接第 2、3 个子分屏，主次层级最分明。
+    </p>
+    <div class="sidebar-mock">
+      <div class="mach-hdr"><span class="mach-dot"></span><span>carls-Mac-mini</span><span class="mach-cnt">4</span></div>
+      <!-- Parent Pane 1 (Aligned at 10px!) -->
+      <div class="row">
+        <svg class="guide-svg" viewBox="0 0 14 35">
+          <path d="M 5.5 25 L 5.5 35" fill="none" stroke="currentColor" stroke-opacity="0.38" stroke-width="1.3" stroke-dasharray="2 2"/>
+        </svg>
+        <span class="st-work"></span>
+        <span class="row-label">~/carl-github/term-fleet</span>
+        <span class="row-tag">1/3</span>
+      </div>
+      <!-- Child Pane 2 -->
+      <div class="row split-sub selected">
+        <svg class="guide-svg" viewBox="0 0 14 35">
+          <path d="M 5.5 0 L 5.5 35 M 5.5 17 L 13 17" fill="none" stroke="var(--accent)" stroke-opacity="0.75" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="2 2"/>
+        </svg>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/api</span>
+      </div>
+      <!-- Child Pane 3 -->
+      <div class="row split-sub">
+        <svg class="guide-svg" viewBox="0 0 14 35">
+          <path d="M 5.5 0 L 5.5 14 Q 5.5 17 8.5 17 L 13 17" fill="none" stroke="currentColor" stroke-opacity="0.38" stroke-width="1.3" stroke-linecap="round" stroke-dasharray="2 2"/>
+        </svg>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/worker</span>
+      </div>
+      <div class="row">
+        <span class="st-wait"></span>
+        <span class="row-label">review -- fix login</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 方案 D -->
+  <section class="card style-d">
+    <div class="card-head">
+      <div class="card-title">方案 D · 左侧分段胶囊竖轨 <span class="badge">极简克制</span></div>
+    </div>
+    <p class="card-desc">
+      完全舍弃横向枝杈，在分屏组左侧绘制一条 <b>2.5px 分段竖轨</b>（首尾内缩、中间断开 4px），当前聚焦窗格的那一段亮起为主色，极具 macOS 原生质感。
+    </p>
+    <div class="sidebar-mock">
+      <div class="mach-hdr"><span class="mach-dot"></span><span>carls-Mac-mini</span><span class="mach-cnt">4</span></div>
+      <div class="row split-row first">
+        <span class="track-seg"></span>
+        <span class="st-work"></span>
+        <span class="row-label">~/carl-github/term-fleet</span>
+      </div>
+      <div class="row split-row mid selected">
+        <span class="track-seg"></span>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/api</span>
+      </div>
+      <div class="row split-row last">
+        <span class="track-seg"></span>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/worker</span>
+      </div>
+      <div class="row">
+        <span class="st-wait"></span>
+        <span class="row-label">review -- fix login</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 方案 E -->
+  <section class="card style-e">
+    <div class="card-head">
+      <div class="card-title">方案 E · 状态点垂直虚线串联 <span class="badge">Git Graph 风</span></div>
+    </div>
+    <p class="card-desc">
+      <b>状态点本身就是树的节点</b>：直接用一条垂直微距虚线把同一分屏组的几个状态圆点上下串起来，零多余缩进、文字可用宽度最大。
+    </p>
+    <div class="sidebar-mock">
+      <div class="mach-hdr"><span class="mach-dot"></span><span>carls-Mac-mini</span><span class="mach-cnt">4</span></div>
+      <div class="row split-row first">
+        <span class="node-line"></span>
+        <span class="st-work"></span>
+        <span class="row-label">~/carl-github/term-fleet</span>
+      </div>
+      <div class="row split-row mid selected">
+        <span class="node-line"></span>
+        <span class="node-line-down"></span>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/api</span>
+      </div>
+      <div class="row split-row last">
+        <span class="node-line"></span>
+        <span class="st-idle"></span>
+        <span class="row-label">~/work/worker</span>
+      </div>
+      <div class="row">
+        <span class="st-wait"></span>
+        <span class="row-label">review -- fix login</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 方案 F -->
+  <section class="card style-f">
+    <div class="card-head">
+      <div class="card-title">方案 F · 虚线微框工作区组 <span class="badge">容器包裹</span></div>
+    </div>
+    <p class="card-desc">
+      不用树枝线，而是用一个<b>1px 柔和虚线圆角框 + 2.5% 微底色</b>把属于同一分屏的 Tab 圈成一个整体容器，一眼就能看出它们共处一个分屏。
+    </p>
+    <div class="sidebar-mock">
+      <div class="mach-hdr"><span class="mach-dot"></span><span>carls-Mac-mini</span><span class="mach-cnt">4</span></div>
+      <div class="split-box">
+        <div class="row split-row">
+          <span class="st-work"></span>
+          <span class="row-label">~/carl-github/term-fleet</span>
+          <span class="row-tag">◫</span>
+        </div>
+        <div class="row split-row selected">
+          <span class="st-idle"></span>
+          <span class="row-label">~/work/api</span>
+        </div>
+        <div class="row split-row">
+          <span class="st-idle"></span>
+          <span class="row-label">~/work/worker</span>
+        </div>
+      </div>
+      <div class="row">
+        <span class="st-wait"></span>
+        <span class="row-label">review -- fix login</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // Theme switcher
+  document.querySelectorAll('#themeSeg button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#themeSeg button').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      document.body.dataset.theme = btn.dataset.theme;
+    });
+  });
+
+  // Interactive row selection within each card
+  document.querySelectorAll('.sidebar-mock').forEach(mock => {
+    mock.querySelectorAll('.row').forEach(row => {
+      row.addEventListener('click', () => {
+        mock.querySelectorAll('.row').forEach(r => r.classList.remove('selected'));
+        row.classList.add('selected');
+      });
+    });
+  });
+</script>
+</body>
+</html>

@@ -348,7 +348,18 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 			}
 			ui.Spacer(c)
 		}
+		if w.split != nil && w.split.count() > 1 && w.zoomed {
+			if chipBox(c, pal, pal.Accent.Alpha(0.14), pal.Accent, func() {
+				ui.Icon(c, iconUnzoom).Size(12, 12).TextColor(pal.Accent)
+				ui.Text(c, locales.WorkspacePanes(w.split.count())).FontSize(11.5).FontWeight(550).SingleLine()
+			}).Clicked() {
+				w.zoomFocused()
+			}
+		}
 		if !focused {
+			if hovered {
+				w.cardActions(c, pal, tb)
+			}
 			// Every pane says what it is, not only the one on screen: a split
 			// whose other half is somebody else's shell says so in its own header.
 			w.paneStateChip(c, pal, tb)
@@ -445,12 +456,30 @@ func (w *window) paneStateChip(c *ui.Context, pal *uitokens.Palette, tb *tab) {
 }
 
 // cardActions is what a card can be told to do, while the pointer is on it:
-// split, close the tab, and the lease when the shell is another machine's.
+// zoom/restore in a split, split right or down, and close the tab.
 func (w *window) cardActions(c *ui.Context, pal *uitokens.Palette, tb *tab) {
+	if w.split != nil && w.split.count() > 1 {
+		zoomIcon := iconZoom
+		if w.zoomed {
+			zoomIcon = iconUnzoom
+		}
+		if iconButton(c, zoomIcon, locales.ActionZoomPane(), 26).Clicked() {
+			if n := w.leafOf(tb); n != nil && n != w.focus {
+				w.focusSplit(n)
+			}
+			w.zoomFocused()
+		}
+	}
 	if iconButton(c, iconSplitRight, locales.ActionSplitRight(), 26).Clicked() {
+		if n := w.leafOf(tb); n != nil && n != w.focus {
+			w.focusSplit(n)
+		}
 		w.splitFocused(true)
 	}
 	if iconButton(c, iconSplitDown, locales.ActionSplitDown(), 26).Clicked() {
+		if n := w.leafOf(tb); n != nil && n != w.focus {
+			w.focusSplit(n)
+		}
 		w.splitFocused(false)
 	}
 	// The × closes the tab and ends the shell behind it, the way a terminal's
