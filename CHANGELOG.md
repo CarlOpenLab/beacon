@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.13
+
+**Beacon 0.7.13: 圆角微点分屏括号与缩放控制 — Rounded micro-dot split brackets and zoom controls**
+
+- **Rounded micro-dot brackets wrap every split.** The sidebar's split tree trades its hairline dashes for rounded micro-dot brackets — `╭` on the workspace row, `├` on middle panes, `╰` on the last — at a tighter 24px indent, and the bracket of the pane on screen wears the accent colour, so the live terminal is the one the eye lands on in the tree.
+  — 侧栏分屏树改为圆角微点括号包裹：工作区行 `╭`、中间窗格 `├`、末项 `╰`，缩进从 32px 收紧到 24px；屏幕上的窗格其连接线以强调色高亮，正在使用的终端一眼可辨。
+- **Zoom joins the card's hover controls, and a zoomed pane says so in its header.** Every card in a split offers zoom/restore beside split right and split down, and the hover controls now appear on unfocused cards too — a split's other half can be zoomed, split or closed without focusing it first, and acting on an unfocused card's control focuses its pane first so the split happens where the pointer is. A zoomed pane carries an accent chip in its header naming the pane count; clicking it restores the split.
+  — 缩放按钮加入卡片悬停操作区：分屏中每张卡片悬停即显示缩放/还原、向右分屏、向下分屏与关闭，未聚焦的卡片同样可用——操作未聚焦卡片的控件会先聚焦其窗格，分屏落在指针所在处；放大中的窗格在标题栏显示强调色徽标标注窗格数量，点击即还原分屏。
+
 ## 0.7.12
 
 **Beacon 0.7.12: 亚克力磨砂背景与全量英文国际化 — Acrylic frosted blur background and complete English localization**
