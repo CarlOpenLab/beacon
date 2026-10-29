@@ -230,11 +230,11 @@ func TestSettingsApplyingTheRelayReachesTheFleet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry: %v", err)
 	}
-	otherID, _, err := reg.Enroll("other box", "")
+	otherID, _, err := reg.Enroll("other box", "", "")
 	if err != nil {
 		t.Fatalf("enroll other box: %v", err)
 	}
-	thisID, thisSecret, err := reg.Enroll("this mac", "")
+	thisID, thisSecret, err := reg.Enroll("this mac", "", "")
 	if err != nil {
 		t.Fatalf("enroll this mac: %v", err)
 	}

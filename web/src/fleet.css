@@ -127,6 +127,70 @@
   line-height: 1.7;
 }
 
+/* account / register / token: one card, three doors */
+.tf-connect-tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  padding: 3px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-m);
+}
+
+.tf-connect-tab {
+  flex: 1;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: var(--fs-12);
+  font-weight: 550;
+}
+
+.tf-connect-tab.on {
+  background: var(--popover);
+  color: var(--fg);
+  box-shadow: var(--shadow-1);
+}
+
+.tf-enroll-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.tf-enroll-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tf-enroll-value {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-s);
+}
+
+.tf-enroll-label {
+  color: var(--fg-faint);
+  font-size: var(--fs-11);
+}
+
+.tf-enroll-value code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-12);
+}
+
 /* --------------------------------------------------------- touch key bar */
 
 /* With a real keyboard the bar is a fallback, not the main road: same keys,

@@ -380,6 +380,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="4"/><path d="m11 11 9 9M17 17l2-2M14 14l2-2"/></svg>
         <span>Access</span>
       </button>
+      <button class="nav-item" data-page="users" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 19a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5.5 5.5 0 0 1 6 5.5"/></svg>
+        <span>Users</span>
+      </button>
       <button class="nav-item" data-page="connect" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/></svg>
         <span>Connect</span>
@@ -424,9 +428,24 @@
               <input id="d-name" placeholder="mac-mini, work-laptop, …">
               <button class="btn" id="d-go" type="button">Generate credentials</button>
             </div>
+            <label for="d-tenant" style="margin-top:10px">For tenant</label>
+            <select id="d-tenant">
+              <option value="">Operator scope — no tenant</option>
+            </select>
           </div>
           <div id="d-out"></div>
           <div class="err" id="d-err"></div>
+        </section>
+
+        <section class="page" id="page-users" hidden>
+          <div class="section-head">
+            <h2>Registered users</h2>
+            <span class="spacer"></span>
+            <button class="ghost" id="u-refresh" type="button">Refresh</button>
+          </div>
+          <p class="hint">Every signup waits here until you approve it. An approved user sees and drives only the machines enrolled under their tenant.</p>
+          <div id="users" class="list"></div>
+          <div class="err" id="u-err"></div>
         </section>
 
         <section class="page" id="page-access" hidden>
@@ -563,6 +582,7 @@
   };
   var PAGES = {
     machines: ["Machines", "Machines enrolled with this relay."],
+    users: ["Users", "Registered accounts and the approval queue."],
     access: ["Access", "The client token browsers and phones present."],
     connect: ["Connect", "What to run on a machine you just enrolled."],
     logs: ["Logs", "Diagnostic tails pushed by the machines."],
@@ -678,7 +698,7 @@
     title.textContent = d.name || "unnamed machine";
     var sub = document.createElement("div");
     sub.className = "row-sub";
-    sub.textContent = d.id + (d.addedAt ? "  ·  added " + String(d.addedAt).slice(0, 10) : "");
+    sub.textContent = d.id + (d.tenant ? "  ·  tenant " + d.tenant : "") + (d.addedAt ? "  ·  added " + String(d.addedAt).slice(0, 10) : "");
     grow.appendChild(title);
     grow.appendChild(sub);
     var end = document.createElement("div");
@@ -715,6 +735,93 @@
   function refresh() {
     return api("devices").then(function (body) { renderDevices(body.devices || []); });
   }
+
+  // ── registered users ────────────────────────────────────────────────────
+  function statusPill(status) {
+    var pill = document.createElement("span");
+    pill.className = "pill " + (status === "active" ? "on" : status === "pending" ? "" : "off");
+    pill.textContent = status;
+    return pill;
+  }
+
+  function userRow(u) {
+    var row = document.createElement("div");
+    row.className = "row-item";
+    row.appendChild(statusPill(u.status));
+    var grow = document.createElement("div");
+    grow.className = "grow";
+    var title = document.createElement("div");
+    title.className = "row-title";
+    title.textContent = u.username;
+    var sub = document.createElement("div");
+    sub.className = "row-sub";
+    sub.textContent = u.id + "  ·  " + (u.status === "active" && u.approvedAt
+      ? "approved " + String(u.approvedAt).slice(0, 10)
+      : "requested " + String(u.createdAt).slice(0, 10));
+    grow.appendChild(title);
+    grow.appendChild(sub);
+    var end = document.createElement("div");
+    end.className = "row-end";
+    function act(label, cls, path, msg) {
+      var b = document.createElement("button");
+      b.className = cls;
+      b.type = "button";
+      b.textContent = label;
+      b.onclick = function () {
+        if (msg && !confirm(msg)) return;
+        api("users/" + path, { method: "POST", body: JSON.stringify({ id: u.id }) })
+          .then(loadUsers).catch(function (e) { text($("u-err"), e.message); });
+      };
+      end.appendChild(b);
+    }
+    if (u.status !== "active") act("Approve", "btn", "approve");
+    if (u.status !== "rejected") act("Reject", "ghost", "reject", "Reject " + u.username + "? Their login tokens stop working at once.");
+    act("Delete", "danger", "delete", "Delete " + u.username + "? Their machines stay enrolled, but every token under their tenant dies now.");
+    row.appendChild(grow);
+    row.appendChild(end);
+    return row;
+  }
+
+  function renderUsers(users) {
+    var box = $("users");
+    box.textContent = "";
+    if (!users.length) {
+      var p = document.createElement("div");
+      p.className = "empty";
+      p.textContent = "No signups yet. New ones appear here for approval.";
+      box.appendChild(p);
+      return;
+    }
+    users.forEach(function (u) { box.appendChild(userRow(u)); });
+  }
+
+  function loadUsers() {
+    return api("users").then(function (b) {
+      var item = document.querySelector('.nav-item[data-page="users"]');
+      if (item) item.hidden = !b.signup;
+      if (!b.signup) { text($("u-err"), ""); return; }
+      renderUsers(b.users || []);
+      // The enroll form offers every registered user as a tenant target, so a
+      // machine can be pre-provisioned for someone still waiting in the queue.
+      var sel = $("d-tenant");
+      var current = sel.value;
+      sel.textContent = "";
+      var none = document.createElement("option");
+      none.value = "";
+      none.textContent = "Operator scope — no tenant";
+      sel.appendChild(none);
+      (b.users || []).forEach(function (u) {
+        var o = document.createElement("option");
+        o.value = u.id;
+        o.textContent = u.username + " (" + u.id + ") — " + u.status;
+        sel.appendChild(o);
+      });
+      sel.value = current;
+      if (sel.selectedIndex < 0) sel.value = "";
+      text($("u-err"), "");
+    }).catch(function (e) { text($("u-err"), e.message); });
+  }
+  $("u-refresh").onclick = function () { loadUsers(); };
 
   // ── token ───────────────────────────────────────────────────────────────
   function humanDur(secs) {
@@ -957,6 +1064,7 @@
     $("c-ca").disabled = !state.ca;
     updateCmd();
     refresh().catch(function (e) { text($("d-err"), e.message); });
+    loadUsers().catch(function () {});
     api("token").then(showToken)
       .catch(function (e) { text($("t-err"), e.message); });
     $("n-mint").onclick = mintToken;
@@ -1009,7 +1117,7 @@
     text($("d-err"), "");
     var name = $("d-name").value.trim();
     if (!name) { text($("d-err"), "Give the machine a name."); return; }
-    api("devices", { method: "POST", body: JSON.stringify({ name: name }) }).then(function (b) {
+    api("devices", { method: "POST", body: JSON.stringify({ name: name, tenant: $("d-tenant").value }) }).then(function (b) {
       $("d-name").value = "";
       var out = $("d-out");
       out.textContent = "";

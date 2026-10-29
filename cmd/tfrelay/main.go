@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CarlOpenLab/beacon/internal/accounts"
 	"github.com/CarlOpenLab/beacon/internal/admin"
 	"github.com/CarlOpenLab/beacon/internal/diag"
 	"github.com/CarlOpenLab/beacon/internal/relay"
@@ -49,15 +50,21 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `tfrelay — public-side router for a beacon fleet
 
-  tfrelay enroll -name <machine> [-devices devices.json]
+  tfrelay enroll -name <machine> [-tenant <user-id>] [-devices devices.json]
   tfrelay list [-devices devices.json]
   tfrelay [-addr host:port] [-devices devices.json] -client-token <token>
           [-tls-cert cert.pem -tls-key key.pem] [-insecure]
 
 Running the relay also serves a web admin panel at -admin-path (default
-/admin), where machines are enrolled, the client token is rotated, and the CA
-certificate is downloaded. The enroll and list subcommands remain for scripted
-setup.
+/admin), where machines are enrolled, the client token is rotated, registered
+users are approved, and the CA certificate is downloaded. The enroll and list
+subcommands remain for scripted setup.
+
+Multi-tenant: with -users set, the relay serves an open signup and a login at
+/api, and every registered user sees only the machines enrolled under their
+tenant. Bootstrap the super admin with -admin-user/-admin-password (or
+$TFRELAY_ADMIN_USER / $TFRELAY_ADMIN_PASSWORD) so approval is possible on a
+fresh deployment without opening the setup wizard.
 `)
 }
 
@@ -65,12 +72,13 @@ func runEnroll(args []string) {
 	fs := flag.NewFlagSet("enroll", flag.ExitOnError)
 	devices := fs.String("devices", "devices.json", "path to the member registry")
 	name := fs.String("name", "", "human name for this machine (required)")
+	tenant := fs.String("tenant", "", "tenant id (a registered user's id) the machine belongs to; empty for the operator's own scope")
 	_ = fs.Parse(args)
 	if *name == "" {
 		fmt.Fprintln(os.Stderr, "enroll: -name is required")
 		os.Exit(2)
 	}
-	id, secret, err := relay.EnrollDevice(*devices, *name, time.Now().UTC().Format(time.RFC3339))
+	id, secret, err := relay.EnrollDevice(*devices, *name, *tenant, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		log.Fatalf("enroll: %v", err)
 	}
@@ -109,6 +117,10 @@ func runServe(args []string) {
 	adminOn := flag.Bool("admin", true, "serve the web admin panel")
 	adminPath := flag.String("admin-path", "/admin", "URL path the admin panel is mounted at")
 	adminStore := flag.String("admin-store", "", "admin account file (default: admin.json beside -devices)")
+	adminUser := flag.String("admin-user", os.Getenv("TFRELAY_ADMIN_USER"), "bootstrap the super admin with this username when no account exists yet (defaults to $TFRELAY_ADMIN_USER)")
+	adminPassword := flag.String("admin-password", os.Getenv("TFRELAY_ADMIN_PASSWORD"), "bootstrap the super admin with this password (defaults to $TFRELAY_ADMIN_PASSWORD; never in a process list you do not trust)")
+	usersFile := flag.String("users", "", "registered-user store enabling multi-tenant signup (default: users.json beside -devices; pass \"off\" to disable)")
+	userTokenTTL := flag.Duration("user-token-ttl", accounts.DefaultTokenTTL, "how long a registered user's login token stays valid")
 	publicURL := flag.String("public-url", "", "relay URL shown in the panel, e.g. wss://relay.example/relay/agent (default: guessed from the request)")
 	caCert := flag.String("ca-cert", "", "PEM certificate offered for download from the panel, for members that must pin it")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate; enables HTTPS/WSS")
@@ -130,6 +142,9 @@ func runServe(args []string) {
 	}
 	if *logDir == "" {
 		*logDir = filepath.Join(stateDir, "logs")
+	}
+	if *usersFile == "" {
+		*usersFile = filepath.Join(stateDir, "users.json")
 	}
 	if _, err := diag.Install(*logDir, "tfrelay", diag.Info); err != nil {
 		log.Printf("tfrelay: diagnostics are not being written to disk: %v", err)
@@ -183,6 +198,19 @@ func runServe(args []string) {
 		log.Fatalf("tfrelay: %v", err)
 	}
 
+	// Multi-tenant: a users.json turns signup on. Login tokens verify through
+	// the token store, so a registered user's credential rides exactly the
+	// same admission path as the shared token or a machine's — one funnel, one
+	// rate limiter, one place an expired credential stops working.
+	var users *accounts.Store
+	if *usersFile != "off" {
+		users, err = accounts.Open(*usersFile, *userTokenTTL)
+		if err != nil {
+			log.Fatalf("tfrelay: users: %v", err)
+		}
+		token.SetLoginVerifier(users)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/relay/agent", r.ServeAgent)
 	mux.HandleFunc("/relay/client", r.ServeClient)
@@ -194,10 +222,16 @@ func runServe(args []string) {
 	// relay is the only address that is reachable from outside the LAN.
 	mux.HandleFunc("/tf/config", web.Config("relay", "/relay/client"))
 
+	if users != nil {
+		accounts.New(users, r, log.Default()).Register(mux)
+		log.Printf("tfrelay: signup and login at /api/register and /api/login (users in %s)", *usersFile)
+	}
+
 	if *adminOn {
 		panel, err := admin.New(admin.Options{
 			Path:       *adminStore,
 			Relay:      r,
+			Users:      users,
 			PublicURL:  *publicURL,
 			CACertPath: *caCert,
 			BasePath:   *adminPath,
@@ -207,11 +241,20 @@ func runServe(args []string) {
 		if err != nil {
 			log.Fatalf("tfrelay: admin: %v", err)
 		}
+		// A deployment that ships credentials initializes its super admin at
+		// startup, so approval is possible before anyone opens the panel. Only
+		// ever a bootstrap: an existing account is never overwritten here.
+		if !panel.Configured() && *adminUser != "" && *adminPassword != "" {
+			if err := panel.Bootstrap(*adminUser, *adminPassword); err != nil {
+				log.Fatalf("tfrelay: admin bootstrap: %v", err)
+			}
+			log.Printf("tfrelay: super admin %q bootstrapped from environment/flags", *adminUser)
+		}
 		panel.Register(mux)
 		if panel.Configured() {
 			log.Printf("tfrelay: admin panel at %s (account %q)", *adminPath, panel.Username())
 		} else {
-			log.Printf("tfrelay: admin panel at %s — open it to create the admin account", *adminPath)
+			log.Printf("tfrelay: admin panel at %s — open it to create the admin account, or set $TFRELAY_ADMIN_USER/$TFRELAY_ADMIN_PASSWORD", *adminPath)
 		}
 	}
 

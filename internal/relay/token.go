@@ -52,6 +52,11 @@ type TokenStore struct {
 	// named are credentials minted for people or devices that are not enrolled
 	// machines. They are memory only on purpose; see NamedToken.
 	named map[string]namedEntry
+
+	// users, when set, is asked to check credentials minted by the accounts
+	// surface after the store's own classes have been tried and missed. It is
+	// what makes a registered user's login token open exactly their tenant.
+	users LoginVerifier
 }
 
 // namedEntry is a named credential as the store holds it.
@@ -64,6 +69,7 @@ type namedEntry struct {
 // mintedToken is one credential handed to an enrolled machine.
 type mintedToken struct {
 	device    string
+	tenant    string
 	expiresAt time.Time
 }
 
@@ -129,6 +135,14 @@ func OpenTokenStore(path, initial string) (*TokenStore, error) {
 	return s, nil
 }
 
+// SetLoginVerifier installs the accounts-side checker for user login tokens.
+// Call it once at startup, before any client authenticates.
+func (s *TokenStore) SetLoginVerifier(v LoginVerifier) {
+	s.mu.Lock()
+	s.users = v
+	s.mu.Unlock()
+}
+
 // Get returns the current shared token.
 func (s *TokenStore) Get() string {
 	s.mu.RLock()
@@ -146,9 +160,11 @@ func (s *TokenStore) Accept(got string) bool {
 }
 
 // Mint issues a credential to the machine named device, good for ttl (a ttl
-// <= 0 gets DefaultControlTokenTTL). Expired credentials are dropped on the way
-// through, so the set stays as small as the machines actually asking for one.
-func (s *TokenStore) Mint(device string, ttl time.Duration) (string, time.Time, error) {
+// <= 0 gets DefaultControlTokenTTL). The credential carries the machine's
+// tenant, so the desktop can drive the rest of *its* fleet and no one else's.
+// Expired credentials are dropped on the way through, so the set stays as
+// small as the machines actually asking for one.
+func (s *TokenStore) Mint(device, tenant string, ttl time.Duration) (string, time.Time, error) {
 	if ttl <= 0 {
 		ttl = DefaultControlTokenTTL
 	}
@@ -168,7 +184,7 @@ func (s *TokenStore) Mint(device string, ttl time.Duration) (string, time.Time, 
 	if s.minted == nil {
 		s.minted = map[string]mintedToken{}
 	}
-	s.minted[token] = mintedToken{device: device, expiresAt: expiresAt}
+	s.minted[token] = mintedToken{device: device, tenant: tenant, expiresAt: expiresAt}
 	s.mu.Unlock()
 	return token, expiresAt, nil
 }
@@ -275,15 +291,30 @@ func (s *TokenStore) Rotate(ttl time.Duration) (string, error) {
 	return t, nil
 }
 
+// LoginVerifier is what TokenStore asks to check a credential minted by the
+// accounts surface — the bearer token a registered user holds. The relay
+// package cannot import the accounts package (the accounts API drives the
+// relay), so the shape is an interface both sides agree on by name and by
+// signature alone.
+type LoginVerifier interface {
+	// VerifyLoginToken checks a user's login token and reports the tenant it
+	// may reach, the username it belongs to, and whether it is live at all.
+	VerifyLoginToken(token string) (tenant, user string, ok bool)
+}
+
 // Grant is what a presented credential may reach. The shared token and the
 // short-lived credentials minted to an enrolled machine reach every machine;
 // a named token may be limited to a few, which is what lets one person be
-// given a phone's access without being given the fleet's.
+// given a phone's access without being given the fleet's. A user login token
+// reaches exactly the machines enrolled under its tenant.
 type Grant struct {
 	// Label is who the credential is for, for logs and the roster.
 	Label string
 	// Machines limits the machines it may open; empty means all of them.
 	Machines []string
+	// Tenant limits the grant to machines enrolled under one tenant id; empty
+	// means no tenant restriction (the operator's own scope included).
+	Tenant string
 }
 
 // Allows reports whether the grant reaches machine id.
@@ -318,21 +349,34 @@ func (s *TokenStore) Grant(got string) (Grant, bool) {
 		return Grant{}, false
 	}
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	now := time.Now()
 	if s.token != "" && (s.expiresAt.IsZero() || now.Before(s.expiresAt)) {
 		if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
+			s.mu.RUnlock()
 			return Grant{Label: "shared"}, true
 		}
 	}
 	for token, m := range s.minted {
 		if now.Before(m.expiresAt) && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
-			return Grant{Label: "machine:" + m.device}, true
+			s.mu.RUnlock()
+			return Grant{Label: "machine:" + m.device, Tenant: m.tenant}, true
 		}
 	}
 	for token, n := range s.named {
 		if now.Before(n.expiresAt) && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
-			return Grant{Label: n.label, Machines: append([]string(nil), n.machines...)}, true
+			g := Grant{Label: n.label, Machines: append([]string(nil), n.machines...)}
+			s.mu.RUnlock()
+			return g, true
+		}
+	}
+	v := s.users
+	s.mu.RUnlock()
+	// The accounts verifier last: it is the only check that touches a file (a
+	// hash of the token) and the only one with a clock of its own, so the cheap
+	// in-memory classes go first.
+	if v != nil {
+		if tenant, user, ok := v.VerifyLoginToken(got); ok {
+			return Grant{Label: "user:" + user, Tenant: tenant}, true
 		}
 	}
 	return Grant{}, false

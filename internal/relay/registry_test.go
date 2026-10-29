@@ -45,7 +45,7 @@ func TestEnrollWhileRunningIsVisibleImmediately(t *testing.T) {
 		t.Fatalf("roster = %v, want empty", got)
 	}
 
-	id, secret, err := r.Devices().Enroll("mac-mini", "2026-10-15T00:00:00Z")
+	id, secret, err := r.Devices().Enroll("mac-mini", "", "2026-10-15T00:00:00Z")
 	if err != nil {
 		t.Fatalf("enroll: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestRevokeWhileRunningRemovesTheMachine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("relay: %v", err)
 	}
-	id, secret, err := r.Devices().Enroll("laptop", "")
+	id, secret, err := r.Devices().Enroll("laptop", "", "")
 	if err != nil {
 		t.Fatalf("enroll: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestRegistryDeviceRecordShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	id, secret, err := reg.Enroll("box", "2026-10-15T00:00:00Z")
+	id, secret, err := reg.Enroll("box", "", "2026-10-15T00:00:00Z")
 	if err != nil {
 		t.Fatalf("enroll: %v", err)
 	}

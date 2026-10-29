@@ -108,6 +108,14 @@ const MOD_LABEL = navigator.platform.toLowerCase().includes('mac') ? '⌘' : 'Ct
 const ORDER_KEY = 'beacon.session-order.v1'
 
 /**
+ * The account this browser signed in as. A marker, not a credential — the
+ * login token is the credential and travels with the rest — but it decides
+ * whether the self-serve "add a machine" affordances show, since only an
+ * approved account can enroll into its own tenant.
+ */
+const USER_KEY = 'beacon.relay.user'
+
+/**
  * Whether a viewer shrinks its text until the watched screen fits the pane.
  * It is this device's choice, like the theme, so it lives beside it.
  */
@@ -372,6 +380,8 @@ export class App {
   private filterBar!: HTMLElement
   private filterInput!: HTMLInputElement
   private connectBox?: HTMLElement
+  /** The self-serve "add a machine" dialog, for a signed-in tenant user. */
+  private enrollBox?: HTMLElement
   private sideToggle!: HTMLButtonElement
   private hero?: HTMLElement
   private histBar!: HTMLElement
@@ -1022,6 +1032,11 @@ export class App {
       item('会话检视栏', undefined, () => this.toggleInspect()),
       item('刷新会话与机器', undefined, () => this.refreshAll()),
     )
+    // Only a signed-in tenant user can enroll: the shared token reaches the
+    // whole fleet already, and the server would refuse anyone else anyway.
+    if (this.multi && this.signedInUser()) {
+      pop.append(item('添加机器（本租户）', undefined, () => this.showEnroll()))
+    }
     this.root.append(pop)
     this.settingsPop = pop
   }
@@ -1477,13 +1492,18 @@ export class App {
     this.fleetList.replaceChildren()
 
     if (!this.machines.size) {
-      this.fleetList.append(
-        el(
-          'div',
-          'tf-empty',
-          this.multi ? '中继上还没有登记任何机器' : '还没有会话，点 + 新建一个终端。',
-        ),
+      const empty = el(
+        'div',
+        'tf-empty',
+        this.multi ? '中继上还没有登记任何机器' : '还没有会话，点 + 新建一个终端。',
       )
+      if (this.multi && this.signedInUser()) {
+        const add = el('button', 'tf-btn tf-btn-ghost', '添加机器') as HTMLButtonElement
+        add.type = 'button'
+        add.onclick = () => this.showEnroll()
+        empty.append(document.createElement('br'), add)
+      }
+      this.fleetList.append(empty)
       this.renderFoot()
       return
     }
@@ -1948,6 +1968,40 @@ export class App {
 
   // --------------------------------------------------------- relay connect
 
+  /** The account signed in on this device, if any. A marker, not a credential. */
+  private signedInUser(): string {
+    try {
+      return localStorage.getItem(USER_KEY) ?? ''
+    } catch {
+      return ''
+    }
+  }
+
+  private rememberUser(name: string): void {
+    try {
+      localStorage.setItem(USER_KEY, name)
+    } catch {
+      /* private mode; the login itself still works this session */
+    }
+  }
+
+  /** POST/GET JSON against this page's own origin, with an optional bearer. */
+  private async apiJSON(path: string, body?: unknown, bearer?: string): Promise<Record<string, unknown>> {
+    const res = await fetch(path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    const data: Record<string, unknown> = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(String(data.error) || `HTTP ${res.status}`)
+    }
+    return data
+  }
+
   private showConnect(reason: string): void {
     if (this.connectBox) return
     const box = el('div', 'tf-connect')
@@ -1956,6 +2010,141 @@ export class App {
     brand.append(el('span', 'tf-dot'), el('span', undefined, 'Beacon'))
     card.append(brand, el('h1', undefined, '连接中继'), el('p', 'tf-connect-note', reason))
 
+    const err = el('p', 'tf-connect-err')
+    err.hidden = true
+    const form = el('div', 'tf-connect-form')
+
+    const tabRow = el('div', 'tf-connect-tabs')
+    type Tab = 'login' | 'register' | 'token'
+    const tabs: Array<{ key: Tab; label: string }> = [
+      { key: 'login', label: '登录' },
+      { key: 'register', label: '注册' },
+      { key: 'token', label: '访问令牌' },
+    ]
+    const show = (next: Tab): void => {
+      err.hidden = true
+      form.replaceChildren()
+      for (const t of tabs) {
+        const b = tabRow.querySelector<HTMLButtonElement>(`[data-tab="${t.key}"]`)!
+        b.classList.toggle('on', t.key === next)
+      }
+      if (next === 'login') this.buildLoginForm(form, err)
+      else if (next === 'register') this.buildRegisterForm(form, err, show)
+      else this.buildTokenForm(form, err)
+    }
+    for (const t of tabs) {
+      const b = el('button', 'tf-connect-tab', t.label) as HTMLButtonElement
+      b.type = 'button'
+      b.dataset.tab = t.key
+      b.onclick = () => show(t.key)
+      tabRow.append(b)
+    }
+
+    card.append(
+      tabRow,
+      form,
+      err,
+      el(
+        'p',
+        'tf-connect-hint',
+        '账号需管理员审批后才能登录；持有共享或具名令牌的人走「访问令牌」。凭据只保存在这台设备的浏览器里，通过首帧发送，不出现在 URL 或访问日志中。',
+      ),
+    )
+    box.append(card)
+    this.root.append(box)
+    this.connectBox = box
+    show('login')
+  }
+
+  private buildLoginForm(form: HTMLElement, err: HTMLElement): void {
+    const user = el('input', 'tf-input') as HTMLInputElement
+    user.type = 'text'
+    user.value = this.signedInUser()
+    user.placeholder = '用户名'
+    user.autocomplete = 'username'
+
+    const pass = el('input', 'tf-input') as HTMLInputElement
+    pass.type = 'password'
+    pass.placeholder = '密码'
+    pass.autocomplete = 'current-password'
+
+    const go = async (): Promise<void> => {
+      const u = user.value.trim()
+      if (!u || !pass.value) {
+        err.textContent = '请输入用户名和密码'
+        err.hidden = false
+        return
+      }
+      try {
+        const body = await this.apiJSON('/api/login', { username: u, password: pass.value })
+        this.rememberUser(String(body.username ?? u))
+        this.retryWithToken(String(body.token))
+      } catch (e) {
+        err.textContent = e instanceof Error ? e.message : String(e)
+        err.hidden = false
+      }
+    }
+    const submit = el('button', 'tf-btn tf-btn-primary', '登录') as HTMLButtonElement
+    submit.type = 'button'
+    submit.onclick = () => go()
+    user.onkeydown = (ev) => {
+      if (ev.key === 'Enter') pass.focus()
+    }
+    pass.onkeydown = (ev) => {
+      if (ev.key === 'Enter') go()
+    }
+
+    form.append(el('label', 'tf-label', '用户名'), user, el('label', 'tf-label', '密码'), pass, submit)
+    window.setTimeout(() => user.focus(), 30)
+  }
+
+  private buildRegisterForm(
+    form: HTMLElement,
+    err: HTMLElement,
+    show: (tab: 'login' | 'register' | 'token') => void,
+  ): void {
+    const user = el('input', 'tf-input') as HTMLInputElement
+    user.type = 'text'
+    user.placeholder = '用户名（3-32 位字母、数字或 . - _）'
+    user.autocomplete = 'username'
+
+    const pass = el('input', 'tf-input') as HTMLInputElement
+    pass.type = 'password'
+    pass.placeholder = '密码（至少 8 位）'
+    pass.autocomplete = 'new-password'
+
+    const go = async (): Promise<void> => {
+      const u = user.value.trim()
+      if (!u || pass.value.length < 8) {
+        err.textContent = '需要用户名和至少 8 位的密码'
+        err.hidden = false
+        return
+      }
+      try {
+        await this.apiJSON('/api/register', { username: u, password: pass.value })
+        this.toast('注册已提交，等待管理员审批，通过后即可登录', 'info')
+        show('login')
+      } catch (e) {
+        err.textContent = e instanceof Error ? e.message : String(e)
+        err.hidden = false
+      }
+    }
+    const submit = el('button', 'tf-btn tf-btn-primary', '提交注册') as HTMLButtonElement
+    submit.type = 'button'
+    submit.onclick = () => go()
+    user.onkeydown = (ev) => {
+      if (ev.key === 'Enter') pass.focus()
+    }
+    pass.onkeydown = (ev) => {
+      if (ev.key === 'Enter') go()
+    }
+
+    form.append(el('label', 'tf-label', '用户名'), user, el('label', 'tf-label', '密码'), pass, submit)
+    window.setTimeout(() => user.focus(), 30)
+  }
+
+  /** The pre-existing path: paste a shared or named token directly. */
+  private buildTokenForm(form: HTMLElement, err: HTMLElement): void {
     const url = el('input', 'tf-input') as HTMLInputElement
     url.type = 'text'
     url.value = this.opts.ws
@@ -1967,15 +2156,10 @@ export class App {
     token.placeholder = '访问令牌'
     token.autocomplete = 'current-password'
 
-    // An empty token is the one mistake a person makes here, so it gets said
-    // next to the field rather than by the button doing nothing.
-    const err = el('p', 'tf-connect-err', '请输入访问令牌')
-    err.hidden = true
-
-    const submit = el('button', 'tf-btn tf-btn-primary', '连接')
-    const go = () => {
+    const go = (): void => {
       const t = token.value.trim()
       if (!t) {
+        err.textContent = '请输入访问令牌'
         err.hidden = false
         token.focus()
         return
@@ -1984,7 +2168,9 @@ export class App {
       this.opts = { ...this.opts, ws: url.value.trim() || this.opts.ws }
       this.retryWithToken(t)
     }
-    submit.onclick = go
+    const submit = el('button', 'tf-btn tf-btn-primary', '连接') as HTMLButtonElement
+    submit.type = 'button'
+    submit.onclick = () => go()
     token.onkeydown = (ev) => {
       if (ev.key === 'Enter') go()
     }
@@ -1992,27 +2178,107 @@ export class App {
       if (ev.key === 'Enter') token.focus()
     }
 
-    const form = el('div', 'tf-connect-form')
-    form.append(el('label', 'tf-label', '中继地址'), url)
-    form.append(el('label', 'tf-label', '访问令牌'), token)
-    form.append(err, submit)
-    card.append(form)
-    card.append(
-      el(
-        'p',
-        'tf-connect-hint',
-        '令牌只保存在这台设备的浏览器里，通过首帧发送，不会出现在 URL 或访问日志中。',
-      ),
-    )
-    box.append(card)
-    this.root.append(box)
-    this.connectBox = box
+    form.append(el('label', 'tf-label', '中继地址'), url, el('label', 'tf-label', '访问令牌'), token, submit)
     window.setTimeout(() => (this.opts.token ? url : token).focus(), 30)
   }
 
   private hideConnect(): void {
     this.connectBox?.remove()
     this.connectBox = undefined
+  }
+
+  // ------------------------------------------------------ self-serve enroll
+
+  /**
+   * The dialog a signed-in user enrolls a machine from. The minted secret is
+   * shown once here and lives on that machine afterward; the relay only keeps
+   * its own copy.
+   */
+  private showEnroll(): void {
+    if (this.enrollBox) return
+    const box = el('div', 'tf-connect')
+    const card = el('div', 'tf-connect-card')
+    const brand = el('div', 'tf-connect-brand')
+    brand.append(el('span', 'tf-dot'), el('span', undefined, 'Beacon'))
+    card.append(brand, el('h1', undefined, '添加机器'), el('p', 'tf-connect-note', '登记到你自己的租户下，机器只对你和你邀请的人可见。'))
+
+    const err = el('p', 'tf-connect-err')
+    err.hidden = true
+    const form = el('div', 'tf-connect-form')
+
+    const name = el('input', 'tf-input') as HTMLInputElement
+    name.type = 'text'
+    name.placeholder = '机器名，如 mac-mini、work-laptop'
+
+    const out = el('div')
+
+    const go = async (): Promise<void> => {
+      const n = name.value.trim()
+      if (!n) {
+        err.textContent = '请先给机器起个名字'
+        err.hidden = false
+        return
+      }
+      try {
+        const b = await this.apiJSON('/api/enroll', { name: n }, this.opts.token)
+        err.hidden = true
+        out.replaceChildren(this.enrollResult(b))
+        this.toast('已登记，把凭据贴进那台机器的桌面端', 'info')
+      } catch (e) {
+        out.replaceChildren()
+        err.textContent = e instanceof Error ? e.message : String(e)
+        err.hidden = false
+      }
+    }
+    const submit = el('button', 'tf-btn tf-btn-primary', '登记机器') as HTMLButtonElement
+    submit.type = 'button'
+    submit.onclick = () => go()
+    name.onkeydown = (ev) => {
+      if (ev.key === 'Enter') go()
+    }
+
+    form.append(el('label', 'tf-label', '机器名'), name, submit, out)
+    card.append(form, err, el('p', 'tf-connect-hint', '凭据只显示这一次，请立即复制；之后的连接都由那台机器自己完成。'))
+    box.append(card)
+    this.root.append(box)
+    this.enrollBox = box
+    window.setTimeout(() => name.focus(), 30)
+  }
+
+  /** The once-only credential display: id, secret and the agent address. */
+  private enrollResult(b: Record<string, unknown>): HTMLElement {
+    const wrap = el('div', 'tf-enroll-result')
+    const line = (label: string, value: string): HTMLElement => {
+      const row = el('div', 'tf-enroll-row')
+      const box = el('div', 'tf-enroll-value')
+      box.append(el('span', 'tf-enroll-label', label), el('code', undefined, value))
+      const cp = el('button', 'tf-btn tf-btn-ghost', '复制') as HTMLButtonElement
+      cp.type = 'button'
+      cp.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(value)
+          cp.textContent = '已复制'
+        } catch {
+          cp.textContent = '复制失败'
+        }
+        window.setTimeout(() => (cp.textContent = '复制'), 1400)
+      }
+      row.append(box, cp)
+      return row
+    }
+    wrap.append(
+      line('中继地址', String(b.agentUrl ?? '')),
+      line('设备 ID', String(b.id ?? '')),
+      line('设备密钥', String(b.secret ?? '')),
+    )
+    const close = el('button', 'tf-btn', '完成') as HTMLButtonElement
+    close.type = 'button'
+    close.onclick = () => {
+      this.enrollBox?.remove()
+      this.enrollBox = undefined
+    }
+    wrap.append(close)
+    return wrap
   }
 
   // ---------------------------------------------------------------- actions

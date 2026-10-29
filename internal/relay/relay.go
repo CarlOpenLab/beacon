@@ -228,16 +228,32 @@ func (r *Relay) snapshot() []tunnel.Machine {
 	return out
 }
 
+// maySee reports whether a grant may know machine id exists and open it. The
+// machine-id scope comes from the grant itself; the tenant scope is looked up
+// in the registry, because a credential is bound to a tenant while machines
+// are enrolled into them after the fact.
+func (r *Relay) maySee(g Grant, id string) bool {
+	if !g.Allows(id) {
+		return false
+	}
+	if g.Tenant == "" {
+		return true
+	}
+	tenant, ok := r.reg.Tenant(id)
+	return ok && tenant == g.Tenant
+}
+
 // snapshotFor is the roster one credential may see: a named token limited to a
-// few machines does not learn the rest exist.
+// few machines does not learn the rest exist, and a user does not learn the
+// machines enrolled outside their tenant.
 func (r *Relay) snapshotFor(g Grant) []tunnel.Machine {
 	all := r.snapshot()
-	if len(g.Machines) == 0 {
+	if g.Tenant == "" && len(g.Machines) == 0 {
 		return all
 	}
 	out := all[:0]
 	for _, m := range all {
-		if g.Allows(m.ID) {
+		if r.maySee(g, m.ID) {
 			out = append(out, m)
 		}
 	}
@@ -281,14 +297,6 @@ func (r *Relay) agentAuthOK(rq *http.Request) (string, bool) {
 	return id, true
 }
 
-// tokenOK reports whether a presented client credential is one this relay
-// honours right now: the shared token while it is within its lifetime, or a live
-// credential minted for an enrolled machine. Every path that admits a viewer
-// funnels through here, so an expired token stops working everywhere at once.
-func (r *Relay) tokenOK(got string) bool {
-	return r.token.Accept(got)
-}
-
 // ControlToken mints a short-lived client credential for an enrolled machine.
 //
 // It is how one desktop reaches the rest of the fleet without anyone typing a
@@ -322,7 +330,10 @@ func (r *Relay) ControlToken(w http.ResponseWriter, rq *http.Request) {
 	if ttl <= 0 {
 		ttl = DefaultControlTokenTTL
 	}
-	token, expiresAt, err := r.token.Mint(id, ttl)
+	// The credential carries the machine's tenant: a desktop may drive the rest
+	// of its own fleet without the shared token, and nothing outside it.
+	tenant, _ := r.reg.Tenant(id)
+	token, expiresAt, err := r.token.Mint(id, tenant, ttl)
 	if err != nil {
 		r.log.Printf("relay: minting a control token for %s: %v", id, err)
 		http.Error(w, "cannot mint a token", http.StatusInternalServerError)
@@ -674,10 +685,10 @@ func (r *Relay) handleOpen(c *clientConn, f tunnel.Frame) {
 		c.send(errFrame(tunnel.ErrBadRequest, "open needs a machine and a nonzero stream", f.Stream))
 		return
 	}
-	if !c.grant.Allows(f.Machine) {
+	if !r.maySee(c.grant, f.Machine) {
 		// The same answer an offline machine gets: a credential limited to one
-		// machine should not be able to enumerate the others by watching which
-		// errors differ.
+		// machine or one tenant should not be able to enumerate the others by
+		// watching which errors differ.
 		c.send(errFrame(tunnel.ErrNoMachine, "no such machine", f.Stream))
 		return
 	}
@@ -753,9 +764,11 @@ func (r *Relay) Shutdown(reason string) {
 }
 
 // Machines serves the member list as JSON. It is the same snapshot clients
-// receive over the tunnel, exposed for smoke tests and operator poking.
+// receive over the tunnel, exposed for smoke tests and operator poking. The
+// credential's scopes decide what the list holds, exactly as on the socket.
 func (r *Relay) Machines(w http.ResponseWriter, rq *http.Request) {
-	if !r.tokenOK(r.headerToken(rq)) {
+	g, ok := r.token.Grant(r.headerToken(rq))
+	if !ok {
 		ip := clientIP(rq, r.cfg.TrustProxy)
 		r.lim.fail(ip)
 		r.log.Printf("relay: rejected roster request from %s", ip)
@@ -764,7 +777,7 @@ func (r *Relay) Machines(w http.ResponseWriter, rq *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"machines": r.snapshot()})
+	_ = json.NewEncoder(w).Encode(map[string]any{"machines": r.snapshotFor(g)})
 }
 
 func (r *Relay) broadcastMachines() {
@@ -775,25 +788,17 @@ func (r *Relay) broadcastMachines() {
 	}
 	r.rosterMu.Unlock()
 	// Each viewer gets the roster it may see: a named token limited to a phone's
-	// machine is not shown the rest of the fleet.
+	// machine is not shown the rest of the fleet, and neither does a user learn
+	// the machines enrolled under another tenant.
 	snap := r.snapshot()
 	for _, c := range cs {
-		if len(c.grant.Machines) == 0 {
+		g := c.grant
+		if g.Tenant == "" && len(g.Machines) == 0 {
 			c.send(tunnel.Frame{T: tunnel.TMachines, Machines: snap})
 			continue
 		}
-		c.send(tunnel.Frame{T: tunnel.TMachines, Machines: filterMachines(snap, c.grant)})
+		c.send(tunnel.Frame{T: tunnel.TMachines, Machines: r.snapshotFor(g)})
 	}
-}
-
-func filterMachines(all []tunnel.Machine, g Grant) []tunnel.Machine {
-	out := make([]tunnel.Machine, 0, len(all))
-	for _, m := range all {
-		if g.Allows(m.ID) {
-			out = append(out, m)
-		}
-	}
-	return out
 }
 
 // ---------------------------------------------------------------- plumbing

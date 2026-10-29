@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CarlOpenLab/beacon/internal/accounts"
 	"github.com/CarlOpenLab/beacon/internal/relay"
 )
 
@@ -42,7 +43,10 @@ type Options struct {
 	// binary always sets this (default 24h), so zero here is a deliberate
 	// choice, not an oversight.
 	TokenTTL time.Duration
-	Log      *log.Logger
+	// Users is the registered-user store, when this relay admits signups. It
+	// feeds the approval queue and the tenant list the enroll form offers.
+	Users *accounts.Store
+	Log   *log.Logger
 }
 
 // Admin serves the management panel.
@@ -83,6 +87,18 @@ func (a *Admin) Configured() bool { return a.store.Configured() }
 // Username is the admin name, for logs.
 func (a *Admin) Username() string { return a.store.Username() }
 
+// Bootstrap creates the super admin when none exists. It is the deployment-time
+// initialization path — the credentials arrive from the environment or flags at
+// startup, never from a request — and it refuses when an account is already
+// configured, so a re-run of the same deployment cannot reset the password.
+func (a *Admin) Bootstrap(username, password string) error {
+	if err := a.store.Setup(username, password); err != nil {
+		return err
+	}
+	a.opts.Log.Printf("admin: super admin %q created at startup", username)
+	return nil
+}
+
 // Register mounts the panel on mux. Both "…/admin" and "…/admin/" are handled so
 // a plain link without the trailing slash does not turn into a redirect to an
 // absolute path — which, behind a path-prefixed proxy, would escape the prefix.
@@ -98,6 +114,10 @@ func (a *Admin) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET "+b+"/api/devices", a.handleDevices)
 	mux.HandleFunc("POST "+b+"/api/devices", a.handleEnroll)
 	mux.HandleFunc("POST "+b+"/api/devices/revoke", a.handleRevoke)
+	mux.HandleFunc("GET "+b+"/api/users", a.handleUsers)
+	mux.HandleFunc("POST "+b+"/api/users/approve", a.handleApprove)
+	mux.HandleFunc("POST "+b+"/api/users/reject", a.handleReject)
+	mux.HandleFunc("POST "+b+"/api/users/delete", a.handleDeleteUser)
 	mux.HandleFunc("GET "+b+"/api/token", a.handleToken)
 	mux.HandleFunc("POST "+b+"/api/token/rotate", a.handleRotate)
 	mux.HandleFunc("GET "+b+"/api/tokens", a.handleNamedTokens)
@@ -261,9 +281,12 @@ type deviceView struct {
 	ID      string `json:"id"`
 	Name    string `json:"name,omitempty"`
 	AddedAt string `json:"addedAt,omitempty"`
+	Tenant  string `json:"tenant,omitempty"`
 	Online  bool   `json:"online"`
 }
 
+// handleDevices lists enrolled machines with their tenant, so an operator can
+// see which registered user each machine answers to.
 func (a *Admin) handleDevices(w http.ResponseWriter, r *http.Request) {
 	if !a.guard(w, r) {
 		return
@@ -277,17 +300,21 @@ func (a *Admin) handleDevices(w http.ResponseWriter, r *http.Request) {
 	entries := a.opts.Relay.Devices().Entries()
 	out := make([]deviceView, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, deviceView{ID: e.ID, Name: e.Name, AddedAt: e.AddedAt, Online: online[e.ID]})
+		out = append(out, deviceView{ID: e.ID, Name: e.Name, AddedAt: e.AddedAt, Tenant: e.Tenant, Online: online[e.ID]})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": out})
 }
 
+// handleEnroll mints machine credentials, optionally into a tenant: the
+// operator pre-provisions a machine for a registered user, who then only has
+// to paste the secret. The tenant must name a real registered user.
 func (a *Admin) handleEnroll(w http.ResponseWriter, r *http.Request) {
 	if !a.guard(w, r) {
 		return
 	}
 	var body struct {
-		Name string `json:"name"`
+		Name   string `json:"name"`
+		Tenant string `json:"tenant"`
 	}
 	if !readJSON(w, r, &body) {
 		return
@@ -297,16 +324,91 @@ func (a *Admin) handleEnroll(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, http.StatusBadRequest, "give the machine a name")
 		return
 	}
-	id, secret, err := a.opts.Relay.Devices().Enroll(name, time.Now().UTC().Format(time.RFC3339))
+	tenant := strings.TrimSpace(body.Tenant)
+	if tenant != "" && a.opts.Users != nil {
+		if _, ok := a.opts.Users.ByID(tenant); !ok {
+			a.fail(w, http.StatusBadRequest, "no registered user with that tenant id")
+			return
+		}
+	}
+	id, secret, err := a.opts.Relay.Devices().Enroll(name, tenant, time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		a.opts.Log.Printf("admin: enroll %q: %v", name, err)
 		a.fail(w, http.StatusInternalServerError, "could not enroll the machine")
 		return
 	}
-	a.opts.Log.Printf("admin: enrolled %s (%s)", id, name)
+	a.opts.Log.Printf("admin: enrolled %s (%s) tenant=%q", id, name, tenant)
 	a.opts.Relay.RefreshRoster()
 	// The secret is in this response and nowhere else; the panel shows it once.
-	writeJSON(w, http.StatusOK, map[string]any{"id": id, "secret": secret, "name": name})
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "secret": secret, "name": name, "tenant": tenant})
+}
+
+// ── registered users ────────────────────────────────────────────────────────
+
+type userView struct {
+	ID         string `json:"id"`
+	Username   string `json:"username"`
+	Status     string `json:"status"`
+	CreatedAt  string `json:"createdAt,omitempty"`
+	ApprovedAt string `json:"approvedAt,omitempty"`
+}
+
+// handleUsers lists the registered accounts, pending first: the approval queue
+// is the thing an operator opens the page for.
+func (a *Admin) handleUsers(w http.ResponseWriter, r *http.Request) {
+	if !a.guard(w, r) {
+		return
+	}
+	if a.opts.Users == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"users": []userView{}, "signup": false})
+		return
+	}
+	users := a.opts.Users.List()
+	out := make([]userView, 0, len(users))
+	for _, u := range users {
+		out = append(out, userView{ID: u.ID, Username: u.Username, Status: u.Status, CreatedAt: u.CreatedAt, ApprovedAt: u.ApprovedAt})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"users": out, "signup": true})
+}
+
+// handleUserAction is the shared body of approve/reject: both read an id and
+// answer ok, differing only in which side of the gate they put the user on.
+func (a *Admin) handleUserAction(w http.ResponseWriter, r *http.Request, action string, apply func(id string) error) {
+	if !a.guard(w, r) {
+		return
+	}
+	var body struct {
+		ID string `json:"id"`
+	}
+	if !readJSON(w, r, &body) {
+		return
+	}
+	if a.opts.Users == nil {
+		a.fail(w, http.StatusConflict, "this relay has no signup surface")
+		return
+	}
+	if err := apply(strings.TrimSpace(body.ID)); err != nil {
+		a.fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	a.opts.Log.Printf("admin: user %s %s", body.ID, action)
+	a.opts.Relay.RefreshRoster()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (a *Admin) handleApprove(w http.ResponseWriter, r *http.Request) {
+	a.handleUserAction(w, r, "approved", a.opts.Users.Approve)
+}
+
+func (a *Admin) handleReject(w http.ResponseWriter, r *http.Request) {
+	a.handleUserAction(w, r, "rejected", a.opts.Users.Reject)
+}
+
+// handleDeleteUser removes the account outright. Their machines stay enrolled,
+// but every token minted under the tenant stops verifying, so the reach ends
+// with the account rather than with the hardware.
+func (a *Admin) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	a.handleUserAction(w, r, "deleted", a.opts.Users.Delete)
 }
 
 func (a *Admin) handleRevoke(w http.ResponseWriter, r *http.Request) {

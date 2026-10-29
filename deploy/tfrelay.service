@@ -19,6 +19,11 @@ Group=tfrelay
 # everything with read access to the unit.
 EnvironmentFile=/etc/tfrelay/env
 
+# Multi-tenant deployments: TFRELAY_ADMIN_USER and TFRELAY_ADMIN_PASSWORD in the
+# env file bootstrap the super admin at startup (only when no account exists
+# yet), so registered signups can be approved without opening the setup wizard.
+# Registered users are stored at /var/lib/tfrelay/users.json (0600).
+
 # Bound to loopback on purpose: TLS and the public port belong to the proxy in
 # front. Use -tls-cert/-tls-key here instead if you have no proxy.
 ExecStart=/usr/local/bin/tfrelay \

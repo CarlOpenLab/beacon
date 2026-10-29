@@ -18,10 +18,16 @@ import (
 // Name is kept only so an operator reading the file knows what a row is for;
 // the authoritative name is what the member reports in its hello, because a
 // machine may be renamed without touching the relay.
+//
+// Tenant is the tenant the machine belongs to: the id of the registered user
+// who enrolled it. Empty means the operator's own scope, reachable only by
+// credentials that carry no tenant — the shared token, an admin-minted named
+// token, or a super-admin login.
 type DeviceRecord struct {
 	Secret  string `json:"secret"`
 	Name    string `json:"name,omitempty"`
 	AddedAt string `json:"addedAt,omitempty"`
+	Tenant  string `json:"tenant,omitempty"`
 }
 
 // DevicesFile is the on-disk shape of the member registry.
@@ -57,8 +63,9 @@ func LoadDevices(path string) (map[string]string, error) {
 
 // EnrollDevice mints a credential for one machine and appends it to the
 // registry. The secret is returned once, to be pasted into that machine's
-// agent configuration; the registry itself is written 0600.
-func EnrollDevice(path, name string, now string) (id, secret string, err error) {
+// agent configuration; the registry itself is written 0600. tenant records
+// which registered user the machine belongs to ("" for the operator's own).
+func EnrollDevice(path, name, tenant, now string) (id, secret string, err error) {
 	f := DevicesFile{Devices: map[string]DeviceRecord{}}
 	if b, rerr := os.ReadFile(path); rerr == nil {
 		if uerr := json.Unmarshal(b, &f); uerr != nil {
@@ -76,7 +83,7 @@ func EnrollDevice(path, name string, now string) (id, secret string, err error) 
 	if err != nil {
 		return "", "", err
 	}
-	f.Devices[id] = DeviceRecord{Secret: secret, Name: name, AddedAt: now}
+	f.Devices[id] = DeviceRecord{Secret: secret, Name: name, AddedAt: now, Tenant: tenant}
 
 	b, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
@@ -104,11 +111,14 @@ func ListDevices(path string) ([]string, error) {
 	}
 	out := make([]string, 0, len(f.Devices))
 	for id, rec := range f.Devices {
+		row := id
 		if rec.Name != "" {
-			out = append(out, id+" ("+rec.Name+")")
-		} else {
-			out = append(out, id)
+			row += " (" + rec.Name + ")"
 		}
+		if rec.Tenant != "" {
+			row += " [tenant " + rec.Tenant + "]"
+		}
+		out = append(out, row)
 	}
 	sort.Strings(out)
 	return out, nil

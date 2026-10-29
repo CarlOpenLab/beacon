@@ -8,9 +8,7 @@
 package admin
 
 import (
-	"crypto/pbkdf2"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -18,16 +16,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
-)
 
-// pbkdf2Iterations is the work factor for the admin password. Sized for an
-// interactive login on a small cloud instance: slow enough to make offline
-// guessing of a leaked admin.json expensive, fast enough to feel instant.
-const pbkdf2Iterations = 210_000
+	"github.com/CarlOpenLab/beacon/internal/passhash"
+)
 
 // ErrConfigured means setup has already run; there is exactly one admin.
 var ErrConfigured = errors.New("admin: already configured")
@@ -104,7 +98,7 @@ func (s *Store) Setup(username, password string) error {
 	if len(password) < 8 {
 		return errors.New("admin: password must be at least 8 characters")
 	}
-	hash, err := hashPassword(password)
+	hash, err := passhash.Hash(password)
 	if err != nil {
 		return err
 	}
@@ -132,7 +126,7 @@ func (s *Store) Verify(username, password string) bool {
 		return false
 	}
 	okUser := subtle.ConstantTimeCompare([]byte(strings.TrimSpace(username)), []byte(creds.Username)) == 1
-	okPass := verifyPassword(creds.Hash, password)
+	okPass := passhash.Verify(creds.Hash, password)
 	return okUser && okPass
 }
 
@@ -143,10 +137,10 @@ func (s *Store) ChangePassword(old, next string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !verifyPassword(s.creds.Hash, old) {
+	if !passhash.Verify(s.creds.Hash, old) {
 		return errors.New("admin: current password is wrong")
 	}
-	hash, err := hashPassword(next)
+	hash, err := passhash.Hash(next)
 	if err != nil {
 		return err
 	}
@@ -226,45 +220,8 @@ func (s *Store) write(c Credentials) error {
 	return os.Rename(tmp, s.path)
 }
 
-// hashPassword returns "pbkdf2_sha256$<iter>$<salt>$<key>", all base64 raw.
-func hashPassword(password string) (string, error) {
-	salt := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil {
-		return "", err
-	}
-	key, err := pbkdf2.Key(sha256.New, password, salt, pbkdf2Iterations, 32)
-	if err != nil {
-		return "", err
-	}
-	enc := base64.RawStdEncoding
-	return fmt.Sprintf("pbkdf2_sha256$%d$%s$%s", pbkdf2Iterations, enc.EncodeToString(salt), enc.EncodeToString(key)), nil
-}
-
-// verifyPassword parses and checks an encoded hash, in constant time.
-func verifyPassword(encoded, password string) bool {
-	parts := strings.Split(encoded, "$")
-	if len(parts) != 4 || parts[0] != "pbkdf2_sha256" {
-		return false
-	}
-	iter, err := strconv.Atoi(parts[1])
-	if err != nil || iter <= 0 {
-		return false
-	}
-	enc := base64.RawStdEncoding
-	salt, err := enc.DecodeString(parts[2])
-	if err != nil {
-		return false
-	}
-	want, err := enc.DecodeString(parts[3])
-	if err != nil {
-		return false
-	}
-	got, err := pbkdf2.Key(sha256.New, password, salt, iter, len(want))
-	if err != nil {
-		return false
-	}
-	return subtle.ConstantTimeCompare(got, want) == 1
-}
+// hashPassword and verifyPassword live in internal/passhash, shared with the
+// registered-user accounts so the two credential files cannot drift apart.
 
 // randomToken mints a session token. 32 bytes: it is a bearer credential for the
 // panel that hands out shell access, so guessing it must be infeasible.

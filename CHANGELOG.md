@@ -4,6 +4,17 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## Unreleased
+
+**多租户中继：开放注册、超管审批、机器按租户隔离 — Multi-tenant relay: open signups, super-admin approval, machines isolated per tenant**
+
+- **The relay is multi-tenant.** The web client gains an account door — signup at `/api/register`, login at `/api/login` — and every signup waits in the admin panel's new **Users** page until the super admin approves it. An approved user is one tenant: what they enroll is theirs alone, from the roster their browser sees to the machines their desktop client can drive, and a machine's own short-lived credential stays inside its tenant too. The shared token, the admin panel and named tokens keep their operator-wide reach.
+  — 中继升级为多租户：网页端新增账号入口（`/api/register` 注册、`/api/login` 登录），注册账号先落入超管面板新增的 **Users** 审批页，批准前无法登录；批准后的用户即一个租户——自己登记的机器只对自己可见，浏览器看到的机器列表、桌面端能驱动的机器、以及机器自身换取的短期凭据都限定在租户内。共享令牌、超管面板与具名令牌仍保持全局视野。
+- **The super admin initializes at deploy time.** `TFRELAY_ADMIN_USER` / `TFRELAY_ADMIN_PASSWORD` (or `-admin-user` / `-admin-password`) create the admin account at startup when none exists, so approval is possible on a fresh deployment without the setup wizard; an existing account is never overwritten.
+  — 超管在部署时初始化：通过 `TFRELAY_ADMIN_USER` / `TFRELAY_ADMIN_PASSWORD`（或 `-admin-user` / `-admin-password`）在启动时创建管理员账号（仅当尚无账号时），全新部署无需先走 setup 向导即可审批注册；已有账号永远不会被覆盖。
+- **Users enroll their own machines.** An approved user clicks 添加机器 in the web client and receives a device id/secret to paste into that machine's desktop app, no admin panel involved. The desktop client itself is unchanged: the tenant is resolved server-side from the device credential.
+  — 用户自助登记机器：已批准用户在网页端点击「添加机器」即可获得设备 ID 与密钥，贴进那台机器的桌面端即可，无需经过超管面板。桌面端零改动，租户由服务端按设备凭据解析。
+
 ## 0.7.14
 
 **Beacon 0.7.14: 亚克力成为唯一背景 — Acrylic is the only window background**

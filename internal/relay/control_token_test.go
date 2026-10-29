@@ -25,7 +25,7 @@ func TestControlTokenIsMintedForEnrolledMachinesOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registry: %v", err)
 	}
-	machineID, machineSecret, err := reg.Enroll("mac-mini", "")
+	machineID, machineSecret, err := reg.Enroll("mac-mini", "", "")
 	if err != nil {
 		t.Fatalf("enroll: %v", err)
 	}

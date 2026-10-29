@@ -150,7 +150,7 @@ func TestServeLogRequiresAMachineCredential(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, secret, err := reg.Enroll("mac", time.Now().UTC().Format(time.RFC3339))
+	id, secret, err := reg.Enroll("mac", "", time.Now().UTC().Format(time.RFC3339))
 	if err != nil {
 		t.Fatal(err)
 	}

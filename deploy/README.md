@@ -67,6 +67,9 @@ sudo install -d -m 0700 -o tfrelay -g tfrelay /var/lib/tfrelay /etc/tfrelay
 
 sudo install -m 0600 -o tfrelay -g tfrelay /dev/stdin /etc/tfrelay/env <<'EOF'
 TFRELAY_CLIENT_TOKEN=REPLACE_WITH_THE_TOKEN_FROM_STEP_2
+# Optional: bootstrap the super admin at startup (only when no account exists).
+#TFRELAY_ADMIN_USER=carl
+#TFRELAY_ADMIN_PASSWORD=REPLACE_WITH_A_LONG_PASSWORD
 EOF
 
 sudo install -m 0644 deploy/tfrelay.service /etc/systemd/system/tfrelay.service
@@ -109,6 +112,34 @@ since it was configured by hand.
 Give it a non-default path with `-admin-path`, and a real relay URL to hand out
 with `-public-url wss://relay.example.com/relay/agent` — the relay cannot guess a
 URL that a proxy in front is rewriting.
+
+# 3c. Multi-tenant: signups, approval, tenant isolation
+
+By default the client token makes the relay one fleet. With the user store on —
+the default — the relay also serves an open account API, and machines are
+enrolled into tenants:
+
+- **Signup and login** live at `/api/register` and `/api/login`. A signup lands
+  in the admin panel's **Users** page as pending, and cannot log in until you
+  approve it there.
+- **An approved user is one tenant.** What they enroll is theirs alone: their
+  browser console shows only their machines, their desktop client reaches only
+  their machines, and a machine's own short-lived credential stays inside the
+  tenant too. The shared token, this panel, and named tokens minted here keep
+  their operator-wide reach.
+- **Self-serve enrollment.** An approved user clicks 添加机器 in the web client
+  and gets a device id/secret to paste into that machine's desktop app, without
+  the admin panel involved.
+
+Bootstrap the super admin at deploy time so approval is possible before anyone
+opens the panel — put `TFRELAY_ADMIN_USER` and `TFRELAY_ADMIN_PASSWORD` in
+`/etc/tfrelay/env` (or pass `-admin-user`/`-admin-password`). They are read once
+at startup and only ever create the account when none exists; without them the
+setup wizard makes the first account instead, exactly as before.
+
+`-user-token-ttl` (default 7d) bounds a login token's life. Rejecting or
+deleting a user in the panel ends their tokens at once. Pass `-users off` to
+turn the whole account surface back off on a single-operator relay.
 
 ### TLS
 

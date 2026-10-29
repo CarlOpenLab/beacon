@@ -492,10 +492,10 @@ func twoDeskRelay(t *testing.T) (url, alphaID, alphaSecret, betaID, betaSecret s
 	if err != nil {
 		t.Fatalf("registry: %v", err)
 	}
-	if alphaID, alphaSecret, err = reg.Enroll("alpha", ""); err != nil {
+	if alphaID, alphaSecret, err = reg.Enroll("alpha", "", ""); err != nil {
 		t.Fatalf("enroll alpha: %v", err)
 	}
-	if betaID, betaSecret, err = reg.Enroll("beta", ""); err != nil {
+	if betaID, betaSecret, err = reg.Enroll("beta", "", ""); err != nil {
 		t.Fatalf("enroll beta: %v", err)
 	}
 	rl, err := relay.New(relay.Config{Registry: reg, ClientToken: "fleettoken"})

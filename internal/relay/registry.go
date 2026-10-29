@@ -14,6 +14,7 @@ type DeviceEntry struct {
 	ID      string `json:"id"`
 	Name    string `json:"name,omitempty"`
 	AddedAt string `json:"addedAt,omitempty"`
+	Tenant  string `json:"tenant,omitempty"`
 }
 
 // Registry is the member registry: the devices.json file, plus an in-memory
@@ -61,13 +62,29 @@ func (g *Registry) Path() string { return g.path }
 
 // Secret returns the credential for id, and whether it is known at all.
 func (g *Registry) Secret(id string) (string, bool) {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-	rec, ok := g.devices[id]
+	rec, ok := g.Record(id)
 	if !ok {
 		return "", false
 	}
 	return rec.Secret, true
+}
+
+// Record returns the whole stored record for id.
+func (g *Registry) Record(id string) (DeviceRecord, bool) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	rec, ok := g.devices[id]
+	return rec, ok
+}
+
+// Tenant returns which tenant id the machine is enrolled under ("" for the
+// operator's own scope), and whether the machine is known at all.
+func (g *Registry) Tenant(id string) (string, bool) {
+	rec, ok := g.Record(id)
+	if !ok {
+		return "", false
+	}
+	return rec.Tenant, true
 }
 
 // Len reports how many machines are enrolled.
@@ -84,15 +101,35 @@ func (g *Registry) Entries() []DeviceEntry {
 	defer g.mu.RUnlock()
 	out := make([]DeviceEntry, 0, len(g.devices))
 	for id, rec := range g.devices {
-		out = append(out, DeviceEntry{ID: id, Name: rec.Name, AddedAt: rec.AddedAt})
+		out = append(out, DeviceEntry{ID: id, Name: rec.Name, AddedAt: rec.AddedAt, Tenant: rec.Tenant})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
+// Tenants reports the distinct tenant ids in use, sorted. A machine enrolled
+// with no tenant belongs to the operator's own scope and is not listed.
+func (g *Registry) Tenants() []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	seen := map[string]bool{}
+	for _, rec := range g.devices {
+		if rec.Tenant != "" {
+			seen[rec.Tenant] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for t := range seen {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Enroll mints a credential for one machine and appends it to the registry.
-// The secret is returned once; only its stored copy can be read back.
-func (g *Registry) Enroll(name, now string) (id, secret string, err error) {
+// The secret is returned once; only its stored copy can be read back. tenant
+// records which registered user the machine belongs to ("" for the operator).
+func (g *Registry) Enroll(name, tenant, now string) (id, secret string, err error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -105,7 +142,7 @@ func (g *Registry) Enroll(name, now string) (id, secret string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	next[id] = DeviceRecord{Secret: secret, Name: name, AddedAt: now}
+	next[id] = DeviceRecord{Secret: secret, Name: name, AddedAt: now, Tenant: tenant}
 	if err := g.write(next); err != nil {
 		return "", "", err
 	}
