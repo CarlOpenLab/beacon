@@ -523,7 +523,7 @@ func settingsPageMatches(pane int, q string) bool {
 	case paneUpdates:
 		keywords = []string{"update", "version", "check", "github", "更新", "版本", "检查更新"}
 	case paneAppearance:
-		keywords = []string{"appearance", "theme", "light", "dark", "system", "background", "wash", "plain", "frosted", "vibrancy", "blur", "rex", "mist", "meadow", "dusk", "外观", "主题", "浅色", "深色", "背景", "纯色", "磨砂", "毛玻璃"}
+		keywords = []string{"appearance", "theme", "light", "dark", "system", "background", "wash", "acrylic", "frosted", "vibrancy", "blur", "外观", "主题", "浅色", "深色", "背景", "亚克力", "磨砂", "毛玻璃"}
 	case paneSidebar:
 		keywords = []string{"sidebar", "machine", "toggle", "hide", "show", "rail", "侧栏", "机器", "主机", "隐藏"}
 	case paneNotifications:
@@ -723,23 +723,18 @@ func (s *settingsWindow) fontSizePopup(c *ui.Context, pal *uitokens.Palette) {
 func formatSize(v float64) string { return strconv.FormatFloat(v, 'f', -1, 32) }
 
 // appearancePane is the window's own appearance: light, dark or the system's,
-// and the wash the cards sit on.
+// and the acrylic material the cards sit on.
 func (s *settingsWindow) appearancePane(c *ui.Context) {
 	pal := paletteFor(c)
 	mode := themeSystem
-	background := ""
 	if s.store != nil {
 		mode = normalizeTheme(s.store.Get().Theme)
-		background = s.store.Get().Background
 		if s.opacity <= 0 {
 			s.opacity = s.store.Get().Opacity()
 		}
 		if s.blur == "" {
 			s.blur = s.store.Get().Blur()
 		}
-	}
-	if background == "" {
-		background = "plain"
 	}
 
 	groupRows = 0
@@ -787,13 +782,6 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 			})
 		})
 	})
-
-	groupTitle(c, pal, locales.SettingsBackground())
-	ui.Row(c).Gap(12).Wrap().Children(func() {
-		for _, wsh := range uitokens.Washes {
-			s.washTile(c, pal, wsh, background)
-		}
-	})
 }
 
 // sidebarPane is which machines keep a header in the column. Every machine the
@@ -838,60 +826,6 @@ func (s *settingsWindow) sidebarMachineRow(c *ui.Context, pal *uitokens.Palette,
 			}
 		})
 	})
-}
-
-// washTile previews a wash, and chooses it on a click: the background
-// settings, with a card on the tile so that the wash is seen the way the window
-// shows it.
-func (s *settingsWindow) washTile(c *ui.Context, pal *uitokens.Palette, wsh uitokens.Wash, current string) {
-	selected := current == wsh.ID
-	tile := ui.ButtonBase(c.Key("bg-" + wsh.ID)).Column().Width(104).Gap(8).
-		AlignItems(ui.Stretch).Label(washName(wsh.ID))
-	tile.Children(func() {
-		sw := raised(ui.Box(c).Size(104, 68).Radius(12), pal).Clip()
-		sw.LinearGradient(wsh.Base(pal.Dark))
-		sw.Children(func() {
-			ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).LinearGradient(wsh.Glow(pal.Dark))
-			// A card on it, as the window shows them.
-			ui.Box(c).Absolute().Top(12).Left(26).Right(8).Bottom(-6).Radius(7).Background(pal.Card)
-			ui.Box(c).Absolute().Top(20).Left(8).Width(12).Height(4).Radius(2).Background(pal.TextFaint.Alpha(0.5))
-			if selected {
-				ui.Box(c).Absolute().Top(6).Right(6).Size(18, 18).Radius(9).Center().Background(pal.Accent).Children(func() {
-					ui.Icon(c, iconCheck).Size(10, 10).TextColor(ui.Hex("#ffffff"))
-				})
-			}
-		})
-		label := ui.Text(c, washName(wsh.ID)).FontSize(12.5).TextColor(pal.TextMuted).TextAlign(ui.Center)
-		if selected {
-			label.TextColor(pal.Text).FontWeight(600)
-		}
-	})
-	if tile.Clicked() && s.store != nil {
-		if _, err := s.store.Update(func(st *settings.Settings) { st.Background = wsh.ID }); err != nil {
-			s.status, s.statusErr = err.Error(), true
-		}
-		s.opacity = s.store.Get().Opacity()
-		if s.desk != nil {
-			s.desk.invalidate()
-		}
-	}
-}
-
-// washName is a wash's name in the language the app shows.
-func washName(id string) string {
-	switch id {
-	case "frosted":
-		return locales.BgFrosted()
-	case "rex":
-		return locales.BgRex()
-	case "mist":
-		return locales.BgMist()
-	case "meadow":
-		return locales.BgMeadow()
-	case "dusk":
-		return locales.BgDusk()
-	}
-	return locales.BgPlain()
 }
 
 // paneNote is a line of prose in a pane's own column: a field with no label,

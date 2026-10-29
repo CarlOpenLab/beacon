@@ -190,21 +190,15 @@ type Wash struct {
 	DarkGlow  ui.Color
 }
 
-// Washes are the backgrounds the appearance settings offer, in their order.
-// plain is the default: clean, solid distraction-free background. frosted is
-// the translucent frosted glass background. rex, mist, meadow and dusk are
-// optional washes.
+// Washes are the window's backgrounds. frosted — the acrylic material — is the
+// only one: the window is acrylic by default, and the appearance settings no
+// longer offer a solid or gradient wash.
 var Washes = []Wash{
-	{"plain", []string{"#eceef4", "#eceef4"}, []string{"#141418", "#141418"}, ui.Transparent, ui.Transparent},
 	{"frosted", []string{"#e6ecf5", "#edf1f8"}, []string{"#141418", "#1a1a22"}, ui.RGBA(255, 255, 255, 0.45), ui.RGBA(255, 255, 255, 0.08)},
-	{"rex", []string{"#ebe0f3", "#f3e7f1", "#f7eee4", "#f6efcf"}, []string{"#17141f", "#191620", "#1b1916"}, ui.RGBA(247, 220, 241, 0.75), ui.RGBA(120, 70, 120, 0.22)},
-	{"mist", []string{"#e3e9f4", "#ebeff6", "#f1f2f3", "#f2f1ec"}, []string{"#12151b", "#14171d", "#17181b"}, ui.RGBA(210, 225, 248, 0.75), ui.RGBA(70, 100, 150, 0.22)},
-	{"meadow", []string{"#e2eee5", "#ebf2e7", "#f3f2e2", "#f5f0d6"}, []string{"#111814", "#141a16", "#181a14"}, ui.RGBA(214, 240, 222, 0.75), ui.RGBA(70, 130, 95, 0.2)},
-	{"dusk", []string{"#e4dbf3", "#efdeee", "#f6e3dc", "#f7e6cf"}, []string{"#191321", "#1e161e", "#221a17"}, ui.RGBA(246, 206, 222, 0.8), ui.RGBA(150, 80, 110, 0.25)},
 }
 
-// WashFor returns a wash by id, falling back to plain for an id the settings file
-// no longer knows.
+// WashFor returns a wash by id, falling back to the acrylic default for an id
+// the settings file no longer knows.
 func WashFor(id string) Wash {
 	for _, w := range Washes {
 		if w.ID == id {

@@ -9,15 +9,23 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/CarlOpenLab/beacon/internal/settings"
 	"github.com/CarlOpenLab/beacon/locales"
 )
 
 // TestSettingsLeavesThePageInSight reads the backdrop off the pixels: with the
 // dialog open, a corner outside it looks exactly as it does with it closed. The
-// wash that used to cover the shells would have changed it.
+// wash that used to cover the shells would have changed it. The acrylic window
+// is translucent by default, and the tester composites a translucent page over
+// its own canvas, so the page is made opaque here: the comparison then reads the
+// page itself, whatever the compositor does underneath, and the acrylic blur
+// stays on.
 func TestSettingsLeavesThePageInSight(t *testing.T) {
 	w, _ := newTestShellWindow(t)
 	w.fleet = newTestFleet(t)
+	if _, err := w.store.Update(func(s *settings.Settings) { s.BackgroundOpacity = 1 }); err != nil {
+		t.Fatal(err)
+	}
 
 	const width, height = 1000, 700
 	// A point in the window's bottom-left corner, clear of the centred dialog

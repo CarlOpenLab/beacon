@@ -3142,76 +3142,6 @@ func (msgs Messages) ActionToggleSidebar() string {
 	return Catalog.Format(msgs.locale, "action_toggle_sidebar", nil)
 }
 
-// BgDusk says "暮色"
-// in the language the app shows.
-//
-// Beacon UI: bg dusk
-func BgDusk() string { return In(i18n.Locale()).BgDusk() }
-
-// BgDusk says "暮色"
-// in the language of msgs.
-//
-// Beacon UI: bg dusk
-func (msgs Messages) BgDusk() string {
-	return Catalog.Format(msgs.locale, "bg_dusk", nil)
-}
-
-// BgMeadow says "草绿"
-// in the language the app shows.
-//
-// Beacon UI: bg meadow
-func BgMeadow() string { return In(i18n.Locale()).BgMeadow() }
-
-// BgMeadow says "草绿"
-// in the language of msgs.
-//
-// Beacon UI: bg meadow
-func (msgs Messages) BgMeadow() string {
-	return Catalog.Format(msgs.locale, "bg_meadow", nil)
-}
-
-// BgMist says "雾蓝"
-// in the language the app shows.
-//
-// Beacon UI: bg mist
-func BgMist() string { return In(i18n.Locale()).BgMist() }
-
-// BgMist says "雾蓝"
-// in the language of msgs.
-//
-// Beacon UI: bg mist
-func (msgs Messages) BgMist() string {
-	return Catalog.Format(msgs.locale, "bg_mist", nil)
-}
-
-// BgPlain says "纯色"
-// in the language the app shows.
-//
-// Beacon UI: bg plain
-func BgPlain() string { return In(i18n.Locale()).BgPlain() }
-
-// BgPlain says "纯色"
-// in the language of msgs.
-//
-// Beacon UI: bg plain
-func (msgs Messages) BgPlain() string {
-	return Catalog.Format(msgs.locale, "bg_plain", nil)
-}
-
-// BgFrosted says "亚克力磨砂"
-// in the language the app shows.
-//
-// Beacon UI: bg frosted
-func BgFrosted() string { return In(i18n.Locale()).BgFrosted() }
-
-// BgFrosted says "亚克力磨砂"
-// in the language of msgs.
-//
-// Beacon UI: bg frosted
-func (msgs Messages) BgFrosted() string {
-	return Catalog.Format(msgs.locale, "bg_frosted", nil)
-}
-
 // SettingsBgOpacity says "背景透明度"
 // in the language the app shows.
 //
@@ -3294,20 +3224,6 @@ func BlurDeep() string { return In(i18n.Locale()).BlurDeep() }
 // Beacon UI: blur deep
 func (msgs Messages) BlurDeep() string {
 	return Catalog.Format(msgs.locale, "blur_deep", nil)
-}
-
-// BgRex says "粉紫"
-// in the language the app shows.
-//
-// Beacon UI: bg rex
-func BgRex() string { return In(i18n.Locale()).BgRex() }
-
-// BgRex says "粉紫"
-// in the language of msgs.
-//
-// Beacon UI: bg rex
-func (msgs Messages) BgRex() string {
-	return Catalog.Format(msgs.locale, "bg_rex", nil)
 }
 
 // FooterDone says "已完成"
@@ -3476,20 +3392,6 @@ func SessionMarkRead() string { return In(i18n.Locale()).SessionMarkRead() }
 // Beacon UI: session mark read
 func (msgs Messages) SessionMarkRead() string {
 	return Catalog.Format(msgs.locale, "session_mark_read", nil)
-}
-
-// SettingsBackground says "窗口背景"
-// in the language the app shows.
-//
-// Beacon UI: settings background
-func SettingsBackground() string { return In(i18n.Locale()).SettingsBackground() }
-
-// SettingsBackground says "窗口背景"
-// in the language of msgs.
-//
-// Beacon UI: settings background
-func (msgs Messages) SettingsBackground() string {
-	return Catalog.Format(msgs.locale, "settings_background", nil)
 }
 
 // SettingsPaneAppearance says "外观"

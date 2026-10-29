@@ -783,16 +783,13 @@ func TestSettingsAppearancePaneControls(t *testing.T) {
 		t.Fatalf("the appearance pane is missing blur choices; texts = %v", tt.Texts())
 	}
 
-	// Click Frosted background wash
-	if err := tt.Click(locales.BgFrosted()); err != nil {
-		t.Fatalf("Click(%s): %v", locales.BgFrosted(), err)
-	}
-	tt.Frame()
-	if store.Get().Background != "frosted" {
-		t.Fatalf("expected store background to be 'frosted', got %q", store.Get().Background)
-	}
+	// The window is acrylic by default, with no wash to pick: the pane shows the
+	// acrylic controls only, at the acrylic default opacity.
 	if sw.opacity != 0.80 {
-		t.Fatalf("expected window opacity to default to 0.80 when frosted, got %v", sw.opacity)
+		t.Fatalf("expected window opacity to default to 0.80, got %v", sw.opacity)
+	}
+	if got := store.Get().Opacity(); got != 0.80 {
+		t.Fatalf("expected store opacity to default to 0.80, got %v", got)
 	}
 
 	// Click Deep blur

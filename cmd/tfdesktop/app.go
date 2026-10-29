@@ -704,10 +704,10 @@ func (w *window) view(c *ui.Context) {
 		}
 	}
 
-	// The window's wash: the root's gradient, and the glow the cards sit in.
+	// The window's acrylic material, under the cards.
 	pal := paletteFor(c)
 	row := ui.Row(c).Fill().AlignItems(ui.Stretch)
-	backdrop(c, pal, row, w.store.Get().Background, float32(w.backgroundOpacity()))
+	backdrop(c, pal, float32(w.backgroundOpacity()))
 	// The column's fold: one progress drives the sidebar's width, the cards'
 	// left padding and the header's inset, so the three move as one surface.
 	ch := chromeFor(row.AnimateTo("sidebar", b2f(!w.sidebarHidden), sidebarMotion), w.sideWidth(), c.TitleBar())
@@ -716,7 +716,7 @@ func (w *window) view(c *ui.Context) {
 		if ch.shown > 0.001 {
 			w.sidebar(c, pal)
 		}
-		// The cards' column: the wash shows in the gaps around a card, and the
+		// The cards' column: the acrylic shows in the gaps around a card, and the
 		// left gap closes when the sidebar is shown, so the column reads as the
 		// sidebar's neighbour rather than a second panel.
 		ui.Column(c).Grow(1).MinWidth(0).
@@ -964,7 +964,7 @@ const settingsMargin = float32(12)
 func (w *window) settingsDialog(c *ui.Context) {
 	width, height := c.Size()
 	pal := paletteFor(c)
-	wash := uitokens.WashFor(w.store.Get().Background)
+	wash := uitokens.WashFor("frosted")
 	panelW := min(820, width-64)
 	panelH := min(620, height-64)
 	// The offset the pointer drags the dialog by is from the centre, where it

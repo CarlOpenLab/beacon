@@ -55,7 +55,6 @@ func TestEveryMessageHasAnEnglishForm(t *testing.T) {
 		{zh.SettingsSidebarMachines(), en.SettingsSidebarMachines()},
 		{zh.SettingsSidebarNote(), en.SettingsSidebarNote()},
 		{zh.SettingsSidebarToggle("mac-mini"), en.SettingsSidebarToggle("mac-mini")},
-		{zh.BgFrosted(), en.BgFrosted()},
 		{zh.SettingsBgOpacity(), en.SettingsBgOpacity()},
 		{zh.SettingsBgBlur(), en.SettingsBgBlur()},
 		{zh.BlurNone(), en.BlurNone()},

@@ -67,12 +67,8 @@ type Settings struct {
 	// first run gets — follows the system.
 	Theme string `json:"theme,omitempty"`
 
-	// Background is the window's wash: "rex", "mist", "meadow", "dusk", "frosted" or
-	// "plain". Empty — what a first run and a missing key both give — is plain.
-	Background string `json:"background,omitempty"`
-
 	// BackgroundOpacity is the terminal card and window opacity, between 0.30 and 1.0.
-	// Zero keeps the default (0.85 when frosted, 1.0 when solid plain).
+	// Zero keeps the acrylic default (0.80).
 	BackgroundOpacity float64 `json:"backgroundOpacity,omitempty"`
 
 	// BackgroundBlur is the blur intensity of the frosted material: "none", "subtle",
@@ -122,15 +118,13 @@ type Settings struct {
 	MachineIcons map[string]string `json:"machineIcons,omitempty"`
 }
 
-// Opacity returns the background opacity between 0.30 and 1.0.
+// Opacity returns the background opacity between 0.30 and 1.0. The acrylic
+// window a first run gets is 0.80.
 func (s Settings) Opacity() float64 {
 	if s.BackgroundOpacity > 0 {
 		return min(max(s.BackgroundOpacity, 0.30), 1.0)
 	}
-	if s.Background == "frosted" {
-		return 0.80
-	}
-	return 1.0
+	return 0.80
 }
 
 // Blur returns the blur intensity ("none", "subtle", "medium", "deep").

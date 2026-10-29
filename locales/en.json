@@ -262,26 +262,6 @@
   "@action_toggle_sidebar": {
     "description": "Beacon UI: action toggle sidebar"
   },
-  "bg_dusk": "Dusk",
-  "@bg_dusk": {
-    "description": "Beacon UI: bg dusk"
-  },
-  "bg_meadow": "Meadow",
-  "@bg_meadow": {
-    "description": "Beacon UI: bg meadow"
-  },
-  "bg_mist": "Mist",
-  "@bg_mist": {
-    "description": "Beacon UI: bg mist"
-  },
-  "bg_plain": "Plain",
-  "@bg_plain": {
-    "description": "Beacon UI: bg plain"
-  },
-  "bg_frosted": "Acrylic",
-  "@bg_frosted": {
-    "description": "Beacon UI: bg frosted"
-  },
   "settings_bg_opacity": "Background Opacity",
   "@settings_bg_opacity": {
     "description": "Beacon UI: settings background opacity"
@@ -305,10 +285,6 @@
   "blur_deep": "Deep",
   "@blur_deep": {
     "description": "Beacon UI: blur deep"
-  },
-  "bg_rex": "Petal",
-  "@bg_rex": {
-    "description": "Beacon UI: bg rex"
   },
   "footer_done": "Done",
   "@footer_done": {
@@ -357,10 +333,6 @@
   "session_mark_read": "Mark as read",
   "@session_mark_read": {
     "description": "Beacon UI: session mark read"
-  },
-  "settings_background": "Window background",
-  "@settings_background": {
-    "description": "Beacon UI: settings background"
   },
   "settings_pane_appearance": "Appearance",
   "@settings_pane_appearance": {

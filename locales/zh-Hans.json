@@ -1103,26 +1103,6 @@
   "@action_toggle_sidebar": {
     "description": "Beacon UI: action toggle sidebar"
   },
-  "bg_dusk": "暮色",
-  "@bg_dusk": {
-    "description": "Beacon UI: bg dusk"
-  },
-  "bg_meadow": "草绿",
-  "@bg_meadow": {
-    "description": "Beacon UI: bg meadow"
-  },
-  "bg_mist": "雾蓝",
-  "@bg_mist": {
-    "description": "Beacon UI: bg mist"
-  },
-  "bg_plain": "纯色",
-  "@bg_plain": {
-    "description": "Beacon UI: bg plain"
-  },
-  "bg_frosted": "亚克力磨砂",
-  "@bg_frosted": {
-    "description": "Beacon UI: bg frosted"
-  },
   "settings_bg_opacity": "背景透明度",
   "@settings_bg_opacity": {
     "description": "Beacon UI: settings background opacity"
@@ -1146,10 +1126,6 @@
   "blur_deep": "强力",
   "@blur_deep": {
     "description": "Beacon UI: blur deep"
-  },
-  "bg_rex": "粉紫",
-  "@bg_rex": {
-    "description": "Beacon UI: bg rex"
   },
   "footer_done": "已完成",
   "@footer_done": {
@@ -1198,10 +1174,6 @@
   "session_mark_read": "标为已读",
   "@session_mark_read": {
     "description": "Beacon UI: session mark read"
-  },
-  "settings_background": "窗口背景",
-  "@settings_background": {
-    "description": "Beacon UI: settings background"
   },
   "settings_pane_appearance": "外观",
   "@settings_pane_appearance": {

@@ -133,39 +133,19 @@ func applyTheme(c *ui.Context, mode string) {
 	}
 }
 
-// backdrop paints the window's wash: the base on the root, and the glow from
-// the top right on the row that holds everything else. Over the window's
-// material, which shows through when the window is translucent; the plain
-// wash is solid, while the frosted wash (or a reduced opacity) lets the vibrancy
-// material blur through.
-func backdrop(c *ui.Context, pal *uitokens.Palette, row ui.Element, washID string, opacity float32) {
-	w := uitokens.WashFor(washID)
-	if w.ID == "frosted" || opacity < 1.0 {
-		if c.Vibrancy() {
-			c.Root().Background(ui.Transparent)
-			return
-		}
-		bg := pal.Sidebar
-		if opacity < 1.0 {
-			bg = bg.Alpha(opacity)
-		}
-		c.Root().Background(bg)
-		return
-	}
-	if w.ID == "plain" {
-		c.Root().Background(pal.Sidebar)
-		return
-	}
-	alpha := float32(1)
+// backdrop paints the window's acrylic material: transparent over the system's
+// vibrancy, so the blur shows through, or the sidebar color at the chosen
+// opacity where the platform has no vibrancy.
+func backdrop(c *ui.Context, pal *uitokens.Palette, opacity float32) {
 	if c.Vibrancy() {
-		alpha = min(opacity, 0.95)
+		c.Root().Background(ui.Transparent)
+		return
 	}
-	base := w.Base(pal.Dark)
-	for i := range base.Stops {
-		base.Stops[i].Color = base.Stops[i].Color.Alpha(alpha)
+	bg := pal.Sidebar
+	if opacity < 1.0 {
+		bg = bg.Alpha(opacity)
 	}
-	c.Root().LinearGradient(base)
-	row.LinearGradient(w.Glow(pal.Dark))
+	c.Root().Background(bg)
 }
 
 // shellColors are the shades the shell draws that the ui's theme has no name
@@ -318,7 +298,7 @@ func windowGround(mode string, dark bool) string {
 	case themeDark:
 		dark = true
 	}
-	w := uitokens.WashFor("plain")
+	w := uitokens.WashFor("frosted")
 	stops := w.Light
 	if dark {
 		stops = w.Dark

@@ -25,9 +25,9 @@
   --overlay: rgba(10, 10, 30, 0.12);
   --popover: #ffffff;
   --term-bg: #ffffff;
-  --wash-1: #eceef4;
-  --wash-2: #eceef4;
-  --wash-glow: rgba(0, 0, 0, 0.00);
+  --wash-1: #e6ecf5;
+  --wash-2: #edf1f8;
+  --wash-glow: rgba(255, 255, 255, 0.45);
 }
 
 [data-theme="dark"] {
@@ -55,7 +55,7 @@
   --popover: #232327;
   --term-bg: #232328;
   --wash-1: #141418;
-  --wash-2: #141418;
-  --wash-glow: rgba(0, 0, 0, 0.00);
+  --wash-2: #1a1a22;
+  --wash-glow: rgba(255, 255, 255, 0.08);
 }
 
