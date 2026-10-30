@@ -219,10 +219,16 @@ func TestLocalImagePasteForwardsAgentGesture(t *testing.T) {
 	tt := ui.NewTester(func(c *ui.Context) {
 		terminal.View(c, term).Fill().AutoFocus()
 	}, 500, 240)
+	// The gesture is the agent's own: Ctrl+V where that means "read the
+	// clipboard", Alt+V on Windows, where Ctrl+V is quoted-insert.
+	gesture := "\x16"
+	if runtime.GOOS == "windows" {
+		gesture = "\x1bv"
+	}
 	tt.SetClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, []byte("image")))))
 	tt.Key(ui.Cmd, ui.KeyV)
-	waitForPaste(t, "one raw Ctrl+V to reach the local agent", func() bool {
-		return conn.text() == "\x16"
+	waitForPaste(t, "one image-paste gesture to reach the local agent", func() bool {
+		return conn.text() == gesture
 	})
 	// No upload capability is required for the local image gesture, and text
 	// alongside an image must still follow the ordinary terminal paste path.
@@ -232,13 +238,13 @@ func TestLocalImagePasteForwardsAgentGesture(t *testing.T) {
 	)))
 	tt.Key(ui.Cmd, ui.KeyV)
 	waitForPaste(t, "text paste without another image gesture", func() bool {
-		return conn.text() == "\x16some text"
+		return conn.text() == gesture+"some text"
 	})
 	tb.role = protocol.RoleViewer
 	if !w.pasteInto(tb, transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, []byte("image"))))) {
 		t.Fatal("read-only image paste should be consumed")
 	}
-	if got := conn.text(); got != "\x16some text" {
+	if got := conn.text(); got != gesture+"some text" {
 		t.Fatalf("read-only paste sent input: %q", got)
 	}
 }

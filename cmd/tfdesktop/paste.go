@@ -5,10 +5,10 @@ package main
 // The clipboard belongs to the machine the person is sitting at; the shell may
 // be running somewhere else. A pasted screenshot is therefore not text to send
 // down the pipe: for a remote shell it becomes a file on the machine that owns
-// the PTY, and the program receives its path. A local image-only paste sends
-// Ctrl+V so image-aware CLI programs read the original system clipboard, as
-// they do in Gloss. The upload is the hub's
-// file.put (see internal/hub/upload.go), which writes into a private temp
+// the PTY, and the program receives its path. A local image-only paste forwards
+// the program's own image-paste gesture (see imagePasteGesture), so image-aware
+// CLIs read the original system clipboard, as they do in Gloss. The upload is
+// the hub's file.put (see internal/hub/upload.go), which writes into a private
 // directory and answers with an absolute path.
 //
 // The terminal hands every paste to OnPaste before the program sees it, which
@@ -119,7 +119,7 @@ func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 				return false
 			}
 			diag.Infof("paste", "forward image gesture machine=%s session=%s", tb.machine, tb.id)
-			tb.term.Send([]byte{0x16})
+			tb.term.Send(imagePasteGesture())
 			return true
 		}
 		return false
@@ -139,6 +139,18 @@ func (w *window) pasteInto(tb *tab, d transfer.Data) bool {
 	}
 	go w.uploadPaste(tb, snapshot, hasFile, hasImage, machine, platform, tb.sess.link, tb.id)
 	return true
+}
+
+// imagePasteGesture is the keystroke an image-aware CLI reads the system
+// clipboard with. Claude Code — the agent this forward exists for — binds it to
+// Ctrl+V on macOS and Linux and to Alt+V on Windows, because a Windows console
+// has no paste event to carry: the program only ever sees keys, and Ctrl+V is
+// quoted-insert rather than a request for the clipboard.
+func imagePasteGesture() []byte {
+	if runtime.GOOS == "windows" {
+		return []byte{0x1b, 'v'}
+	}
+	return []byte{0x16}
 }
 
 // pasteText writes text into the tab's terminal as a paste, and reports
