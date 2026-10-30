@@ -785,19 +785,24 @@ func TestSettingsAppearancePaneControls(t *testing.T) {
 
 	// The window is acrylic by default, with no wash to pick: the pane shows the
 	// acrylic controls only, at the acrylic default opacity.
-	if sw.opacity != 0.80 {
-		t.Fatalf("expected window opacity to default to 0.80, got %v", sw.opacity)
+	if sw.opacity != 0.30 {
+		t.Fatalf("expected window opacity to default to 0.30, got %v", sw.opacity)
 	}
-	if got := store.Get().Opacity(); got != 0.80 {
-		t.Fatalf("expected store opacity to default to 0.80, got %v", got)
+	if got := store.Get().Opacity(); got != 0.30 {
+		t.Fatalf("expected store opacity to default to 0.30, got %v", got)
 	}
 
-	// Click Deep blur
-	if err := tt.Click(locales.BlurDeep()); err != nil {
-		t.Fatalf("Click(%s): %v", locales.BlurDeep(), err)
+	// A first run's blur is the deep acrylic material, and the segment starts
+	// there. Click a different choice: clicking the default would leave the
+	// store unchanged even if the control were wired to nothing.
+	if sw.blur != "deep" || store.Get().Blur() != "deep" {
+		t.Fatalf("expected the default blur to be 'deep', got %q / %q", sw.blur, store.Get().Blur())
+	}
+	if err := tt.Click(locales.BlurNone()); err != nil {
+		t.Fatalf("Click(%s): %v", locales.BlurNone(), err)
 	}
 	tt.Frame()
-	if store.Get().Blur() != "deep" {
-		t.Fatalf("expected store blur to be 'deep', got %q", store.Get().Blur())
+	if store.Get().Blur() != "none" {
+		t.Fatalf("expected store blur to be 'none', got %q", store.Get().Blur())
 	}
 }

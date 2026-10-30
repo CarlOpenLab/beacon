@@ -725,7 +725,7 @@ func (w *window) view(c *ui.Context) {
 		})
 		// One persistent toolbar stays out of the sidebar's moving/clipped tree.
 		if ch.shown < 0.5 {
-			w.sidebarToolbar(c, w.sidebarHidden, topControlsWidth)
+			w.sidebarToolbar(c, pal, w.sidebarHidden, topControlsWidth)
 		}
 		w.settingsDialog(c)
 		w.reachDialog(c)

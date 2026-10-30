@@ -68,14 +68,20 @@ var blurChoices = []struct {
 	{"deep", locales.BlurDeep},
 }
 
-// blurIndex returns the index of the blur setting in blurChoices.
+// blurIndex returns the index of the blur setting in blurChoices. An id the
+// list does not hold falls back to the first-run material, looked up rather
+// than written as a position so that reordering the list cannot pick another.
 func blurIndex(id string) int {
+	fallback := 0
 	for i, choice := range blurChoices {
 		if choice.id == id {
 			return i
 		}
+		if choice.id == settings.DefaultBlur {
+			fallback = i
+		}
 	}
-	return 1 // default to subtle
+	return fallback
 }
 
 // themeFor is the palette an explicit mode asks for, or nil to follow the
@@ -231,10 +237,10 @@ func vibrancyFor(blur string) mygo.Vibrancy {
 		return mygo.VibrancySidebar
 	case "medium":
 		return mygo.VibrancyPopover
-	case "deep":
-		return mygo.VibrancyAcrylic
 	}
-	return mygo.VibrancySidebar
+	// "deep" is the acrylic material; so is an id no choice holds, which
+	// settings.Blur() never leaves in place.
+	return mygo.VibrancyAcrylic
 }
 
 // setBackgroundOpacity updates the background opacity preference and repaints.
@@ -242,7 +248,7 @@ func (w *window) setBackgroundOpacity(v float64) {
 	if w == nil {
 		return
 	}
-	v = min(max(v, 0.30), 1.0)
+	v = min(max(v, settings.MinOpacity), 1.0)
 	if w.store != nil {
 		if _, err := w.store.Update(func(s *settings.Settings) { s.BackgroundOpacity = v }); err != nil {
 			log.Printf("tfdesktop: save background opacity: %v", err)
@@ -275,17 +281,9 @@ func (w *window) setBackgroundBlur(b string) {
 // backgroundOpacity returns the active background opacity.
 func (w *window) backgroundOpacity() float64 {
 	if w == nil || w.store == nil {
-		return 1.0
+		return settings.DefaultOpacity
 	}
 	return w.store.Get().Opacity()
-}
-
-// backgroundBlur returns the active background blur.
-func (w *window) backgroundBlur() string {
-	if w == nil || w.store == nil {
-		return "subtle"
-	}
-	return w.store.Get().Blur()
 }
 
 // windowGround is the color the window is painted before its first frame: the

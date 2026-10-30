@@ -188,7 +188,7 @@ type settingsWindow struct {
 	language string
 	applied  string
 
-	// opacity is the background opacity (0.30 - 1.0).
+	// opacity is the background opacity (settings.MinOpacity - 1.0).
 	opacity float64
 	// blur is the frosted background blur intensity ("none", "subtle", "medium", "deep").
 	blur string
@@ -750,7 +750,7 @@ func (s *settingsWindow) appearancePane(c *ui.Context) {
 			})
 		})
 		settingRow(c, pal, locales.SettingsBgOpacity(), "", func() {
-			slider := ui.Slider(c.Key("bg-opacity"), &s.opacity, 0.30, 1.0).Step(0.05).Width(150)
+			slider := ui.Slider(c.Key("bg-opacity"), &s.opacity, settings.MinOpacity, 1.0).Step(0.05).Width(150)
 			slider.OnChange(func() {
 				if s.desk != nil {
 					s.desk.setBackgroundOpacity(s.opacity)

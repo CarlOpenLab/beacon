@@ -108,13 +108,20 @@ func (w *window) bannerState(c *ui.Context) (text, action string, tone ui.Color,
 // iconButton is a square control in the chrome: a wash under the pointer, and
 // the caption kept as its label so it has a name on screen and in a test.
 func iconButton(c *ui.Context, icon *ui.SVG, caption string, size float32) ui.Element {
+	return iconButtonWithHover(c, icon, caption, size, c.Theme().SurfaceHover)
+}
+
+// iconButtonWithHover is iconButton with its hover face named by the caller.
+// The sidebar's top bar sits on the acrylic column, where the hover has to be a
+// wash rather than the theme's opaque surface.
+func iconButtonWithHover(c *ui.Context, icon *ui.SVG, caption string, size float32, hover ui.Color) ui.Element {
 	t := c.Theme()
 	el := ui.Box(c).
 		Size(size, size).Shrink(0).Radius(radiusSmall).
 		AlignItems(ui.Center).Justify(ui.Center).
 		Label(caption).Tooltip(caption)
 	if el.Hovered() {
-		el.Background(t.SurfaceHover)
+		el.Background(hover)
 	}
 	el.Children(func() {
 		// Give the SVG an explicit box instead of a font-sized intrinsic box;

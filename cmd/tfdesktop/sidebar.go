@@ -134,7 +134,7 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 			// Keep the title row itself as a drag surface. The fixed toolbar is
 			// drawn above it, so its buttons never participate in flex sizing.
 			ui.Box(c).Width(w.sideWidth()).Height(topHeight).Shrink(0).DragWindow()
-			w.sidebarToolbar(c, false, w.sideWidth())
+			w.sidebarToolbar(c, pal, false, w.sideWidth())
 
 			ui.Scroll(c).Grow(1).MinHeight(0).Padding(0, 10, 16, 10).Children(func() {
 				w.sidebarMachines(c, pal)
@@ -146,7 +146,7 @@ func (w *window) sidebar(c *ui.Context, pal *uitokens.Palette) {
 
 // sidebarToolbar is a fixed, non-flexing title toolbar. Keeping it out of the
 // resizable row is what prevents the SVG buttons from shrinking or jumping.
-func (w *window) sidebarToolbar(c *ui.Context, hidden bool, width float32) {
+func (w *window) sidebarToolbar(c *ui.Context, pal *uitokens.Palette, hidden bool, width float32) {
 	row := ui.Row(c).Key("sidebar-toolbar").Absolute().
 		Top((max(float32(uitokens.TopBar), c.TitleBar().Height) - toolbarButton) / 2).
 		Height(toolbarButton).Gap(2).AlignItems(ui.Center)
@@ -162,13 +162,13 @@ func (w *window) sidebarToolbar(c *ui.Context, hidden bool, width float32) {
 		row.Left(0).Width(width).Padding(0, 12).Justify(ui.End).Shrink(0)
 	}
 	row.Children(func() {
-		if railIconButton(c, iconSearch, locales.ActionPalette()).Clicked() {
+		if railIconButton(c, pal, iconSearch, locales.ActionPalette()).Clicked() {
 			w.openPalette()
 		}
-		if railIconButton(c, iconSettings, locales.ActionSettings()).Clicked() {
+		if railIconButton(c, pal, iconSettings, locales.ActionSettings()).Clicked() {
 			w.openSettings()
 		}
-		if iconButton(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton).Clicked() {
+		if iconButtonWithHover(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton, pal.RowHover).Clicked() {
 			w.sidebarHidden = !hidden
 		}
 	})
@@ -318,19 +318,16 @@ func (w *window) machineRail(c *ui.Context, pal *uitokens.Palette) {
 // railIconButton is one of the rail's two fixed buttons: a 24-point glyph in a
 // 26-point frame. It is the standalone tier — the same size as the machine
 // glyphs beside it — rather than the 16-point tier an icon beside a word uses.
-func railIconButton(c *ui.Context, icon *ui.SVG, caption string) ui.Element {
-	t := c.Theme()
+func railIconButton(c *ui.Context, pal *uitokens.Palette, icon *ui.SVG, caption string) ui.Element {
 	el := ui.Box(c).Size(machineRailButton, machineRailButton).Shrink(0).Radius(machineRailButton / 2).
 		AlignItems(ui.Center).Justify(ui.Center).Label(caption).Tooltip(caption)
 	if el.Hovered() {
-		if t.Dark {
-			el.Background(ui.RGBA(255, 255, 255, 0.12))
-		} else {
-			el.Background(ui.RGBA(0, 0, 0, 0.08))
-		}
+		// A wash, not a surface: the column is acrylic, so its hover has to let
+		// the material through rather than cut a solid roundel out of it.
+		el.Background(pal.RowHover)
 	}
 	el.Children(func() {
-		ui.Icon(c, icon).Size(machineGlyphSize, machineGlyphSize).TextColor(shellColorsFor(t).icon)
+		ui.Icon(c, icon).Size(machineGlyphSize, machineGlyphSize).TextColor(pal.TextMuted)
 	})
 	return el
 }

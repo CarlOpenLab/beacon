@@ -18,6 +18,18 @@ import (
 // number the window shows is the one the terminal is actually using.
 const DefaultFontSize = 13
 
+// The acrylic material's bounds and first-run values.
+const (
+	// MinOpacity is the most transparent a work card can be.
+	MinOpacity = 0.30
+	// DefaultOpacity is what a first run gets: the most transparent card, so
+	// the acrylic material reads as the window's own surface.
+	DefaultOpacity = MinOpacity
+	// DefaultBlur is what a first run gets: the acrylic material, the ground the
+	// sidebar and the cards are designed against.
+	DefaultBlur = "deep"
+)
+
 // Settings are the desktop shell's persisted preferences. The zero value is
 // what a first run gets: the system font at the plugin's own default size, no
 // relay, and the local service on.
@@ -67,12 +79,12 @@ type Settings struct {
 	// first run gets — follows the system.
 	Theme string `json:"theme,omitempty"`
 
-	// BackgroundOpacity is the terminal card and window opacity, between 0.30 and 1.0.
-	// Zero keeps the acrylic default (0.80).
+	// BackgroundOpacity is the terminal card and window opacity, between
+	// MinOpacity and 1.0. Zero keeps DefaultOpacity.
 	BackgroundOpacity float64 `json:"backgroundOpacity,omitempty"`
 
 	// BackgroundBlur is the blur intensity of the frosted material: "none", "subtle",
-	// "medium" or "deep". Empty follows "subtle" (sidebar vibrancy).
+	// "medium" or "deep". Empty follows DefaultBlur (the acrylic material).
 	BackgroundBlur string `json:"backgroundBlur,omitempty"`
 
 	// The four notifications below are on unless they are turned off, so each
@@ -118,22 +130,23 @@ type Settings struct {
 	MachineIcons map[string]string `json:"machineIcons,omitempty"`
 }
 
-// Opacity returns the background opacity between 0.30 and 1.0. The acrylic
-// window a first run gets is 0.80.
+// Opacity returns the background opacity between MinOpacity and 1.0, or
+// DefaultOpacity when the file has no value.
 func (s Settings) Opacity() float64 {
 	if s.BackgroundOpacity > 0 {
-		return min(max(s.BackgroundOpacity, 0.30), 1.0)
+		return min(max(s.BackgroundOpacity, MinOpacity), 1.0)
 	}
-	return 0.80
+	return DefaultOpacity
 }
 
-// Blur returns the blur intensity ("none", "subtle", "medium", "deep").
+// Blur returns the blur intensity ("none", "subtle", "medium", "deep"), or
+// DefaultBlur when the file has no value or a bad one.
 func (s Settings) Blur() string {
 	switch s.BackgroundBlur {
 	case "none", "subtle", "medium", "deep":
 		return s.BackgroundBlur
 	}
-	return "subtle"
+	return DefaultBlur
 }
 
 // Dir is where the desktop shell keeps its settings. BEACON_CONFIG_HOME or
