@@ -4,9 +4,14 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
-## Unreleased
+## 0.7.15
 
-**多租户中继：开放注册、超管审批、机器按租户隔离 — Multi-tenant relay: open signups, super-admin approval, machines isolated per tenant**
+**Beacon 0.7.15: 多租户中继、默认轻透外观与 Windows 图片粘贴 — Multi-tenant relay, lighter defaults, and Windows image paste**
+
+- **A first run opens light and deep.** The default background opacity drops from 80% to 30% and the default blur becomes the deep acrylic material, so the window's own transparency is what the sidebar and cards are designed against. The sidebar's three fixed toolbar icons now hover with the palette's row wash instead of an opaque surface, letting the material show through.
+  — 首次运行即为轻透的亚克力：背景透明度默认从 80% 降到 30%，模糊默认调整为强力；侧栏顶部三个固定快捷图标的悬停改为调色板的行洗色，不再是实心色块，亚克力材质可以透出来。
+- **Screenshots paste into Claude Code on Windows.** A local image-only paste used to forward Ctrl+V, but Claude Code binds image paste to Alt+V on Windows, so nothing happened. Beacon now forwards the platform's own gesture, and both Ctrl+V and Ctrl+Shift+V paste a clipboard image; macOS and Linux are unchanged.
+  — Windows 下可以把截图粘进 Claude Code：此前本机图片粘贴转发的是 Ctrl+V，而 Claude Code 在 Windows 上把图片粘贴绑在 Alt+V，所以毫无反应。现在改为转发该平台自己的手势，Ctrl+V 与 Ctrl+Shift+V 都能粘贴剪贴板图片；macOS 与 Linux 行为不变。
 
 - **The relay is multi-tenant.** The web client gains an account door — signup at `/api/register`, login at `/api/login` — and every signup waits in the admin panel's new **Users** page until the super admin approves it. An approved user is one tenant: what they enroll is theirs alone, from the roster their browser sees to the machines their desktop client can drive, and a machine's own short-lived credential stays inside its tenant too. The shared token, the admin panel and named tokens keep their operator-wide reach.
   — 中继升级为多租户：网页端新增账号入口（`/api/register` 注册、`/api/login` 登录），注册账号先落入超管面板新增的 **Users** 审批页，批准前无法登录；批准后的用户即一个租户——自己登记的机器只对自己可见，浏览器看到的机器列表、桌面端能驱动的机器、以及机器自身换取的短期凭据都限定在租户内。共享令牌、超管面板与具名令牌仍保持全局视野。
