@@ -14,7 +14,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-s);
-  color: var(--fg-dim);
+  color: var(--fg);
   font-size: 14px;
   line-height: 1;
   padding: 0;

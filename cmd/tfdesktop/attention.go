@@ -137,7 +137,7 @@ func (w *window) attentionChip(c *ui.Context, pal *uitokens.Palette, tb *tab) {
 			ui.Text(c, msg).FontSize(12).FontWeight(500).SingleLine().Ellipsis("…").MaxWidth(320)
 		})
 	case "working":
-		chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+		chipBox(c, pal, pal.Chip, pal.Text, func() {
 			statusGlyph(c, pal, "working", false, sum.Progress, 11)
 			label := ago(sum.Since, c.Now())
 			if sum.Progress >= 0 {

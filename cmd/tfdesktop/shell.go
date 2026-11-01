@@ -115,7 +115,15 @@ func iconButton(c *ui.Context, icon *ui.SVG, caption string, size float32) ui.El
 // The sidebar's top bar sits on the acrylic column, where the hover has to be a
 // wash rather than the theme's opaque surface.
 func iconButtonWithHover(c *ui.Context, icon *ui.SVG, caption string, size float32, hover ui.Color) ui.Element {
-	t := c.Theme()
+	return iconButtonInk(c, icon, caption, size, hover, shellColorsFor(c.Theme()).icon)
+}
+
+// iconButtonInk is the icon button with its ink named as well as its hover. The
+// column stands on the acrylic material rather than the pale wash the palette's
+// muted grey was measured against, so a control there takes the same ink as the
+// names beside it: a 14-point glyph in the muted grey thins out to a smudge
+// over a bright material.
+func iconButtonInk(c *ui.Context, icon *ui.SVG, caption string, size float32, hover, ink ui.Color) ui.Element {
 	el := ui.Box(c).
 		Size(size, size).Shrink(0).Radius(radiusSmall).
 		AlignItems(ui.Center).Justify(ui.Center).
@@ -127,7 +135,7 @@ func iconButtonWithHover(c *ui.Context, icon *ui.SVG, caption string, size float
 		// Give the SVG an explicit box instead of a font-sized intrinsic box;
 		// the latter can be flex-scaled while the sidebar folds.
 		iconSize := size * 0.55
-		ui.Icon(c, icon).Size(iconSize, iconSize).Shrink(0).TextColor(shellColorsFor(t).icon)
+		ui.Icon(c, icon).Size(iconSize, iconSize).Shrink(0).TextColor(ink)
 	})
 	return el
 }
@@ -335,7 +343,10 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 			ui.Spacer(c)
 		} else {
 			if dir := shortDir(tb.cwd); dir != "" && dir != name {
-				ui.Text(c, dir).FontSize(13).TextColor(pal.TextFaint).SingleLine().Ellipsis("…").Shrink(2).MinWidth(0)
+				// The path is read in the same ink as the shell's name: on the
+				// acrylic card the faint grey it used to take is no longer a
+				// quiet second line, only a line that cannot be read.
+				ui.Text(c, dir).FontSize(13).TextColor(pal.Text).SingleLine().Ellipsis("…").Shrink(2).MinWidth(0)
 			}
 			// What it is doing, when that is worth saying: the message a program
 			// gave, or how far along it is.
@@ -343,13 +354,13 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 			// What is running in the pane, when it is a program rather than the shell
 			// itself: a chip, and the answer to "which of these is the agent".
 			if sum, ok := w.summaryOf(tb.machine, tb.id); ok && !isShellName(sum.Process) {
-				chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+				chipBox(c, pal, pal.Chip, pal.Text, func() {
 					ui.Text(c, sum.Process).FontSize(12).SingleLine().Ellipsis("…").MaxWidth(160)
 				})
 			}
 			// Where it runs, when that is not this machine: a chip naming the machine.
 			if tb.machine != machineLocal {
-				chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+				chipBox(c, pal, pal.Chip, pal.Text, func() {
 					ui.Text(c, w.machineName(tb.machine)).FontSize(12).SingleLine().Ellipsis("…")
 				})
 			}
@@ -381,7 +392,7 @@ func (w *window) cardHeader(c *ui.Context, pal *uitokens.Palette, tb *tab, focus
 		if tb.alive && tb.held() && tb.machine != machineLocal {
 			// The lease is state, not a hover: the way to hand a shell back is on
 			// screen while the shell is another machine's.
-			if chipBox(c, pal, pal.Chip, pal.TextMuted, func() {
+			if chipBox(c, pal, pal.Chip, pal.Text, func() {
 				ui.Text(c, locales.ActionRelease()).FontSize(12).SingleLine()
 			}).Clicked() {
 				w.releaseLease(tb)

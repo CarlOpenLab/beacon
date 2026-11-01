@@ -671,7 +671,9 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 				slot := ui.Box(c).Size(20, 20).Shrink(0)
 				if hovered {
 					slot.Children(func() {
-						if iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Clicked() {
+						// The row is on the acrylic column: the × takes the row's
+						// own ink, and a wash rather than an opaque square.
+						if iconButtonInk(c, iconClose, locales.TabCloseNamed(e.label), 20, pal.RowHover, pal.Text).Clicked() {
 							closeFn()
 						}
 					})

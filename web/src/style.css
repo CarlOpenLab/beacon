@@ -272,12 +272,15 @@ svg {
   font-weight: 600;
 }
 
+/* A count is read at a glance and sits on the window ground, not inside a
+   card, so it takes the same ink as the name it follows rather than the faint
+   tier meant for hints on a surface. */
 .tf-count {
   font-family: var(--font-mono);
   font-size: var(--fs-11);
   font-weight: 400;
   letter-spacing: 0;
-  color: var(--fg-faint);
+  color: var(--fg);
   padding: 1px 6px;
   border-radius: var(--radius-pill);
   background: var(--kbd-bg);
@@ -370,7 +373,7 @@ svg {
 
 .tf-machine-count {
   flex: none;
-  color: var(--fg-faint);
+  color: var(--fg);
   font-weight: 400;
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
@@ -607,7 +610,7 @@ html.tf-row-dragging .tf-session .tf-kill {
   display: grid;
   place-items: center;
   border-radius: 4px;
-  color: var(--fg-faint);
+  color: var(--fg);
   font-size: 10px;
   line-height: 1;
   opacity: 0;
@@ -816,8 +819,20 @@ html.tf-row-dragging .tf-session .tf-kill {
 
 .tf-side-toggle,
 .tf-side-new,
-.tf-side-refresh {
+.tf-side-refresh,
+.tf-side-search,
+.tf-side-settings {
   flex: none;
+}
+
+/* The sidebar's own controls stand on the window ground rather than inside a
+   card: they take the ink of the machine names beside them, because the quiet
+   greys thin out over the light end of the wash. */
+.tf-side-new,
+.tf-side-refresh,
+.tf-side-search,
+.tf-side-settings {
+  color: var(--fg);
 }
 
 /* ----------------------------------------------------------------- buttons */
@@ -986,7 +1001,7 @@ html.tf-row-dragging .tf-session .tf-kill {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--fg-faint);
+  color: var(--fg);
   font-size: 13px;
 }
 
@@ -999,7 +1014,7 @@ html.tf-row-dragging .tf-session .tf-kill {
   padding: 2px 7px;
   border-radius: var(--radius-s);
   background: var(--chip);
-  color: var(--fg-dim);
+  color: var(--fg);
   font-size: var(--fs-12);
   line-height: 1.35;
 }

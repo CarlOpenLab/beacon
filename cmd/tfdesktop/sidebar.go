@@ -168,7 +168,7 @@ func (w *window) sidebarToolbar(c *ui.Context, pal *uitokens.Palette, hidden boo
 		if railIconButton(c, pal, iconSettings, locales.ActionSettings()).Clicked() {
 			w.openSettings()
 		}
-		if iconButtonWithHover(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton, pal.RowHover).Clicked() {
+		if iconButtonInk(c, iconSidebar, locales.ActionToggleSidebar(), toolbarButton, pal.RowHover, pal.Text).Clicked() {
 			w.sidebarHidden = !hidden
 		}
 	})
@@ -318,6 +318,11 @@ func (w *window) machineRail(c *ui.Context, pal *uitokens.Palette) {
 // railIconButton is one of the rail's two fixed buttons: a 24-point glyph in a
 // 26-point frame. It is the standalone tier — the same size as the machine
 // glyphs beside it — rather than the 16-point tier an icon beside a word uses.
+//
+// Its ink is the column's own text, not the muted grey a control inside a card
+// can afford: the column stands on the acrylic material, which is brighter than
+// the wash the palette was drawn against, and a thin glyph in that grey all but
+// vanishes over it.
 func railIconButton(c *ui.Context, pal *uitokens.Palette, icon *ui.SVG, caption string) ui.Element {
 	el := ui.Box(c).Size(machineRailButton, machineRailButton).Shrink(0).Radius(machineRailButton / 2).
 		AlignItems(ui.Center).Justify(ui.Center).Label(caption).Tooltip(caption)
@@ -327,7 +332,7 @@ func railIconButton(c *ui.Context, pal *uitokens.Palette, icon *ui.SVG, caption 
 		el.Background(pal.RowHover)
 	}
 	el.Children(func() {
-		ui.Icon(c, icon).Size(machineGlyphSize, machineGlyphSize).TextColor(pal.TextMuted)
+		ui.Icon(c, icon).Size(machineGlyphSize, machineGlyphSize).TextColor(pal.Text)
 	})
 	return el
 }
@@ -1120,13 +1125,15 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 	}
 	hdr.Children(func() {
 		// The machine's state, where a project group has a count: a dot that says
-		// whether this machine answers, and the count of what it runs.
+		// whether this machine answers, and the count of what it runs. The count
+		// is the same ink as the name it follows: the column stands on the acrylic
+		// material, where a quieter grey is no longer a hierarchy, only a smudge.
 		state := w.machineDot(c, m)
 		ui.Box(c).Size(7, 7).Radius(4).Background(state).Shrink(0)
 		ui.Text(c, w.machineDisplayName(m.ID)).FontSize(12.5).FontWeight(600).TextColor(pal.Text).
 			SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-		ui.Textf(c, "%d", len(entries)).FontSize(11).TextColor(pal.TextFaint).FontFeatures("tnum").Shrink(0)
-		chev := ui.Icon(c, iconChevron).Size(11, 11).TextColor(pal.TextFaint)
+		ui.Textf(c, "%d", len(entries)).FontSize(11).TextColor(pal.Text).FontFeatures("tnum").Shrink(0)
+		chev := ui.Icon(c, iconChevron).Size(11, 11).TextColor(pal.TextMuted)
 		chev.Rotate(chev.AnimateTo("turn", 90*float32(b2f(!collapsed)), ui.Snappy))
 		chev.Opacity(chev.Animate("shown", float32(b2f(hovered || collapsed)), 120e6))
 		ui.Spacer(c)
@@ -1141,7 +1148,7 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 				}
 			})
 		}
-		if iconButton(c, iconPlus, locales.SessionNewOnMachine(), 20).Clicked() {
+		if iconButtonInk(c, iconPlus, locales.SessionNewOnMachine(), 20, pal.RowHover, pal.Text).Clicked() {
 			w.newTabOn(m.ID)
 		}
 	})
@@ -1276,19 +1283,16 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 // lands. A click that gave no sign would read as a click that did nothing, which
 // is exactly what a list that looks stale already claims.
 func refreshButton(c *ui.Context, pal *uitokens.Palette, turning bool, caption string) ui.Element {
-	t := c.Theme()
 	el := ui.Box(c).Size(20, 20).Radius(radiusSmall).
 		AlignItems(ui.Center).Justify(ui.Center).Label(caption).Tooltip(caption)
 	if el.Hovered() {
-		if t.Dark {
-			el.Background(ui.RGBA(255, 255, 255, 0.12))
-		} else {
-			el.Background(ui.RGBA(0, 0, 0, 0.08))
-		}
+		// The group header stands on the acrylic column, like the toolbar: the
+		// hover is the palette's wash, not an opaque roundel cut out of it.
+		el.Background(pal.RowHover)
 	}
 	el.Children(func() {
 		if !turning {
-			ui.Icon(c, iconRefresh).FontSize(11).TextColor(shellColorsFor(t).icon)
+			ui.Icon(c, iconRefresh).FontSize(11).TextColor(pal.Text)
 			return
 		}
 		// The ring turns a third of a second a revolution, in the same language
