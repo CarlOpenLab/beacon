@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.16
+
+**Beacon 0.7.16: 亚克力材质上的界面文字恢复可读 — Legible chrome on the acrylic material**
+
+- **The column and a card's header read at full strength.** The machine's tab count, its `+` and refresh controls, the top search/settings/fold buttons, a session row's close ×, the card header's path and its chips now use the primary text ink instead of the muted and faint greys that were measured against the old solid wash. Hover faces on the column are the palette's row wash, so the material shows through instead of an opaque roundel.
+  — 侧栏与终端卡片头部恢复清晰：机器旁的 tab 计数、`+` 与刷新、顶部搜索/设置/折叠、会话行的关闭 ×，以及卡片头部的路径和 tag 文字，都改用主文字色，不再使用为旧纯色 wash 设计的浅灰；侧栏悬停改用调色板行洗色，亚克力材质可以透出，而不是不透明色块。
+- **The browser client follows the same ink.** Counts, the sidebar controls, the close ×, the card's working directory and its chips take the same primary text token, so the two clients read alike on the same material.
+  — 浏览器客户端同步使用同一墨色：计数、侧栏控件、关闭 ×、卡片路径与 tag 都使用主文字 token，两端在同一材质上读起来一致。
+
 ## 0.7.15
 
 **Beacon 0.7.15: 多租户中继、默认轻透外观与 Windows 图片粘贴 — Multi-tenant relay, lighter defaults, and Windows image paste**
