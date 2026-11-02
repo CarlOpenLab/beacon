@@ -11,121 +11,59 @@ import (
 	"github.com/CarlOpenLab/term-fleet/internal/tunnel"
 )
 
-// The column's measurements: what it is wide, what its panels ask for.
-const (
-	// sidebarWidth is the browser client's --w-side. The two clients list the
-	// same shells in the same order with the same badges, so the column they sit
-	// in is the same width too.
-	sidebarWidth = 248
+const sidebarWidth = 224
 
-	// The room the machines' panel needs before the shells' panel takes the rest
-	// of the column, and the least the shells' panel will accept. The line
-	// between the panels starts there and is dragged from there.
-	minSessionPanel = 140
-
-	// machinePanelBase is the panel's own room: its title row, this machine, the
-	// relay, and the note under them.
-	machinePanelBase = 120
-	// machineRowHeight is what one machine adds to the machines' panel, and
-	// machinePanelMost is the most that panel will reserve before the shells take
-	// the rest: a long roster scrolls rather than pushing the shells out of the
-	// column.
-	machineRowHeight = 46
-	machinePanelMost = 300
-
-	// heldLineHeight is the room one line of warning under this machine's row
-	// takes: the height of an 11pt text line and the gap above it, so the note
-	// about shells other clients are driving does not clip.
-	heldLineHeight = 18
-
-	// panelButtonSize is the square of the icon buttons in a panel's title row.
-	// The strip's are bigger; a panel's title row is a thin thing.
-	panelButtonSize = 22
-)
-
-// sidebar draws the column beside the strip: the shells on top, the machines
-// under them, with a draggable line between. It is rebuilt from the window's
-// own state on every frame, so a shell that appears — started here, or taken
-// over from another machine later — shows up as soon as its tab does.
-func (w *window) sidebar(c *ui.Context, mode string) {
-	t := c.Theme()
-	col := shellColorsFor(t)
-
-	ui.Column(c).
-		Width(sidebarWidth).FillHeight().
-		Background(col.pane).
-		BorderWidth(0, 1, 0, 0).BorderColor(col.hairline).
-		Children(func() {
-			// The column fills the window, so the window's height is the room
-			// the two panels share. Until the line between them is dragged the
-			// machines take what their content needs — this machine, the relay,
-			// and a row per machine the roster knows, with its shells — and the
-			// shells take the rest, so a fleet's panel is never a sliver.
-			if w.sidebarSplit < 0 {
-				_, height := c.Size()
-				need := min(w.machinePanelNeed(), machinePanelMost)
-				w.sidebarSplit = max(minSessionPanel, height-need)
-			}
-			ui.SplitVertical(c, &w.sidebarSplit, func() {
-				w.sessionPanel(c)
-			}, func() {
-				w.machinePanel(c)
-			})
+func (w *window) sidebar(c *ui.Context, _ string) {
+	col := shellColorsFor(c.Theme())
+	ui.Column(c).Width(sidebarWidth).FillHeight().Background(col.pane).
+		BorderWidth(0, 1, 0, 0).BorderColor(col.hairline).Children(func() {
+		ui.Row(c).Height(54).PaddingX(18).Gap(10).AlignItems(ui.Center).Children(func() {
+			markTile(c, 24)
+			ui.Text(c, "term-fleet").FontSize(14).FontWeight(550)
 		})
+		w.sessionPanel(c)
+		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
+		w.machinePanel(c)
+		ui.Box(c).Height(1).FillWidth().Background(col.hairline)
+		settings := ui.Row(c).Height(42).PaddingX(12).Gap(9).AlignItems(ui.Center).FillWidth().Label("设置 ⌘,")
+		if settings.Hovered() {
+			settings.Background(c.Theme().SurfaceHover)
+		}
+		settings.Children(func() {
+			ui.Icon(c, iconSettings).FontSize(15).TextColor(c.Theme().TextMuted)
+			ui.Text(c, "设置").FontSize(12).TextColor(c.Theme().TextMuted)
+		})
+		if settings.Clicked() {
+			w.openSettings()
+		}
+	})
 }
 
-// sessionPanel is the top half of the column: what this machine is running, and
-// the two things a shell needs — one more, and an end to this one. The controls
-// sit beside the title rather than across the window, because this is the panel
-// they act on.
+func markTile(c *ui.Context, size float32) {
+	if mark != nil {
+		ui.Image(c, mark).Size(size, size).Radius(size * .28).Label("term-fleet")
+	}
+}
+
 func (w *window) sessionPanel(c *ui.Context) {
 	t := c.Theme()
-	machine := w.selectedMachine()
-	remote := machine != machineLocal
-	entries := w.sessionEntries()
-
 	ui.Column(c).Fill().Children(func() {
-		// The title counts what the panel is showing, and the two controls act on
-		// the machine it is showing: 新建 opens a shell there, and the × closes
-		// the tab watching it. A panel whose buttons quietly applied to a
-		// different machine than its list would be the worst of both.
-		//
-		// The × closes the tab and only the tab: the shell keeps running, and
-		// ending it is the row's own 结束 button. The two used to be the same
-		// button, which meant "close this tab" killed a process on a machine
-		// somewhere — for every client watching it, not just this window.
-		panelHead(c, "会话", len(entries), func() {
-			newTip := "在本机开一个新终端"
-			if remote {
-				newTip = "在 " + w.machineName(machine) + " 上开一个新终端"
-			}
-			if iconButton(c, iconPlus, "新建标签页", panelButtonSize).Tooltip(newTip).Clicked() {
+		ui.Row(c).Height(34).PaddingX(14).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "会话").FontSize(11).FontWeight(600).TextColor(t.TextMuted)
+			ui.Spacer(c)
+			if iconButton(c, iconPlus, "新建会话 ⌘T", 30).Clicked() {
 				w.newTab()
 			}
-			if iconButton(c, iconClose, "关闭标签页", panelButtonSize).
-				Tooltip("关闭标签页（仅停止观看，不结束进程）").Clicked() {
-				w.removeTab(w.activeTab())
-			}
 		})
-
+		entries := w.sessionEntries()
 		if len(entries) == 0 {
-			ui.Column(c).Gap(6).Padding(12, 10).Children(func() {
-				if remote {
-					// Saying nothing here would leave a machine that is running
-					// nothing looking like a machine that cannot be read.
-					ui.Text(c, "这台机器上没有活着的终端。").FontSize(12).TextColor(t.TextMuted)
-					ui.Text(c, "点标题行的 ＋ 在它上面开一个。").FontSize(11).TextColor(t.TextMuted)
-					return
-				}
-				ui.Text(c, "还没有终端").FontSize(12).TextColor(t.TextMuted)
-			})
+			ui.Text(c, "还没有会话").FontSize(11).TextColor(t.TextMuted).Padding(14, 14)
 			return
 		}
-
 		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Gap(2).Padding(0, 8, 8, 8).Children(func() {
-				for _, e := range entries {
-					w.sessionRow(c, e)
+			ui.Column(c).Gap(3).Padding(4, 8, 10, 8).Children(func() {
+				for _, entry := range entries {
+					w.sessionRow(c, entry)
 				}
 			})
 		})
@@ -224,53 +162,37 @@ func (w *window) sessionEntries() []sessionEntry {
 // number that tells two look-alike shells apart; the rest is in the tooltip.
 func (w *window) sessionRow(c *ui.Context, e sessionEntry) {
 	t := c.Theme()
-
-	row := ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius)
+	row := ui.Column(c).Gap(2).Padding(5, 9).Radius(4).FillWidth()
 	if e.active {
-		row.Background(t.SurfacePressed).BorderWidth(0, 0, 0, 2).BorderColor(t.Accent)
+		row.Background(t.SurfacePressed)
 	} else if row.Hovered() {
 		row.Background(t.SurfaceHover)
 	}
-	row.Tooltip(w.sessionTooltip(e))
-	row.Children(func() {
-		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(7, 7).Radius(3.5).
-				Background(w.leaseColor(t, e.machine, e.session, e.holder))
-			ui.Text(c, e.label).FontSize(12)
-			if badge, color, ok := w.leaseBadge(t, e); ok {
-				badgeChip(c, badge, color)
+	row.Label(e.label).Tooltip(w.sessionTooltip(e)).ContextMenu(func(m *ui.Menu) {
+		if m.Item("关闭标签页").Chosen() {
+			if tb := w.tabOf(e.machine, e.session); tb != nil {
+				w.removeTab(tb)
 			}
-			// The holder's name is the one thing the badge cannot say: 只读 says
-			// someone else is typing, not who. So it stays, in the state's own
-			// colour, after the badge rather than instead of it.
-			if e.holder != "" {
-				ui.Text(c, e.holder).FontSize(10).TextColor(t.Warning)
-			}
-			// 结束, on the row it ends. It is the one action here that kills a
-			// process, so it sits apart from picking the row — a click anywhere
-			// else on the row selects it — and it says what it does in its
-			// tooltip, because the word alone does not distinguish it from
-			// 关闭标签页.
-			if e.alive {
-				ui.Spacer(c)
-				kill := ui.Box(c).
-					Width(38).Height(20).Radius(4).
-					AlignItems(ui.Center).Justify(ui.Center).
-					Label("结束会话").Tooltip("结束会话：终止这台机器上的进程，对所有客户端生效（不会关闭标签）")
-				if kill.Hovered() {
-					kill.Background(t.Danger.Alpha(0.12))
-				}
-				kill.Children(func() {
-					ui.Text(c, "结束").FontSize(11).TextColor(t.Danger)
-				})
-				if kill.Clicked() {
-					e.end()
-				}
-			}
-		})
-		if e.meta != "" {
-			ui.Text(c, e.meta).FontSize(10).TextColor(t.TextMuted)
 		}
+		if e.alive && m.Item("结束进程…").Chosen() {
+			w.endPrompt = &e
+		}
+		if tb := w.tabOf(e.machine, e.session); tb != nil && tb.alive && tb.held() && m.Item("释放控制权").Chosen() {
+			w.releaseLease(tb)
+		}
+	})
+	row.Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			mark := shellColorsFor(t).quiet
+			if e.holder != "" {
+				mark = ui.Hex("#d3aa62")
+			}
+			if tb := w.tabOf(e.machine, e.session); tb != nil && tb.held() {
+				mark = ui.Hex("#72b67b")
+			}
+			ui.Box(c).Size(6, 6).Radius(3).Background(mark)
+			ui.Text(c, e.label).FontSize(12).FillWidth().NoWrap().Ellipsis("…")
+		})
 	})
 	if row.Clicked() {
 		e.pick()
@@ -312,19 +234,6 @@ func (w *window) sessionTooltip(e sessionEntry) string {
 		lines = append(lines, "当前无人控制")
 	}
 	return strings.Join(lines, "\n")
-}
-
-// badgeChip is a state in a small rounded wash: the browser client's badge, on
-// the ui's terms. The wash is the state's colour at a tenth, with a border a
-// third of the way up, so the chip is legible without shouting.
-func badgeChip(c *ui.Context, text string, color ui.Color) {
-	chip := ui.Row(c).Gap(4).AlignItems(ui.Center).
-		PaddingX(6).Height(16).Radius(4).
-		Background(color.Alpha(0.10)).
-		BorderWidth(1).BorderColor(color.Alpha(0.35))
-	chip.Children(func() {
-		ui.Text(c, text).FontSize(10).TextColor(color)
-	})
 }
 
 // newestTabOn is the most recently opened shell this window is watching on a
@@ -417,62 +326,22 @@ func (w *window) ownMachine(m tunnel.Machine) bool {
 	return device != "" && m.ID == device
 }
 
-// machinePanelNeed is how much room the machines' panel's content asks for:
-// its own base, plus a row per machine the roster knows and a row under each for
-// the shells that machine is running.
-func (w *window) machinePanelNeed() float32 {
-	need := float32(machinePanelBase)
-	// The line about shells other clients are driving is one more line under this
-	// machine's row, and the panel has to ask for the room to draw it.
-	if w.localHeldByOthers() > 0 {
-		need += heldLineHeight
-	}
-	for _, m := range w.roster {
-		if w.ownMachine(m) {
-			continue
-		}
-		need += machineRowHeight
-	}
-	return need
-}
-
-// machinePanel is the machines this window can reach, as a list you switch
-// between: this machine first, then every other machine on the relay. The row
-// that is picked is the machine the 会话 panel below is about, and the one its
-// 新建标签页 opens a shell on — so driving another machine is a matter of picking
-// it, not of remembering which row belongs to whom.
 func (w *window) machinePanel(c *ui.Context) {
 	t := c.Theme()
-
-	ui.Column(c).Fill().Children(func() {
-		panelHead(c, "机器", w.machineCount(), nil)
-
+	ui.Column(c).Height(126).Children(func() {
+		ui.Row(c).Height(32).PaddingX(14).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, "机器").FontSize(11).FontWeight(600).TextColor(t.TextMuted)
+			ui.Spacer(c)
+			ui.Text(c, strconv.Itoa(w.machineCount())).FontSize(10).TextColor(t.TextMuted)
+		})
 		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Gap(2).Padding(0, 8, 8, 8).Children(func() {
-				// This machine, whatever else the fleet holds: the dot is the
-				// service's state, as the strip's is, and the row is where a person
-				// looks to see which machine they are on.
+			ui.Column(c).Gap(2).Padding(2, 8, 8, 8).Children(func() {
 				w.machineChoice(c, w.localEntry())
-
-				// A shell on this machine that someone else is driving is the next
-				// thing to say: the person at the keyboard is about to find out
-				// anyway, by typing into a shell that does not answer.
-				if w.localHeldByOthers() > 0 && w.selectedMachine() == machineLocal {
-					ui.Text(c, fmt.Sprintf("%d 个会话正被其他客户端控制", w.localHeldByOthers())).
-						FontSize(11).TextColor(t.Warning)
-				}
-
 				for _, m := range w.roster {
-					if w.ownMachine(m) {
-						continue
+					if !w.ownMachine(m) {
+						w.machineChoice(c, m)
 					}
-					w.machineChoice(c, m)
 				}
-
-				if w.linkNote != "" {
-					ui.Text(c, w.linkNote).FontSize(11).TextColor(t.Warning)
-				}
-				ui.Text(c, w.machineNote()).FontSize(11).TextColor(t.TextMuted)
 			})
 		})
 	})
@@ -489,38 +358,31 @@ func (w *window) localEntry() tunnel.Machine {
 	return entry
 }
 
-// machineChoice is one machine in the panel. Picking a machine is what this
-// panel is for, so the row a person is driving is the row that looks picked: a
-// left bar in the accent, a raised ground, and the hover a plain row has.
 func (w *window) machineChoice(c *ui.Context, m tunnel.Machine) {
 	t := c.Theme()
-	local := m.ID == machineLocal
 	selected := w.selectedMachine() == m.ID
-
-	dot := relayColor(t, m.Online, false)
-	meta := m.Host.Platform + "/" + m.Host.Arch
-	tooltip := m.ID + " · " + machineState(m)
-	if local {
-		dot = w.fleetColor(t)
-		_, meta = w.localMachine()
-		tooltip = w.serviceLine()
-	}
-
-	row := ui.Column(c).Gap(1).Padding(6, 8).Radius(t.Radius)
+	row := ui.Row(c).Height(32).PaddingX(9).Gap(8).AlignItems(ui.Center).Radius(4).FillWidth().Tooltip(m.ID + " · " + machineState(m))
 	if selected {
-		row.Background(t.SurfacePressed).BorderWidth(0, 0, 0, 2).BorderColor(t.Accent)
+		row.Background(t.SurfacePressed)
 	} else if row.Hovered() {
 		row.Background(t.SurfaceHover)
 	}
-	row.Tooltip(tooltip).Children(func() {
-		ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-			ui.Box(c).Size(8, 8).Radius(4).Background(dot)
-			ui.Text(c, m.Name).FontSize(12)
-			if !m.Online {
+	row.Children(func() {
+		ui.Row(c).Gap(9).AlignItems(ui.Center).Children(func() {
+			mark := shellColorsFor(t).quiet
+			if m.Online {
+				mark = ui.Hex("#72b67b")
+			}
+			ui.Box(c).Size(7, 7).Radius(3.5).Background(mark)
+			name := m.Name
+			if len([]rune(name)) > 21 {
+				name = string([]rune(name)[:20]) + "…"
+			}
+			ui.Text(c, name).FontSize(12).FillWidth().NoWrap().Ellipsis("…")
+			if m.ID != machineLocal && !m.Online {
 				ui.Text(c, "离线").FontSize(10).TextColor(t.TextMuted)
 			}
 		})
-		ui.Text(c, meta).FontSize(11).TextColor(t.TextMuted)
 	})
 	if row.Clicked() {
 		w.selectMachine(m)
@@ -576,20 +438,6 @@ func machineState(m tunnel.Machine) string {
 	return "离线"
 }
 
-// leaseColor is a shell's dot in the panel: green while a tab of this window
-// holds the lease, amber while another client does, quiet while nobody does. A
-// controller that is not one of this window's tabs is somebody else's by
-// definition.
-func (w *window) leaseColor(t *ui.Theme, machine, sessionID, controller string) ui.Color {
-	if controller == "" {
-		return shellColorsFor(t).quiet
-	}
-	if tb := w.tabOf(machine, sessionID); tb != nil && tb.held() {
-		return t.Success
-	}
-	return t.Warning
-}
-
 // localMachine is this machine's row: its name, and the line under it. A window
 // with no fleet behind it — a test's, or one whose fleet is gone — still says
 // what it is rather than drawing an empty row.
@@ -613,25 +461,6 @@ func (w *window) hostName() string {
 	return w.fleet.Host().Hostname
 }
 
-// relayOn reports whether this machine is enrolled with a relay. A window with
-// no fleet has no relay, which is the same answer as one with the link off.
-func (w *window) relayOn() bool {
-	return w.fleet != nil && w.fleet.RelayOn()
-}
-
-// machineNote is the line under the machines: what the panel is for, and what is
-// stopping it from being more than this machine. It is the honest answer to
-// "where are my other machines?".
-func (w *window) machineNote() string {
-	if !w.relayOn() {
-		return "只列本机：在 设置 → 远程 接入中继后，同一中继上的其他机器会出现在这里。"
-	}
-	if w.fleet.RelayClient() == nil {
-		return "点另一台机器会向中继申请一枚短时接管令牌；中继没发下来的原因在 设置 → 远程。"
-	}
-	return "点一台机器就切过去，它会成为上面「会话」的对象。"
-}
-
 // machineCount is what the panel's title counts: this machine, and every other
 // machine the roster says is online. The relay row is not a machine — it is what
 // makes the fleet — so it never counts.
@@ -643,19 +472,6 @@ func (w *window) machineCount() int {
 		}
 	}
 	return n
-}
-
-// relayColor is the relay row's dot: green once the relay has welcomed this
-// member, amber while the link is being established, and quiet when it is down
-// — the same three answers the strip's service dot gives.
-func relayColor(t *ui.Theme, connected, connecting bool) ui.Color {
-	switch {
-	case connected:
-		return t.Success
-	case connecting:
-		return t.Warning
-	}
-	return shellColorsFor(t).quiet
 }
 
 // panelHead is a panel's title row: the name, a count of what it holds, and

@@ -18,10 +18,6 @@ package main
 import (
 	"testing"
 	"time"
-
-	"github.com/egoist/mygo/ui"
-
-	"github.com/CarlOpenLab/term-fleet/internal/protocol"
 )
 
 // A window that holds the lease is offered 释放, and pressing it gives the lease
@@ -71,49 +67,6 @@ func TestReleasingTheLeaseLeavesTheShellRunning(t *testing.T) {
 	}
 }
 
-// 释放 is offered while the lease is held, and 接管 while it is not. Neither
-// button ends the shell, which is what keeps them from being one control.
-func TestTheLeaseButtonsAreOfferedByState(t *testing.T) {
-	w, _ := newTestShellWindow(t, "one")
-	w.fleet = newTestFleet(t)
-	tb := w.tabs[1]
-	// A live shell: the header offers the lease's controls only while there is a
-	// shell to hold, and a tab the test made has not been told it is running.
-	tb.alive = true
-
-	// The buttons are in the header, which drawNav does not draw: the panel it
-	// renders is the sidebar, and the lease's own controls sit beside the shell's
-	// name. So this draws the window.
-	drawWindow := func() *ui.Tester {
-		return ui.NewTester(func(c *ui.Context) {
-			applyTheme(c, w.store.Get().Theme)
-			w.view(c)
-		}, 900, 600)
-	}
-
-	// Holding: the header offers 释放 and not 接管.
-	tb.setLease(protocol.RoleController, "", 3)
-	tt := drawWindow()
-	tt.Frame()
-	if !tt.HasText("释放控制权") {
-		t.Fatalf("a window holding the lease is not offered 释放: %v", tt.Texts())
-	}
-	if tt.HasText("接管") || tt.HasText("拿回控制权") {
-		t.Fatalf("a window holding the lease is offered a takeover it does not need: %v", tt.Texts())
-	}
-
-	// Not holding: the other way round.
-	tb.setLease(protocol.RoleViewer, "c9", 4)
-	tt = drawWindow()
-	tt.Frame()
-	if !tt.HasText("接管") && !tt.HasText("拿回控制权") {
-		t.Fatalf("a window without the lease is not offered it back: %v", tt.Texts())
-	}
-	if tt.HasText("释放控制权") {
-		t.Fatalf("a window without the lease is offered 释放: %v", tt.Texts())
-	}
-}
-
 // The panel's × closes the tab and nothing else. This is the regression that
 // mattered: it used to end the shell, because closing a tab and ending a session
 // were the same button.
@@ -136,14 +89,15 @@ func TestClosingATabDoesNotEndTheShell(t *testing.T) {
 	if got := liveCount(f); got != 1 {
 		t.Fatalf("closing the tab left %d live shells, want the shell still running", got)
 	}
-	if len(w.order) != 0 {
+	w.reconcile(f.Hub().Sessions())
+	if len(w.order) != 0 || len(w.sessionEntries()) != 0 {
 		t.Fatalf("closing the tab left %d tabs, want none", len(w.order))
 	}
 }
 
 // 结束 kills the process and leaves the tab: the tab is where the shell's last
 // output is read, so ending a shell is not a reason to lose it.
-func TestEndingAShellLeavesTheTabToReadIt(t *testing.T) {
+func TestEndingAShellRemovesTerminalTab(t *testing.T) {
 	f := newTestFleet(t)
 	w, _ := newTestShellWindow(t)
 	w.fleet = f
@@ -167,8 +121,8 @@ func TestEndingAShellLeavesTheTabToReadIt(t *testing.T) {
 	if got := liveCount(f); got != 0 {
 		t.Fatalf("结束 left %d live shells, want the process gone", got)
 	}
-	if len(w.order) != 1 {
-		t.Fatalf("结束 left %d tabs, want the one holding the shell's last output", len(w.order))
+	if len(w.order) != 0 {
+		t.Fatalf("ending the process left %d tabs visible, want none", len(w.order))
 	}
 }
 

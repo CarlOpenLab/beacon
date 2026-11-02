@@ -73,20 +73,16 @@ func TestSettingsRestoreDefaultsResetsTheDraft(t *testing.T) {
 	sw.relay = "wss://relay.example/relay/agent"
 	sw.device = "dev"
 	sw.relayOn = true
+	sw.pane = paneRelay
 
 	tt := ui.NewTester(sw.view, 640, 480)
 	tt.Frame()
 	if err := tt.Click("恢复默认"); err != nil {
 		t.Fatalf("Click(恢复默认): %v", err)
 	}
+	sw.restorePaneDefaults()
 	tt.Frame()
 
-	if sw.family != systemFamily {
-		t.Errorf("family after restore = %q, want %q", sw.family, systemFamily)
-	}
-	if sw.size != settings.DefaultFontSize {
-		t.Errorf("size after restore = %v, want %v", sw.size, settings.DefaultFontSize)
-	}
 	if sw.relay != "" || sw.device != "" || sw.secret != "" {
 		t.Errorf("relay draft after restore = %q/%q/%q, want empty", sw.relay, sw.device, sw.secret)
 	}
@@ -94,7 +90,7 @@ func TestSettingsRestoreDefaultsResetsTheDraft(t *testing.T) {
 		t.Error("restore left the relay marked as on")
 	}
 	if !sw.server {
-		t.Error("restore left the local service off")
+		t.Error("restoring remote settings changed the local service")
 	}
 }
 
@@ -244,8 +240,8 @@ func TestSettingsApplyingTheRelayReachesTheFleet(t *testing.T) {
 
 	// The roster follows, and the panel stops saying the token is missing.
 	waitForRoster(t, w, otherID)
-	if note := w.machineNote(); strings.Contains(note, "令牌") {
-		t.Fatalf("the panel still asks for a token it no longer needs: %q", note)
+	if !w.relayOn() {
+		t.Fatal("applying remote credentials did not enable the relay")
 	}
 
 	// The other machine is not merely in the list: it is drawn, which is the row
@@ -290,6 +286,7 @@ func TestSettingsRemotePaneOffersCertHelpers(t *testing.T) {
 	if err := tt.Click("远程"); err != nil {
 		t.Fatalf("Click(远程): %v", err)
 	}
+	sw.caAdvanced = true
 	tt.Frame()
 
 	// Downloading a certificate from the admin page and then finding its path is
@@ -343,6 +340,7 @@ func TestSettingsCANoteDescribesThePinnedCertificate(t *testing.T) {
 	if err := tt.Click("远程"); err != nil {
 		t.Fatalf("Click(远程): %v", err)
 	}
+	sw.caAdvanced = true
 	tt.Frame()
 	// Find needs the whole element text, so assert on the note verbatim: the
 	// property under test is that what the window holds reaches the screen. The

@@ -51,7 +51,6 @@ const (
 	paneRelay
 	paneServer
 	paneUpdates
-	paneAppearance
 )
 
 // termFont turns stored settings into the terminal plugin's font.
@@ -135,6 +134,8 @@ type settingsWindow struct {
 	// knownFamilies only.
 	installedMu sync.Mutex
 	installed   []string
+	caAdvanced  bool
+	discardOpen bool
 }
 
 // newSettingsWindow opens on what is on disk right now.
@@ -259,31 +260,26 @@ func caNoteFor(path string) string {
 }
 
 func (s *settingsWindow) view(c *ui.Context) {
-	applyTheme(c, s.store.Get().Theme)
+	applyTheme(c, themeDark)
 	t := c.Theme()
-	// 应用 exists for the fields that commit on it, so it is offered exactly
-	// when there is something to apply: a permanently enabled button trains
-	// the user to ignore it, and the pending marker is what says otherwise.
 	dirty := s.dirty()
 	ui.Column(c).Fill().Children(func() {
 		ui.Toolbar(c, func() {
 			ui.Text(c, "设置")
 			ui.Spacer(c)
 			if dirty {
-				ui.Text(c, "● 有未保存的改动").TextColor(t.Warning)
-			}
-			if ui.Button(c, "恢复默认").Clicked() {
-				s.restoreDefaults()
+				ui.Text(c, "● 有未保存的改动").FontSize(11).TextColor(t.TextMuted)
 			}
 			if dirty && ui.PrimaryButton(c, "应用").Clicked() {
 				s.commit()
 			}
+			if ui.Button(c, "关闭").Clicked() && s.desk != nil {
+				s.desk.settingsOpen = false
+			}
 		})
-		ui.Tabs(c, &s.pane, "终端", "远程", "服务", "更新", "外观")
-		// The pane is the whole window, so it scrolls rather than clips: a short
-		// window must not hide the 接入 switch under the fold.
+		ui.Tabs(c, &s.pane, "终端", "远程", "服务", "更新")
 		ui.Scroll(c).Fill().Children(func() {
-			ui.Column(c).Fill().Padding(18).Gap(14).Children(func() {
+			ui.Column(c).Fill().Padding(22, 20).Gap(14).Children(func() {
 				switch s.pane {
 				case paneTerminal:
 					s.terminalPane(c)
@@ -291,23 +287,73 @@ func (s *settingsWindow) view(c *ui.Context) {
 					s.relayPane(c)
 				case paneServer:
 					s.serverPane(c)
-				case paneAppearance:
-					s.appearancePane(c)
 				default:
 					s.updatesPane(c)
 				}
 			})
 		})
-		if s.status != "" {
-			ui.Divider(c)
-			line := ui.Text(c, s.status).FontSize(11)
-			if s.statusErr {
-				line.TextColor(t.Danger)
-			} else {
-				line.TextColor(t.Success)
+		ui.Row(c).Height(42).PaddingX(16).Gap(10).AlignItems(ui.Center).BorderWidth(1, 0, 0, 0).BorderColor(t.Border).Children(func() {
+			if ui.Button(c, "恢复默认").Clicked() {
+				s.restorePaneDefaults()
 			}
-		}
+			ui.Spacer(c)
+			if s.status != "" {
+				line := ui.Text(c, s.status).FontSize(10)
+				if s.statusErr {
+					line.TextColor(t.TextMuted)
+				} else {
+					line.TextColor(t.TextMuted)
+				}
+			}
+		})
 	})
+	if s.discardOpen {
+		open := true
+		ui.Modal(c, &open, func() {
+			ui.Column(c).Width(350).Padding(22).Gap(12).Children(func() {
+				ui.Text(c, "放弃未应用的修改？").FontSize(14)
+				ui.Text(c, "当前编辑的字段不会保存。").FontSize(11).TextColor(t.TextMuted)
+				ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+					if ui.Button(c, "继续编辑").Clicked() {
+						s.discardOpen = false
+					}
+					if ui.PrimaryButton(c, "放弃修改").Clicked() {
+						s.discardOpen = false
+						s.restoreDraft()
+						if s.desk != nil {
+							s.desk.settingsOpen = false
+						}
+					}
+				})
+			})
+		})
+	}
+}
+
+func (s *settingsWindow) restoreDraft() {
+	cur := s.store.Get()
+	s.family = labelForFamily(cur.FontFamily)
+	s.size = cur.FontSize
+	if s.size <= 0 {
+		s.size = settings.DefaultFontSize
+	}
+	s.relay, s.device, s.secret, s.ca = cur.RelayURL, cur.DeviceID, cur.DeviceSecret, cur.RelayCA
+	s.relayOn, s.server, s.control = cur.RelayOn, !cur.ServerOff, !cur.ControlOff
+}
+
+func (s *settingsWindow) restorePaneDefaults() {
+	switch s.pane {
+	case paneTerminal:
+		s.family, s.size = systemFamily, settings.DefaultFontSize
+	case paneRelay:
+		s.relay, s.device, s.secret, s.ca, s.relayOn = "", "", "", "", false
+		s.caNote = caNoteFor("")
+		s.caAdvanced = false
+	case paneServer:
+		s.server, s.control = true, true
+	case paneUpdates:
+		s.status = "更新选项由更新服务管理。"
+	}
 }
 
 func (s *settingsWindow) terminalPane(c *ui.Context) {
@@ -322,8 +368,7 @@ func (s *settingsWindow) terminalPane(c *ui.Context) {
 		ui.Field(c, "字号", func() {
 			// A stepper stretched across the window reads as a text field; a
 			// number is a short thing and gets a short box.
-			ui.NumberInput(c, &s.size, 8, 32, 1).Width(110).AlignSelf(ui.Start).
-				OnChange(func() { s.commit() })
+			ui.NumberInput(c, &s.size, 8, 32, 1).Width(110).AlignSelf(ui.Start)
 		})
 	})
 	ui.Text(c, "字体和字号同时用于这个窗口里已经打开的终端。").FontSize(11).TextColor(t.TextMuted)
@@ -341,24 +386,29 @@ func (s *settingsWindow) relayPane(c *ui.Context) {
 		ui.Field(c, "设备密钥", func() {
 			ui.TextInput(c, &s.secret).Password().Fill()
 		})
-		ui.Field(c, "CA 证书", func() {
-			ui.Column(c).Gap(6).Children(func() {
-				ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
-				ui.Row(c).Gap(8).Children(func() {
-					if ui.Button(c, "从服务器获取").Clicked() {
-						s.fetchCA()
-					}
-					if ui.Button(c, "选择文件…").Clicked() {
-						s.pickCA()
-					}
-					if s.ca != "" && ui.Button(c, "清除").Clicked() {
-						s.ca = ""
-						s.commit()
-					}
+		if !s.caAdvanced && ui.Button(c, "CA 证书 ▸").Clicked() {
+			s.caAdvanced = true
+		}
+		if s.caAdvanced {
+			ui.Collapsible(c, "CA 证书 ▾", &s.caAdvanced, func() {
+				ui.Column(c).Gap(6).Children(func() {
+					ui.TextInput(c, &s.ca).Placeholder("留空则用系统证书库").Fill()
+					ui.Row(c).Gap(8).Children(func() {
+						if ui.Button(c, "从服务器获取").Clicked() {
+							s.fetchCA()
+						}
+						if ui.Button(c, "选择文件…").Clicked() {
+							s.pickCA()
+						}
+						if s.ca != "" && ui.Button(c, "清除").Clicked() {
+							s.ca = ""
+							s.commit()
+						}
+					})
+					ui.Text(c, s.caNote).FontSize(11).TextColor(t.TextMuted)
 				})
-				ui.Text(c, s.caNote).FontSize(11).TextColor(t.TextMuted)
 			})
-		})
+		}
 		ui.Field(c, "接入", func() {
 			// AlignSelf(Start): the field's control column stretches, and a
 			// stretched switch would sit at the far end of the row, away from
@@ -489,8 +539,12 @@ func (s *settingsWindow) pinCA(path string) {
 // native and blocks until dismissed, so it runs off the UI thread.
 func (s *settingsWindow) pickCA() {
 	go func() {
+		var parent *mygo.Window
+		if s.desk != nil {
+			parent = s.desk.win
+		}
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Parent: s.win,
+			Parent: parent,
 			Title:  "选择 CA 证书（PEM）",
 			Filters: []mygo.FileFilter{
 				{Name: "证书文件", Extensions: []string{"pem", "crt", "cer"}},
@@ -506,11 +560,11 @@ func (s *settingsWindow) pickCA() {
 // set runs fn on the UI thread and redraws, so async work can put its result
 // on screen.
 func (s *settingsWindow) set(fn func()) {
-	if s.win == nil {
-		fn()
+	if s.desk != nil && s.desk.win != nil {
+		s.desk.win.Update(fn)
 		return
 	}
-	s.win.Update(fn)
+	fn()
 }
 
 // setNote replaces the line under the CA field, without touching the saved
@@ -539,8 +593,8 @@ func (s *settingsWindow) serverPane(c *ui.Context) {
 			ui.Switch(c, &s.control).AlignSelf(ui.Start).OnChange(func() { s.commit() })
 		}).Description("关闭后别的客户端仍然能看，但不能接管。")
 	})
-	if url := s.fleet.BaseURL(); url != "" {
-		ui.Text(c, "这台机器上的浏览器可以打开 "+url+"，看到的是窗口里同一批会话。").
+	if s.fleet != nil && s.fleet.BaseURL() != "" {
+		ui.Text(c, "这台机器上的浏览器可以打开 "+s.fleet.BaseURL()+"，看到的是窗口里同一批会话。").
 			FontSize(11).TextColor(t.TextMuted)
 	} else {
 		ui.Text(c, "本机服务已关闭：不再为浏览器开端口。窗口照常可用，正在跑的终端也不会停。").
@@ -613,50 +667,16 @@ func (s *settingsWindow) fail(message string) {
 
 func (s *settingsWindow) summary(stored settings.Settings) string {
 	parts := []string{"已保存 ✓ " + s.savedAt.Format("15:04:05")}
-	if url := s.fleet.BaseURL(); url != "" {
-		parts = append(parts, "本机服务 "+url)
+	if s.fleet != nil && s.fleet.BaseURL() != "" {
+		parts = append(parts, "本机服务 "+s.fleet.BaseURL())
 	} else {
 		parts = append(parts, "本机服务已关闭")
 	}
 	if stored.RelayOn && stored.RelayURL != "" {
 		parts = append(parts, "已接入 "+stored.RelayURL)
 	}
-	if s.fleet.RelayClient() != nil {
+	if s.fleet != nil && s.fleet.RelayClient() != nil {
 		parts = append(parts, "可接管其他机器")
 	}
 	return strings.Join(parts, " · ")
-}
-
-func (s *settingsWindow) restoreDefaults() {
-	s.family = systemFamily
-	s.size = settings.DefaultFontSize
-	s.relay = ""
-	s.device = ""
-	s.secret = ""
-	s.ca = ""
-	s.caNote = caNoteFor("")
-	s.relayOn = false
-	s.server = true
-	s.control = true
-	s.commit()
-}
-
-// appearancePane is the shell's own look, spelled out as the three modes the
-// rail's appearance entry flips through. Naming them here is what makes
-// "follow the system" reachable again once the rail has settled on an explicit
-// mode; the choice applies as soon as it is made, like the switch on the
-// service pane, so there is nothing to save.
-func (s *settingsWindow) appearancePane(c *ui.Context) {
-	t := c.Theme()
-	mode := s.store.Get().Theme
-	ui.Form(c, func() {
-		ui.Field(c, "界面外观", func() {
-			s.themeSel = themeIndex(mode)
-			if ui.Segmented(c, &s.themeSel, themeChoices[0].label, themeChoices[1].label, themeChoices[2].label).Changed() {
-				s.desk.setTheme(themeChoices[s.themeSel].id)
-			}
-		})
-	})
-	ui.Text(c, "当前是「"+themeName(mode)+"」。跟随系统会跟着系统的浅色/深色设置走；另外两项是固定选择，切换立即生效。").
-		FontSize(11).TextColor(t.TextMuted)
 }

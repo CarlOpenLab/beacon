@@ -33,11 +33,9 @@ type window struct {
 	// the terminals through Update — they belong to this window's UI thread.
 	win *mygo.Window
 
-	// settingsWin is the preferences window while it is open, so a second
-	// click brings it forward instead of stacking another copy. It is reached
-	// from the window-opening goroutine and the close callback, hence the lock.
-	settingsMu  sync.Mutex
-	settingsWin *mygo.Window
+	settingsMu      sync.Mutex
+	settingsContent *settingsWindow
+	settingsOpen    bool
 
 	// order is the tabs in the order they were opened, by key; selected indexes
 	// it. A tab is keyed rather than named by session id because a tab exists
@@ -46,9 +44,9 @@ type window struct {
 	tabs     map[int]*tab
 	selected int
 
-	// cmdBar is the command composer and its history: what this window has typed
-	// into the shell on screen, and the box it is typed into again.
-	cmdBar *commandBar
+	sidebarHidden bool
+	dismissed     map[string]bool
+	endPrompt     *sessionEntry
 
 	// local is the window's own client connection to this machine's hub. Every
 	// shell on this machine is watched through it, under the same lease a
@@ -129,7 +127,6 @@ func newWindow(f *fleet, store *settings.Store, shell, cwd string) *window {
 		tabs:         make(map[int]*tab),
 		sidebarSplit: -1,
 		nextKey:      1,
-		cmdBar:       newCommandBar(),
 	}
 	// The window is a client of its own hub from the moment it opens, so every
 	// shell it shows — including one a browser took over — arrives as frames
@@ -219,6 +216,9 @@ func (w *window) remoteSessionsArrived(machine string, list []protocol.Summary) 
 func (w *window) noLinkReason(machine string) string {
 	if machine == machineLocal || machine == "" {
 		return "本机链路未就绪"
+	}
+	if !w.relayOn() {
+		return "未接入中继"
 	}
 	if !w.relayOn() {
 		return "未接入中继"
@@ -356,25 +356,35 @@ func (w *window) view(c *ui.Context) {
 	// A tab strip's own keys, because the panel's rows are not the only way
 	// between shells: ⌘⇧] and ⌘⇧[ walk this window's tabs, wherever each shell
 	// runs. The terminal takes the keys it binds; these it does not.
+	if c.Shortcut(ui.Cmd, ui.KeyT) {
+		w.newTab()
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyW) {
+		w.removeTab(w.visibleTab())
+	}
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketRight) {
 		w.stepTab(1)
 	}
 	if c.Shortcut(ui.Cmd|ui.Shift, ui.KeyBracketLeft) {
 		w.stepTab(-1)
 	}
-
+	if c.Shortcut(ui.Cmd, ui.KeyB) {
+		w.sidebarHidden = !w.sidebarHidden
+	}
+	if c.Shortcut(ui.Cmd, ui.KeyComma) {
+		w.openSettings()
+	}
 	ui.Row(c).Fill().Background(c.Theme().Background).Children(func() {
-		w.activityRail(c, mode)
-		w.sidebar(c, mode)
+		if !w.sidebarHidden {
+			w.sidebar(c, mode)
+		}
 		ui.Column(c).Fill().Children(func() {
 			w.header(c, labels)
-			w.tabStrip(c, labels)
 			w.body(c, labels)
-			w.historyBar(c)
-			w.commandBarRow(c)
 			w.statusBar(c)
 		})
-		w.inspectPanel(c)
+		w.settingsDialog(c)
+		w.endSessionDialog(c)
 		w.reachDialog(c)
 	})
 }
@@ -644,31 +654,29 @@ func (w *window) reconcile(live []protocol.Summary) {
 	for _, s := range live {
 		present[s.SessionID] = true
 	}
+	for key := range w.dismissed {
+		_, id, ok := strings.Cut(key, "\x00")
+		if ok && !present[id] {
+			delete(w.dismissed, key)
+		}
+	}
 
-	// A shell that ended keeps its tab: the tab is where its last output is read,
-	// and taking it away here is what used to leave the client that ended a shell
-	// as the only one that could not see its final line. The tab is marked dead by
-	// the exit frame itself; this only has to not undo that.
-	//
-	// A tab is dropped when the session it names is no longer in the roster AND
-	// the window never saw it exit — a shell that was ended from somewhere this
-	// window had no link to, say. Those carry nothing worth keeping.
-	for key, tb := range w.tabs {
-		if tb.id == "" || present[tb.id] || tb.alive {
+	// The native shell shows only active terminal views; when a session disappears,
+	// close its tab instead of retaining an exited pane.
+	var gone []*tab
+	for _, tb := range w.tabs {
+		if tb.id == "" || present[tb.id] {
 			continue
 		}
-		if !tb.done {
-			// No exit frame and no session: this window lost track of it rather
-			// than watched it end.
-			tb.close()
-			delete(w.tabs, key)
-			w.order = dropKey(w.order, key)
-		}
+		gone = append(gone, tb)
+	}
+	for _, tb := range gone {
+		w.removeTab(tb)
 	}
 
 	// A shell that appeared gets one.
 	for _, s := range live {
-		if w.tabOf(machineLocal, s.SessionID) != nil {
+		if w.tabOf(machineLocal, s.SessionID) != nil || w.dismissed[machineLocal+"\x00"+s.SessionID] {
 			continue
 		}
 		if err := w.mount(s); err != nil {
@@ -722,9 +730,16 @@ func (w *window) openTab(machine, sessionID string) *tab {
 	conn := newTermConn(sess)
 	sess.handlers = tabHandlers{w: w, sess: sess, conn: conn}
 	term, err := terminal.New(terminal.Options{
-		Conn:    conn,
-		OnTitle: func(string) {},
-		OnExit:  func(int) {},
+		Conn: conn,
+		OnTitle: func(title string) {
+			w.update(func() {
+				if tb := w.tabOfSession(sess); tb != nil {
+					tb.setTitle(title)
+					w.invalidate()
+				}
+			})
+		},
+		OnExit: func(int) {},
 		// The font saved in settings, so a tab opened after a change — or on a
 		// later run — is lettered the same as the ones already on screen.
 		Font: w.font,
@@ -788,6 +803,12 @@ func (w *window) removeTab(tb *tab) {
 	}
 	if key < 0 {
 		return
+	}
+	if tb.machine == machineLocal && tb.id != "" {
+		if w.dismissed == nil {
+			w.dismissed = make(map[string]bool)
+		}
+		w.dismissed[tb.machine+"\x00"+tb.id] = true
 	}
 	tb.close()
 	delete(w.tabs, key)
@@ -953,24 +974,16 @@ func (h tabHandlers) Role(role, controller string, epoch uint64) {
 
 func (h tabHandlers) Exit(code int) {
 	w := h.w
-	// The line goes straight to the terminal: the hub has already flushed the
-	// shell's last output, and this is the window's own word on the end.
-	h.conn.feed([]byte(fmt.Sprintf("\r\n\x1b[2m[进程已退出，退出码 %d]\x1b[0m\r\n", code)), false)
 	w.update(func() {
 		if tb := h.tab(); tb != nil {
-			tb.finish(code)
+			w.removeTab(tb)
 		}
 		w.invalidate()
 	})
 }
 
-// Closed is the hub's old acknowledgement that this client asked to end a
-// session. It no longer arrives: a close produces the same exit frame for every
-// watcher, including whoever asked, so the tab stays and shows its last output.
-// An older daemon still sends it, and removing the tab on it would take that
-// output away, so it is read as the exit it stands for.
 func (h tabHandlers) Closed() {
-	h.Exit(0)
+	h.Gone("session closed")
 }
 
 func (h tabHandlers) Gone(reason string) {
@@ -1076,12 +1089,6 @@ type tab struct {
 	// role frame that answers its own release is not mistaken for a machine
 	// taking the shell back — which would end the window's connection to it.
 	letGo bool
-
-	// sent is what this window has typed into the shell, newest last. The
-	// history bar above the composer recalls it, the way the browser client's
-	// does; it is this window's own record, not the shell's, because a shell
-	// reached through the relay does not hand its history over.
-	sent []string
 }
 
 // bind gives the tab its session id, once the hub has named it. Until then the
@@ -1278,40 +1285,16 @@ func (w *window) reletter(f terminal.Font) {
 // reports its state from the agent's goroutine, and an immediate-mode pane only
 // repaints when something tells it to.
 func (w *window) invalidateSettings() {
-	w.settingsMu.Lock()
-	win := w.settingsWin
-	w.settingsMu.Unlock()
-	if win != nil {
-		win.Invalidate()
-	}
+	w.invalidate()
 }
 
 // openSettings shows the preferences window, or brings the open one forward.
 // It runs off the UI thread, as New Tab does, so a click never re-enters the
 // render pass that drew the button.
 func (w *window) openSettings() {
-	w.settingsMu.Lock()
-	defer w.settingsMu.Unlock()
-	if w.settingsWin != nil {
-		w.settingsWin.Focus()
-		return
+	if w.settingsContent == nil {
+		w.settingsContent = newSettingsWindow(w, w.store, w.fleet)
 	}
-	sw := newSettingsWindow(w, w.store, w.fleet)
-	win := mygo.NewWindow(mygo.WindowOptions{
-		Title:           "term-fleet 设置",
-		Width:           540,
-		Height:          440,
-		MinWidth:        440,
-		MinHeight:       360,
-		BackgroundColor: windowGround(w.store.Get().Theme),
-		StateKey:        "settings",
-		Content:         ui.View(sw.view),
-	})
-	sw.win = win
-	w.settingsWin = win
-	win.OnClosed(func() {
-		w.settingsMu.Lock()
-		w.settingsWin = nil
-		w.settingsMu.Unlock()
-	})
+	w.settingsOpen = true
+	w.invalidate()
 }

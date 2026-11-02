@@ -141,12 +141,10 @@ func TestRenderSettingsPreviews(t *testing.T) {
 		{"settings-dark-relay", themeDark, paneRelay, "远程"},
 		{"settings-dark-server", themeDark, paneServer, "服务"},
 		{"settings-dark-updates", themeDark, paneUpdates, "更新"},
-		{"settings-dark-appearance", themeDark, paneAppearance, "外观"},
 		{"settings-light-terminal", themeLight, paneTerminal, "终端"},
 		{"settings-light-relay", themeLight, paneRelay, "远程"},
 		{"settings-light-server", themeLight, paneServer, "服务"},
 		{"settings-light-updates", themeLight, paneUpdates, "更新"},
-		{"settings-light-appearance", themeLight, paneAppearance, "外观"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := settings.Open(t.TempDir())
@@ -189,6 +187,8 @@ func previewWindow(t *testing.T, mode string, shell bool) *window {
 		return w
 	}
 	w.tabs[1].term = fedTerminal(t, previewScreen())
+	w.tabs[1].setLease(protocol.RoleController, "", 1)
+	w.tabs[1].alive = true
 	return w
 }
 

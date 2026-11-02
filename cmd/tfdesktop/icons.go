@@ -15,6 +15,9 @@ func lucide(shapes string) *ui.SVG {
 }
 
 var (
+	iconSidebar = lucide(`<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>`)
+	iconMore    = lucide(`<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>`)
+
 	// iconTerminal marks a shell: the prompt, and the line being typed on.
 	iconTerminal = lucide(`<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>`)
 	// iconSun and iconMoon are the two sides of the appearance switch.
