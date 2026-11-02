@@ -77,10 +77,13 @@ func killProcess(pid int) error {
 }
 
 func shellCommand(shell string) (string, []string) {
-	if shell != "" {
-		return shell, nil
+	if shell == "" {
+		shell = pickWindowsShell(exec.LookPath, os.Getenv("COMSPEC"))
 	}
-	return pickWindowsShell(exec.LookPath, os.Getenv("COMSPEC")), nil
+	// PowerShell is started with the prompt wrapper that keeps its process
+	// directory in step with where the shell stands; see shellArgs. A shell
+	// that keeps the two in step by itself is started as it always was.
+	return shell, shellArgs(shell)
 }
 
 // commandLine builds a single command line string, because CreateProcessW takes

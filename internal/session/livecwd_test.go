@@ -4,7 +4,6 @@ package session
 
 import (
 	"path/filepath"
-	"runtime"
 	"testing"
 	"time"
 )
@@ -51,9 +50,6 @@ func TestLiveCwdFollowsTheShell(t *testing.T) {
 // A session that cannot be asked — no process any more — keeps the directory it
 // was started in rather than inventing one.
 func TestLiveCwdFallsBackToTheStartedDirectory(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("a ConPTY process cannot be asked where it stands")
-	}
 	dir := t.TempDir()
 	sess, err := Start("gone", 80, 24, dir, "/bin/sh")
 	if err != nil {

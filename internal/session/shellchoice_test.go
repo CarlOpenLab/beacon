@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -64,5 +65,44 @@ func TestPickWindowsShellNeverEmpty(t *testing.T) {
 	look := fakeLook(nil)
 	if got := pickWindowsShell(look, ""); got == "" {
 		t.Fatal("pickWindowsShell returned an empty shell")
+	}
+}
+
+func TestIsPowerShell(t *testing.T) {
+	for _, path := range []string{
+		`C:\Program Files\PowerShell\7\pwsh.exe`,
+		`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`,
+		"pwsh",
+		"powershell.exe",
+		`C:\tools\PWSH.EXE`,
+	} {
+		if !isPowerShell(path) {
+			t.Errorf("isPowerShell(%q) = false, want true", path)
+		}
+	}
+	for _, path := range []string{
+		`C:\Windows\System32\cmd.exe`,
+		`C:\Program Files\Git\bin\bash.exe`,
+		"",
+	} {
+		if isPowerShell(path) {
+			t.Errorf("isPowerShell(%q) = true, want false", path)
+		}
+	}
+}
+
+// A PowerShell shell is started with the prompt wrapper that keeps its
+// process directory in step with where it stands; other shells are started
+// as they always were.
+func TestShellArgs(t *testing.T) {
+	args := shellArgs(`C:\Program Files\PowerShell\7\pwsh.exe`)
+	if len(args) != 3 || args[0] != "-NoExit" || args[1] != "-Command" {
+		t.Fatalf("shellArgs(pwsh) = %q, want -NoExit -Command <hook>", args)
+	}
+	if !strings.Contains(args[2], "$global:__beacon_prompt") {
+		t.Fatalf("shellArgs(pwsh) hook = %q, want the prompt wrapper", args[2])
+	}
+	if got := shellArgs(`C:\Windows\System32\cmd.exe`); got != nil {
+		t.Fatalf("shellArgs(cmd) = %q, want nil", got)
 	}
 }

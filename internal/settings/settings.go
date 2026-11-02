@@ -149,6 +149,14 @@ func (s Settings) Blur() string {
 	return DefaultBlur
 }
 
+// DirOverridden reports whether Dir was pointed somewhere by the environment —
+// a test's directory, or a portable copy's own home. Such a copy is a Beacon of
+// its own: its settings, its relay enrollment and its shells are separate, so
+// it runs beside the installed app rather than as another launch of it.
+func DirOverridden() bool {
+	return os.Getenv("BEACON_CONFIG_HOME") != "" || os.Getenv("TERM_FLEET_CONFIG_HOME") != ""
+}
+
 // Dir is where the desktop shell keeps its settings. BEACON_CONFIG_HOME or
 // TERM_FLEET_CONFIG_HOME overrides it, which is how tests and a portable copy keep their own file.
 func Dir() string {

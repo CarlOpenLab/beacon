@@ -34,6 +34,22 @@ import (
 )
 
 func main() {
+	// One instance, one window: starting the app again raises the window that
+	// is already open instead of starting a second one — a second hub serving
+	// the same machine's shells, a second relay link under the same identity.
+	// A macOS bundle is single by the time Finder launches it; this is what
+	// makes Windows and Linux agree with it, and what keeps a launch from a
+	// terminal from doubling the app there too.
+	//
+	// A copy pointed at a settings home of its own — a portable copy, which
+	// settings.DirOverridden reports — is a Beacon of its own, with its own
+	// relay enrollment, so it is left to run beside the installed one.
+	if !settings.DirOverridden() {
+		if !mygo.App.RequestSingleInstanceLock() {
+			return
+		}
+	}
+
 	// Auto-update: the app checks its own release feed and offers new versions
 	// with their release notes (install / remind me later / skip this version).
 	// The native plugin draws that window with mygo's own UI rather than a web
@@ -173,6 +189,12 @@ func main() {
 	}()
 
 	app := newWindow(f, store, *shell, *cwd)
+	// A second launch — the taskbar icon double-clicked, the exe run again —
+	// was handed to this instance by RequestSingleInstanceLock. There is one
+	// window, so the answer is to raise it rather than to open another.
+	mygo.App.OnSecondInstance(func([]string, string) {
+		app.raise()
+	})
 	// If the service could not start — the usual cause on macOS is the
 	// application firewall — the window says so where it already says what the
 	// fleet is doing, rather than leaving a machine that looks joined and

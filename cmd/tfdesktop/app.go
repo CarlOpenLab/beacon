@@ -424,15 +424,27 @@ func (w *window) notify(machine, id, title, body string) {
 			} else {
 				w.openOrSelect(machine, id)
 			}
-			if w.win != nil {
-				w.win.Show()
-				w.win.Focus()
-			}
-			mygo.App.Focus()
+			w.raise()
 		})
 		n.Close()
 	})
 	go n.Show()
+}
+
+// raise brings the window to the person's attention: restored if it was
+// minimized, shown, and the app brought forward. It is the one answer to the
+// window being asked for from outside — a notification's click, or a second
+// launch handed over by RequestSingleInstanceLock — so the one window comes
+// back the same way whichever asked.
+func (w *window) raise() {
+	if w.win == nil {
+		return
+	}
+	if w.win.IsMinimized() {
+		w.win.Restore()
+	}
+	w.win.Show()
+	mygo.App.Focus()
 }
 
 // refreshBadge puts how many sessions need the user on the Dock icon, or clears

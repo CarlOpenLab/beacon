@@ -161,10 +161,21 @@ func TestDirHonorsOverride(t *testing.T) {
 	if got := Dir(); got != "/tmp/beacon-test-config" {
 		t.Fatalf("Dir() = %q, want the BEACON_CONFIG_HOME override", got)
 	}
+	if !DirOverridden() {
+		t.Fatal("DirOverridden() = false, want true with BEACON_CONFIG_HOME set")
+	}
 
 	t.Setenv("BEACON_CONFIG_HOME", "")
 	t.Setenv("TERM_FLEET_CONFIG_HOME", "/tmp/tf-test-config")
 	if got := Dir(); got != "/tmp/tf-test-config" {
 		t.Fatalf("Dir() = %q, want the TERM_FLEET_CONFIG_HOME override", got)
+	}
+	if !DirOverridden() {
+		t.Fatal("DirOverridden() = false, want true with TERM_FLEET_CONFIG_HOME set")
+	}
+
+	t.Setenv("TERM_FLEET_CONFIG_HOME", "")
+	if DirOverridden() {
+		t.Fatal("DirOverridden() = true, want false with no override")
 	}
 }
