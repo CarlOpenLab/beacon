@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,6 +65,17 @@ type Session struct {
 	pid      int
 	alive    bool
 	exitCode int
+	// endedAt is when the process was reaped, so a client can freeze the run
+	// time it shows instead of letting it grow past the shell's life.
+	endedAt time.Time
+	// branch is the checkout HEAD names for cwd. repo and gitDir are the
+	// repository it was found in, kept so the foreground poll can re-read HEAD
+	// without walking the tree again; branchCwd is the directory the cached
+	// answer was resolved for, so a shell that cd's out is looked up afresh.
+	branch    string
+	repo      string
+	gitDir    string
+	branchCwd string
 }
 
 // Start launches shell behind a fresh PTY of the given size.
@@ -107,6 +119,9 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 		shell:         path,
 	}
 	s.st = status.New(s.notifyStatus)
+	// The first summary already names the branch: a row that waits for the
+	// foreground poll to fill its second line would flash its absence.
+	s.checkBranch()
 	go s.pump()
 	go s.pollForeground()
 	go s.wait()
@@ -154,21 +169,70 @@ func (s *Session) pollForeground() {
 
 // checkLiveCwd updates s.cwd if the shell has moved to another directory, and
 // notifies the status channel so the hub broadcasts the new path to all clients.
+// The branch follows the directory: it is re-read on every poll so a checkout
+// switched in place shows up too.
 func (s *Session) checkLiveCwd() {
 	live := s.LiveCwd()
-	if live == "" {
+	if live != "" {
+		s.mu.Lock()
+		changed := false
+		if !sameDir(live, s.cwd) {
+			s.cwd = live
+			changed = true
+		}
+		s.mu.Unlock()
+		if changed {
+			s.notifyStatus()
+		}
+	}
+	s.checkBranch()
+}
+
+// checkBranch keeps s.branch in step with the checkout above the shell's
+// directory. The repository is found once per directory; after that one small
+// HEAD read per poll is enough to see a branch switch.
+func (s *Session) checkBranch() {
+	s.mu.Lock()
+	dir := s.cwd
+	repo, gitDir := s.repo, s.gitDir
+	resolvedFor := s.branchCwd
+	s.mu.Unlock()
+	if dir == "" {
 		return
 	}
-	s.mu.Lock()
-	changed := false
-	if !sameDir(live, s.cwd) {
-		s.cwd = live
-		changed = true
+
+	branch := ""
+	switch {
+	case repo != "" && dirWithin(repo, dir):
+		branch = readHead(gitDir)
+	case resolvedFor == dir:
+		// This directory was already looked at and holds no repository.
+		// Looking again every half second would only walk the same tree.
+		return
+	default:
+		repo, gitDir = resolveRepo(dir)
+		if repo != "" {
+			branch = readHead(gitDir)
+		}
 	}
+
+	s.mu.Lock()
+	changed := s.branch != branch
+	s.branch = branch
+	s.repo, s.gitDir, s.branchCwd = repo, gitDir, dir
 	s.mu.Unlock()
 	if changed {
 		s.notifyStatus()
 	}
+}
+
+// dirWithin reports whether dir is root or below it.
+func dirWithin(root, dir string) bool {
+	rel, err := filepath.Rel(root, dir)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
 // sameDir reports whether a and b name the same directory, accounting for symlinks
@@ -315,6 +379,10 @@ func (s *Session) Summary() protocol.Summary {
 		Alive:     s.alive,
 		Cursor:    s.ring.End(),
 		CreatedAt: s.CreatedAt.UTC().Format(time.RFC3339Nano),
+		Branch:    s.branch,
+	}
+	if !s.endedAt.IsZero() {
+		sum.EndedAt = s.endedAt.UTC().Format(time.RFC3339Nano)
 	}
 	if s.st != nil {
 		snap := s.st.Snapshot()
@@ -424,6 +492,7 @@ func (s *Session) wait() {
 	s.mu.Lock()
 	s.exitCode = code
 	s.alive = false
+	s.endedAt = time.Now()
 	s.mu.Unlock()
 	if s.st != nil {
 		s.st.Exited()

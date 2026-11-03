@@ -16,8 +16,8 @@
      .tf-side-list .tf-empty .tf-machine(.active .off .collapsed) .tf-machine-name
      .tf-session(.tf-drag-slot) .tf-session-float / html.tf-row-dragging
      .tf-machine-count .tf-machine-chev .tf-session(.active .open .owned .readonly
-     .dead .unread) .tf-session-title .tf-session-name .tf-session-badge
-     .tf-session-note(.is-warn .is-quiet) .tf-session-when .tf-glyph .tf-kill
+     .dead .unread) .tf-session-main .tf-session-name .tf-session-path
+     .tf-session-run .tf-session-tail .tf-glyph .tf-kill
      .tf-side-foot .tf-foot-chip .tf-foot-fleet .tf-pop
      .tf-card-head .tf-card-id .tf-card-name .tf-card-dir .tf-card-chip
      .tf-card-role .tf-card-actions .tf-release-btn .tf-banner(.on)
@@ -66,6 +66,8 @@
   --h-side-top: 44px;
   --h-group: 28px;
   --h-row: 34px;
+  /* a session's row: state, name, path, branch, run time */
+  --h-session: 48px;
   --h-foot: 36px;
   --h-status: 26px;
   --w-side: 268px;
@@ -434,19 +436,26 @@ svg {
   opacity: 0.75;
 }
 
-/* A session row is one line, 34px, and the glyph is its last word. */
+/* A session row is two lines — name, path — with the state leading it and the
+   run time at its trailing edge. The glyph is its first word; the branch is in
+   the tooltip rather than on a third line the list cannot spare. */
 .tf-session {
   position: relative;
-  height: var(--h-row);
-  min-height: var(--h-row);
+  height: var(--h-session);
+  min-height: var(--h-session);
   display: flex;
   align-items: center;
+  gap: 8px;
   margin-bottom: 1px;
   padding: 0 4px 0 10px;
   border-radius: 8px;
   cursor: pointer;
   color: var(--fg);
   transition: background var(--dur) ease, box-shadow var(--dur) ease;
+}
+
+.tf-session > .tf-glyph {
+  flex: none;
 }
 
 /* A session row is dragged to change this client's order, not to pick it: the
@@ -513,21 +522,21 @@ html.tf-row-dragging .tf-session .tf-kill {
     0 2px 6px rgba(0, 0, 0, 0.25);
 }
 
-.tf-session-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
+.tf-session-main {
+  flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .tf-session-name {
-  flex: 1 1 auto;
-  min-width: 24px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--fs-13-5);
+  line-height: 18px;
   font-weight: 500;
   color: var(--fg);
 }
@@ -541,70 +550,50 @@ html.tf-row-dragging .tf-session .tf-kill {
   color: var(--fg-dim);
 }
 
-.tf-session-badge {
-  flex: none;
-  font-size: 10px;
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: 5px;
-  white-space: nowrap;
-  border: 1px solid transparent;
-}
-
-.tf-session-badge.b-view {
-  color: var(--warn);
-  border-color: var(--warn-bd);
-}
-
-.tf-session-badge.b-dead {
-  color: var(--exit);
-  border-color: var(--exit-bd);
-}
-
-/* What a session wants, in the row's own line: a soft amber chip for a wait, a
-   quiet one for progress. Both give way to the name. */
-.tf-session-note {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 104px;
+/* The path keeps its line when empty, so rows stay the same height and the
+   text inside them does not move. */
+.tf-session-path {
+  min-height: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--fs-12);
-  line-height: 1;
-  padding: 3px 6px;
-  border-radius: var(--radius-pill);
-}
-
-.tf-session-note.is-warn {
-  color: var(--warn);
-  background: var(--warn-bg);
-}
-
-.tf-session-note.is-quiet {
+  font-size: var(--fs-11);
+  line-height: 14px;
   color: var(--fg-dim);
-  background: var(--chip);
-  font-variant-numeric: tabular-nums;
 }
 
-.tf-session-when {
+/* The shell's life, at the row's trailing edge: the one number that keeps
+   counting while everything else on the row stays still. The slot also holds
+   the × — the time shows at rest, the close takes its place on hover, so the
+   time never moves when the pointer arrives. */
+.tf-session-tail {
+  position: relative;
   flex: none;
-  margin-left: auto;
-  color: var(--fg-faint);
-  font-size: 12.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-.tf-session-act {
-  flex: none;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 20px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
+}
+
+.tf-session-run {
+  color: var(--fg-faint);
+  font-size: var(--fs-11);
+  line-height: 14px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tf-session.closable:hover .tf-session-run,
+.tf-session.closable:focus-within .tf-session-run {
+  visibility: hidden;
 }
 
 .tf-kill {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   width: 18px;
   height: 18px;
   display: grid;
@@ -631,9 +620,9 @@ html.tf-row-dragging .tf-session .tf-kill {
 }
 
 .tf-session-rename {
-  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
-  height: 22px;
+  height: 20px;
   padding: 0 7px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-s);

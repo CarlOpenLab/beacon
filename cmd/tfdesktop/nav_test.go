@@ -207,8 +207,11 @@ func TestAnEndedShellsRowOffersTheWayOut(t *testing.T) {
 	tb.finish(3)
 
 	nav := drawNav(t, w)
-	if !nav.HasText(locales.StateEnded()) {
-		t.Fatalf("the row does not say the shell has ended; texts = %v", nav.Texts())
+	if nav.HasText(locales.StateEnded()) {
+		t.Errorf("the row writes 已退出 over its name; texts = %v", nav.Texts())
+	}
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, locales.StateEnded()) {
+		t.Errorf("the row's tooltip does not say the shell has ended; tooltip = %q", got)
 	}
 	if err := nav.RightClick("gone"); err != nil {
 		t.Fatal(err)
@@ -284,23 +287,23 @@ func TestARowNamesNobodyWhenNobodyHoldsTheShell(t *testing.T) {
 	}}
 
 	nav := drawNav(t, w)
-	if !nav.HasText(locales.StateReadonly()) {
-		t.Fatalf("the row does not say the shell is nobody's; texts = %v", nav.Texts())
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, locales.StateControllerNobody()) {
+		t.Fatalf("the row's tooltip does not say nobody holds the shell; tooltip = %q", got)
 	}
 	if nav.HasText(locales.StateControlling()) {
 		t.Errorf("the row still claims the shell is being driven; texts = %v", nav.Texts())
 	}
 
-	// And once this window takes it, the row is the ordinary one again: no 只读
-	// badge, and the line says whose it is.
+	// And once this window takes it, the row is the ordinary one again: the
+	// tooltip says whose it is, and no 只读 is written anywhere.
 	tb.setLease(protocol.RoleController, "", 3)
 	nav.Frame()
-	if nav.HasText(locales.StateNobody()) {
-		t.Errorf("the row still says nobody holds a shell this window drives; texts = %v", nav.Texts())
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, locales.StateControllerSelf()) {
+		t.Errorf("the row's tooltip does not say this window drives the shell; tooltip = %q", got)
 	}
 
 	if nav.HasText(locales.StateReadonly()) {
-		t.Errorf("a shell this window drives wears 只读; texts = %v", nav.Texts())
+		t.Errorf("a shell this window drives is written 只读; texts = %v", nav.Texts())
 	}
 }
 

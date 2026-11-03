@@ -350,7 +350,7 @@ func (w *window) machineRailTile(c *ui.Context, pal *uitokens.Palette, m tunnel.
 		// carries two points of padding under it: centered, the drawing reads a
 		// point high of the circle's middle, the way a sitting pet does.
 		tile := ui.Box(c).Key("rail:"+m.ID).Size(machineTileSize, machineTileSize).
-			Radius(machineTileSize / 2).Padding(0, 0, 2, 0).Center().Shrink(0).
+			Radius(machineTileSize/2).Padding(0, 0, 2, 0).Center().Shrink(0).
 			Focusable().Role(ui.RoleTab).Selected(selected).
 			Label(w.machineRailLabel(m)).Tooltip(w.machineTooltip(m)).
 			Cursor(ui.CursorPointer)
@@ -1192,7 +1192,7 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 			if slotTop < 0 {
 				return
 			}
-			p.Fill(ui.Rect{X: r.X, Y: r.Y + slotTop, W: r.W, H: uitokens.RowH},
+			p.Fill(ui.Rect{X: r.X, Y: r.Y + slotTop, W: r.W, H: uitokens.SessionH},
 				pal.RowHover, uitokens.RowRadius)
 		})
 		list.Children(func() {
@@ -1224,7 +1224,7 @@ func (w *window) machineGroup(c *ui.Context, pal *uitokens.Palette, m tunnel.Mac
 				if drop != "" {
 					droppedFrom = drop
 				}
-				y += uitokens.RowH + 1
+				y += uitokens.SessionH + 1
 				// The first pane is the tab's own row; the others hang under it.
 				for j, pane := range e.panes {
 					if j == 0 {

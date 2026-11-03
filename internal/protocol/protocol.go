@@ -287,4 +287,12 @@ type Summary struct {
 	// "claude" while an agent runs — which the daemon reads from the terminal's
 	// own process group. Empty on a host that cannot say.
 	Process string `json:"process,omitempty"`
+	// Branch is the git branch of the directory the shell stands in, read from
+	// the checkout's HEAD. Empty outside a repository, and for a host too old
+	// to look. A detached HEAD reports the short commit instead.
+	Branch string `json:"branch,omitempty"`
+	// EndedAt is when the shell exited, so a client can freeze the run time it
+	// shows at the moment the process stopped. Empty while the shell is alive,
+	// and for a host too old to record it.
+	EndedAt string `json:"endedAt,omitempty"`
 }

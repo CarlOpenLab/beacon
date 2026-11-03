@@ -68,7 +68,7 @@ func dropIndex(pointerY float32, preview []sessionEntry, tops []float32, dragKey
 		if sessionKey(e) == dragKey {
 			continue
 		}
-		if pointerY < tops[i]+uitokens.RowH/2 {
+		if pointerY < tops[i]+uitokens.SessionH/2 {
 			return at
 		}
 		at++

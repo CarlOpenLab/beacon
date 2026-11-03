@@ -51,10 +51,14 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 		t.Errorf("the sheet does not mark itself 只读; texts = %v", tt.Texts())
 	}
 
-	// The mark is drawn on the tab's row, too.
+	// The row keeps the mark in its tooltip: the status glyph already leads the
+	// row, so the words are for the pointer rather than for over the name.
 	tt := drawNav(t, w)
-	if !tt.HasText(locales.StateReadonly()) || !strings.Contains(w.sessionTooltip(w.sessionEntries()[0]), "c9") {
-		t.Fatalf("the tab row does not mark the holder; texts = %v", tt.Texts())
+	if tt.HasText(locales.StateReadonly()) {
+		t.Errorf("the tab row writes 只读; texts = %v", tt.Texts())
+	}
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, "c9") {
+		t.Fatalf("the tab row's tooltip does not name the holder; tooltip = %q", got)
 	}
 
 	// Taking it back clears all of it.
@@ -290,8 +294,11 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 	}
 
 	nav := drawNav(t, w)
-	if !nav.HasText(locales.StateReadonly()) {
-		t.Fatalf("the machine panel does not say a shell is being driven; texts = %v", nav.Texts())
+	if nav.HasText(locales.StateReadonly()) {
+		t.Errorf("the machine panel writes 只读 on the row; texts = %v", nav.Texts())
+	}
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, "c9") {
+		t.Errorf("the machine panel's row does not name the holder in its tooltip; tooltip = %q", got)
 	}
 
 	// The lease comes back. The session list may still be a push behind, so the
@@ -306,8 +313,8 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 		t.Error("the header still offers back a shell this window holds")
 	}
 	nav.Frame()
-	if nav.HasText(locales.StateReadonly()) {
-		t.Errorf("the machine panel still reports a driven shell; texts = %v", nav.Texts())
+	if got := w.sessionTooltip(w.sessionEntries()[0]); strings.Contains(got, "c9") {
+		t.Errorf("the row's tooltip still names a holder after the lease came back; tooltip = %q", got)
 	}
 }
 

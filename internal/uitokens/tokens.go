@@ -158,14 +158,15 @@ func For(dark bool) *Palette {
 // contents center on, and everything else is derived from it so that the
 // traffic lights, the sidebar's buttons and a card's header line up.
 const (
-	BarMid  = 30
-	TopBar  = 2 * BarMid
-	CardGap = 8
-	HeaderH = 2 * (BarMid - CardGap) // a card's header, 44
-	RowH    = 34                     // a session's row
-	PaneH   = 34                     // a pane's row, under a split's (unified with RowH)
-	GroupH  = 28                     // a group's header
-	FooterH = 36                     // the sidebar's foot
+	BarMid   = 30
+	TopBar   = 2 * BarMid
+	CardGap  = 8
+	HeaderH  = 2 * (BarMid - CardGap) // a card's header, 44
+	RowH     = 34                     // a pane's row in a list
+	SessionH = 48                     // a session's row: state, name, path, run time
+	PaneH    = 48                     // a pane's row under a split's, with the same two lines
+	GroupH   = 28                     // a group's header
+	FooterH  = 36                     // the sidebar's foot
 
 	SidebarWidth = 268
 	MinSidebar   = 200

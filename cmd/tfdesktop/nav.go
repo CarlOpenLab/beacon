@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -55,8 +56,8 @@ type sessionEntry struct {
 	session string
 	label   string
 	meta    string
-	// holder is who else holds the shell, for the row's mark: it is what says a
-	// shell is being driven from elsewhere without opening it.
+	// holder is who else holds the shell, for the row's tooltip: it is what
+	// says a shell is being driven from elsewhere without opening it.
 	holder string
 	active bool
 	// alive is whether the shell is still running, which is what decides whether
@@ -74,6 +75,13 @@ type sessionEntry struct {
 	// dir is the directory a pane stands in, shown under the workspace's row
 	// when the pane's name repeats. Empty for rows that do not draw it.
 	dir string
+	// cwd is the directory the row's path line shows, and branch is the
+	// checkout HEAD names there. createdAt and endedAt bound the run time the
+	// row shows at its right edge.
+	cwd       string
+	branch    string
+	createdAt time.Time
+	endedAt   time.Time
 	// panes are the terminals behind a split's one row, in the order the body
 	// draws them. Empty for an ordinary session.
 	panes []sessionEntry
@@ -89,10 +97,28 @@ type sessionEntry struct {
 	since    int64
 }
 
-// withStatus fills a row from a session summary.
-func (e sessionEntry) withStatus(sum protocol.Summary) sessionEntry {
+// withSummary fills a row from a session summary: what the shell is doing, and
+// the facts the row's path, branch and run time lines are read from.
+func (e sessionEntry) withSummary(sum protocol.Summary) sessionEntry {
 	e.status, e.unread, e.message, e.kind, e.progress, e.since =
 		sum.Status, sum.Unread, sum.Message, sum.Kind, sum.Progress, sum.Since
+	return e.withFacts(sum)
+}
+
+// withFacts fills only the row's identity: where it stands and how long it has
+// run. A workspace keeps its aggregate status while taking them from its first
+// pane.
+func (e sessionEntry) withFacts(sum protocol.Summary) sessionEntry {
+	if sum.Cwd != "" {
+		e.cwd = sum.Cwd
+	}
+	e.branch = sum.Branch
+	if t, err := time.Parse(time.RFC3339Nano, sum.CreatedAt); err == nil {
+		e.createdAt = t
+	}
+	if t, err := time.Parse(time.RFC3339Nano, sum.EndedAt); err == nil {
+		e.endedAt = t
+	}
 	return e
 }
 
@@ -237,6 +263,7 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 		machine: machine,
 		session: first.id,
 		label:   w.sidebarName(first, machine),
+		cwd:     first.cwd,
 		meta:    locales.WorkspacePanes(len(leaves)),
 		holder:  first.holder(),
 		pick:    func() { w.selectTab(first) },
@@ -257,6 +284,9 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 		}
 	}
 	entry.status, entry.unread, entry.progress, entry.since = w.aggregateStatus(leaves)
+	if sum, ok := w.summaryOf(first.machine, first.id); ok {
+		entry = entry.withFacts(sum)
+	}
 	for _, tb := range leaves {
 		if tb == w.activeTab() {
 			entry.active = true
@@ -270,6 +300,7 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 				session: tb.id,
 				label:   w.sidebarName(tb, machine),
 				dir:     shortDir(tb.cwd),
+				cwd:     tb.cwd,
 				meta:    tb.size(),
 				holder:  tb.holder(),
 				active:  tb == w.activeTab(),
@@ -279,7 +310,7 @@ func (w *window) workspaceRow(machine string, leaves []*tab) sessionEntry {
 				end:     func() { w.kill(tb) },
 			}
 			if sum, ok := w.summaryOf(machine, tb.id); ok {
-				pane = pane.withStatus(sum)
+				pane = pane.withSummary(sum)
 			}
 			entry.panes = append(entry.panes, pane)
 		}
@@ -389,6 +420,7 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 				machine: machineLocal,
 				session: tab.id,
 				label:   tab.name(),
+				cwd:     tab.cwd,
 				meta:    tab.size(),
 				holder:  tab.holder(),
 				active:  tab == w.activeTab(),
@@ -398,7 +430,7 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 				close:   func() { w.closeTab(tab) },
 			}
 			if sum, ok := w.summaryOf(machineLocal, tab.id); ok {
-				entry = entry.withStatus(sum)
+				entry = entry.withSummary(sum)
 			}
 			out = append(out, entry)
 		}
@@ -432,7 +464,7 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 				alive:   true,
 				pick:    func() { w.openOrSelect(machineLocal, summary.SessionID) },
 				end:     func() { w.killSessionOn(machineLocal, summary.SessionID, false) },
-			}.withStatus(summary))
+			}.withSummary(summary))
 		}
 		return w.orderedEntries(machine, out)
 	}
@@ -497,7 +529,7 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 			pick:    func() { w.openOrSelect(machine, summary.SessionID) },
 			end:     func() { w.killSessionOn(machine, summary.SessionID, false) },
 			close:   close,
-		}.withStatus(summary)
+		}.withSummary(summary)
 		out = append(out, entry)
 	}
 	// A workspace whose panes the machine's list has not caught up with still
@@ -516,9 +548,10 @@ func (w *window) entriesFor(machine string) []sessionEntry {
 }
 
 // sessionRow is one shell in its machine's group, drawn the way the sidebar draws
-// a session: the state on the left, the name, then the quiet facts — and the ×
-// that closes it, only while the pointer is on the row, because a row that wears
-// every control it has says nothing with any of them.
+// a session: the state on the left; then the name, the directory and the branch
+// it stands on, one above the other; the run time at the trailing edge; and the
+// × that closes it, only while the pointer is on the row, because a row that
+// wears every control it has says nothing with any of them.
 //
 // A row is dragged to move it in this window's order, and nothing else. While it
 // is dragged the row is drawn at the place it would land, faint, under the copy
@@ -530,7 +563,7 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 		padLeft = 24
 	}
 	row := ui.Row(c).Key("row:"+e.machine+"\x00"+key).
-		Height(uitokens.RowH).FillWidth().Padding(0, 8, 0, padLeft).Gap(8).
+		Height(uitokens.SessionH).FillWidth().Padding(0, 8, 0, padLeft).Gap(8).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
 	if pal.Dark {
@@ -642,44 +675,16 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 			w.renameField(c)
 			return
 		}
-		name := ui.Text(c, e.label).FontSize(13.5).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if unread {
-			name.FontWeight(650)
-		}
-		if !e.alive {
-			name.TextColor(pal.TextMuted)
-		}
-		// The lease is the one thing a status glyph cannot say, so the chosen row
-		// still spells it out: 只读, 已退出, 创建中.
-		if selected {
-			badgeTarget := e
-			if hasSplit && len(e.panes) > 0 {
-				badgeTarget = e.panes[0]
-			}
-			if badge, color, ok := w.leaseBadge(c.Theme(), badgeTarget); ok {
-				badgeChip(c, badge, color)
-			}
-		}
+		// What the row says under the state: what the shell is, where it stands,
+		// and how long it has run. The branch is in the tooltip rather than on a
+		// third line, which made every row taller than the list can spare. The
+		// lease and the exit are words the tooltip keeps too; on the row, the
+		// status glyph already leads with them.
 		closeFn := e.close
 		if hasSplit && len(e.panes) > 0 && e.panes[0].close != nil {
 			closeFn = e.panes[0].close
 		}
-		if closeFn != nil {
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-				// The button's own square stays in the row at rest as empty room,
-				// so a name never moves when the pointer arrives.
-				slot := ui.Box(c).Size(20, 20).Shrink(0)
-				if hovered {
-					slot.Children(func() {
-						// The row is on the acrylic column: the × takes the row's
-						// own ink, and a wash rather than an opaque square.
-						if iconButtonInk(c, iconClose, locales.TabCloseNamed(e.label), 20, pal.RowHover, pal.Text).Clicked() {
-							closeFn()
-						}
-					})
-				}
-			})
-		}
+		w.rowFacts(c, pal, e, hovered, closeFn)
 	})
 	if w.railLand == e.machine+"\x00"+key && selected {
 		// A machine picked in the rail lands on the session that needs the
@@ -702,6 +707,55 @@ func (w *window) sessionRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry
 	}
 	w.placeRow(row, e.machine, key, top, !dragged)
 	return dragging, dropFrom
+}
+
+// rowFacts draws what a session row and a split's pane row say besides their
+// state: the name over the directory, and the trailing slot. The branch is not
+// among them — a third line made the list taller than it can spare, so it lives
+// in the tooltip instead.
+func (w *window) rowFacts(c *ui.Context, pal *uitokens.Palette, e sessionEntry, hovered bool, closeFn func()) {
+	ui.Column(c).Grow(1).MinWidth(0).Gap(1).Children(func() {
+		name := ui.Text(c, e.label).FontSize(13.5).FixedLineHeight(18).SingleLine().Ellipsis("…")
+		if e.unread {
+			name.FontWeight(650)
+		}
+		if !e.alive {
+			name.TextColor(pal.TextMuted)
+		}
+		path := rowPath(e)
+		if path != "" {
+			ui.Text(c, path).FontSize(11).FixedLineHeight(14).SingleLine().Ellipsis("…").
+				TextColor(pal.TextMuted)
+		} else {
+			// The line is kept even when it is empty, so a shell that has not
+			// reported its directory yet lines up with every other row.
+			ui.Box(c).Height(14)
+		}
+	})
+	// The trailing edge is one slot: the shell's run time at rest, the × while
+	// the pointer is on the row. They take turns in the same place, so the time
+	// never moves when the close arrives and the close never squeezes the time.
+	tail := ui.Row(c).Width(24).Height(20).Shrink(0).Justify(ui.End).AlignItems(ui.Center)
+	tail.Children(func() {
+		if hovered && closeFn != nil {
+			// The row is on the acrylic column: the × takes the row's own ink,
+			// and a wash rather than an opaque square.
+			if iconButtonInk(c, iconClose, locales.TabCloseNamed(e.label), 20, pal.RowHover, pal.Text).Clicked() {
+				closeFn()
+			}
+			return
+		}
+		if run := runtimeText(e, c.Now()); run != "" {
+			ui.Text(c, run).FontSize(11).FixedLineHeight(14).SingleLine().
+				TextColor(pal.TextFaint).Width(24).TextAlign(ui.End)
+		}
+	})
+	// A live shell's run time grows, and nothing else on the row changes with
+	// the wall clock: one frame a little past every half minute keeps the
+	// number honest without making the window redraw for it every frame.
+	if !e.createdAt.IsZero() && e.endedAt.IsZero() {
+		c.After(20 * time.Second)
+	}
 }
 
 // drawTreeDashV draws rounded micro-dot dashes vertically along a tree trunk.
@@ -730,7 +784,7 @@ func drawTreeDashH(p *ui.Painter, x0, x1, y, height, dash, gap float32, c ui.Col
 // subtle tree branch connecting from the parent down to each child pane.
 func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, last bool, top float32) {
 	key := sessionKey(e)
-	row := ui.Row(c).Key("pane:"+e.machine+"\x00"+key).Height(uitokens.RowH).FillWidth().
+	row := ui.Row(c).Key("pane:"+e.machine+"\x00"+key).Height(uitokens.PaneH).FillWidth().
 		Padding(0, 8, 0, 24).Gap(8).
 		AlignItems(ui.Center).Radius(uitokens.RowRadius).Margin(0, 0, 1, 0).
 		Label(e.label).Tooltip(w.sessionTooltip(e))
@@ -796,30 +850,9 @@ func (w *window) paneRow(c *ui.Context, pal *uitokens.Palette, e sessionEntry, l
 			w.renameField(c)
 			return
 		}
-		name := ui.Text(c, e.label).FontSize(13.5).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if e.unread {
-			name.FontWeight(650)
-		}
-		if !e.alive {
-			name.TextColor(pal.TextMuted)
-		}
-		if selected {
-			if badge, color, ok := w.leaseBadge(c.Theme(), e); ok {
-				badgeChip(c, badge, color)
-			}
-		}
-		if e.close != nil {
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-				slot := ui.Box(c).Size(20, 20).Shrink(0)
-				if hovered {
-					slot.Children(func() {
-						if iconButton(c, iconClose, locales.TabCloseNamed(e.label), 20).Clicked() {
-							e.close()
-						}
-					})
-				}
-			})
-		}
+		// A pane is a session too, so it reads like one: name, directory, and
+		// the run time that turns into its close on hover.
+		w.rowFacts(c, pal, e, hovered, e.close)
 	})
 	if row.Clicked() {
 		e.pick()
@@ -871,49 +904,26 @@ func (w *window) holds(e sessionEntry) bool {
 	return tb != nil && tb.held()
 }
 
-// leaseBadge is the row's state in words, for the states worth a badge: the two
-// that mean the person at the keyboard cannot type, or that there is nothing
-// left to type into. 控制中 is the ordinary case and wears no badge — a row that
-// badges everything says nothing. The colour is the same one the dot beside it
-// already uses, so the two never disagree.
-//
-// A row whose shell this window is watching asks its own tab, so the row and the
-// pane over it can never disagree; a shell nobody holds is not badged, because
-// there is nobody to be read-only about and the click that picks the row is the
-// claim.
-func (w *window) leaseBadge(t *ui.Theme, e sessionEntry) (string, ui.Color, bool) {
-	if tb := w.tabOf(e.machine, e.session); tb != nil {
-		if tb.isEnded() {
-			return locales.StateEnded(), t.Danger, true
-		}
-		if tb.isPending() {
-			return locales.StatePending(), shellColorsFor(t).quiet, true
-		}
-		if readOnly(tb) {
-			return locales.StateReadonly(), t.Warning, true
-		}
-		return "", t.Success, false
-	}
-	if !e.alive {
-		return locales.StateEnded(), t.Danger, true
-	}
-	if e.holder != "" {
-		return locales.StateReadonly(), t.Warning, true
-	}
-	return "", t.Success, false
-}
-
-// sessionTooltip is the row's full story, the numbers the row itself has no room
-// for: the session id, where it runs, its size, and who holds it.
+// sessionTooltip is the row's full story, the words and numbers the row itself
+// has no room for: the session id, where it runs, the branch it stands on, its
+// size, the state, and who holds it. The lease is here rather than on the row:
+// the status glyph already leads the row with the state a person scans for.
 func (w *window) sessionTooltip(e sessionEntry) string {
 	lines := []string{w.machineName(e.machine), e.session}
 	if e.meta != "" {
 		lines = append(lines, e.meta)
 	}
-	if e.dir != "" && e.dir != e.label {
+	if e.cwd != "" {
+		lines = append(lines, e.cwd)
+	} else if e.dir != "" && e.dir != e.label {
 		lines = append(lines, e.dir)
 	}
+	if e.branch != "" {
+		lines = append(lines, e.branch)
+	}
 	switch {
+	case !e.alive:
+		lines = append(lines, locales.StateEnded())
 	case w.holds(e):
 		// This window is a client like any other, and on this machine's panel it
 		// is the one holding the lease of the shell it is showing. 当前无人控制
@@ -925,22 +935,6 @@ func (w *window) sessionTooltip(e sessionEntry) string {
 		lines = append(lines, locales.StateControllerNobody())
 	}
 	return strings.Join(lines, "\n")
-}
-
-// badgeChip is a state in a small outlined chip: the browser client's badge, on
-// the ui's terms. It is a word in the state's own colour inside a hairline of the
-// same colour and nothing else — a state that is worth saying is worth saying
-// quietly, and a row wearing a wash for every state is a row nobody can scan.
-func badgeChip(c *ui.Context, text string, color ui.Color) {
-	// A chip is its word and nothing else: it does not wrap, and it does not
-	// give width up to the name beside it. Squeezed, 已退出 reads 已退/出 in a
-	// box drawn for three characters, which is a state badge that looks broken.
-	chip := ui.Row(c).Gap(4).AlignItems(ui.Center).Shrink(0).
-		PaddingX(6).Height(16).Radius(radiusSmall).
-		BorderWidth(1).BorderColor(color.Alpha(0.42))
-	chip.Children(func() {
-		ui.Text(c, text).FontSize(10).TextColor(color).SingleLine()
-	})
 }
 
 // newestTabOn is the most recently opened shell this window is watching on a

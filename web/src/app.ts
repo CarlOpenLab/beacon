@@ -200,11 +200,58 @@ function saveOrder(order: Map<string, string[]>): void {
   }
 }
 
-/** The short relative time the row shows at the end of a row: now, 4m, 2h, 3d, 1w. */
-function ago(ms: number, now = Date.now()): string {
-  if (!ms || !Number.isFinite(ms)) return ''
-  const d = Math.max(0, now - ms)
-  if (d < 60_000) return 'now'
+/**
+ * A directory as a session row writes it: the last three parts, with an
+ * ellipsis standing for the rest. The end is what tells one project from
+ * another; the root is the part safe to drop. The browser is not told the
+ * host's home directory, so it cannot shorten the front to ~ the way the
+ * desktop can.
+ */
+function displayCwd(dir: string): string {
+  if (!dir) return ''
+  const sep = dir.includes('\\') ? '\\' : '/'
+  const parts = dir.replace(/[/\\]+$/, '').split(/[/\\]+/).filter(Boolean)
+  if (parts.length <= 3) return dir
+  return `…${sep}${parts.slice(-3).join(sep)}`
+}
+
+/** parentDisplay drops the last part of a display path. */
+function parentDisplay(display: string): string {
+  const sep = display.includes('\\') ? '\\' : '/'
+  const cut = display.replace(/[/\\]+$/, '')
+  const i = cut.lastIndexOf(sep)
+  if (i < 0) return display
+  if (i === 0) return sep
+  return cut.slice(0, i)
+}
+
+/**
+ * rowPath is the path line under a row's name. When the name is the
+ * directory's own last part — a fresh shell that has not titled itself — the
+ * line gives the parent instead, so the two lines reconstruct one path rather
+ * than repeating it.
+ */
+function rowPath(s: Summary): string {
+  const shown = displayCwd(s.cwd)
+  if (!shown) return ''
+  const base = basename(s.cwd)
+  const name = s.title || base
+  return name && base && name === base ? parentDisplay(shown) : shown
+}
+
+/**
+ * runTime is how long the shell has run, shortly: the row's right column. The
+ * end is the shell's exit when it has one, so the number stops instead of
+ * growing past the process; a host that did not record the exit shows nothing.
+ */
+function runTime(s: Summary, now = Date.now()): string {
+  const created = Date.parse(s.createdAt)
+  if (!Number.isFinite(created)) return ''
+  const ended = s.endedAt ? Date.parse(s.endedAt) : NaN
+  const end = Number.isFinite(ended) ? ended : now
+  const d = end - created
+  if (d < 0) return ''
+  if (d < 60_000) return '<1m'
   if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`
   if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`
   if (d < 7 * 86_400_000) return `${Math.floor(d / 86_400_000)}d`
@@ -429,6 +476,10 @@ export class App {
     this.build()
     this.bindKeys()
     this.bindPaste()
+    // The run time is the only thing on the rows that changes without an
+    // event; a small pass a little past every half minute keeps it honest
+    // without re-rendering the list under the pointer or an open rename field.
+    window.setInterval(() => this.tickRunTimes(), 20_000)
 
     if (opts.mode === 'relay') {
       if (!opts.token) {
@@ -1545,6 +1596,22 @@ export class App {
     }
   }
 
+  /**
+   * tickRunTimes refreshes the run time on every row in place. It does not
+   * re-render: a row may be under the pointer, hold the focused 结束 button, or
+   * contain an open rename field, and replacing the list would take all three
+   * away.
+   */
+  private tickRunTimes(): void {
+    for (const row of this.fleetList.querySelectorAll<HTMLElement>('.tf-session')) {
+      const mv = this.machines.get(row.dataset.machine ?? '')
+      const s = mv?.sessions.find((x) => x.sessionId === row.dataset.sessionId)
+      if (!s || s.endedAt) continue
+      const node = row.querySelector<HTMLElement>('.tf-session-run')
+      if (node) node.textContent = runTime(s)
+    }
+  }
+
   /** Whether a row survives the sidebar's little search field. */
   private matchesFilter(s: Summary): boolean {
     if (!this.filter) return true
@@ -1560,10 +1627,8 @@ export class App {
       shown++
       const status = s.status || (!s.alive ? 'exited' : 'idle')
       const unread = Boolean(s.unread)
-      const progress = typeof s.progress === 'number' ? s.progress : -1
       const open = this.tabs.find((t) => t.machineId === mv.id && t.sessionId === s.sessionId)
       const mine = open?.role === ROLE.controller
-      const when = ago(s.since || Date.parse(s.createdAt))
 
       const row = el('div', 'tf-session')
       row.dataset.sessionId = s.sessionId
@@ -1575,42 +1640,28 @@ export class App {
       if (mine) row.classList.add('owned')
       else if (s.controller) row.classList.add('readonly')
 
-      const line = el('div', 'tf-session-title')
+      // The three things a person picks a shell by: what it is, where it
+      // stands, and how long it has run. The branch is in the tooltip: a
+      // third line made every row taller than the list can spare. The state
+      // glyph leads the row; the lease and the exit are words for the
+      // tooltip, not badges over the name — the glyph already says them.
+      row.append(statusGlyph(status, unread, 14))
+      const main = el('div', 'tf-session-main')
       const name = el('span', 'tf-session-name', s.title || basename(s.cwd) || s.sessionId)
-      line.append(name)
+      main.append(name)
+      // The path line keeps its place even when empty, so rows stay the same
+      // height and the text inside them does not move.
+      main.append(el('span', 'tf-session-path', rowPath(s)))
+      row.append(main)
 
-      // A badge names a state that is not the ordinary one: the two that mean
-      // this client cannot type, or that there is nothing left to type into.
-      if (!s.alive) {
-        line.append(el('span', 'tf-session-badge b-dead', '已退出'))
-      } else if (s.controller && !mine) {
-        line.append(el('span', 'tf-session-badge b-view', '只读'))
-      }
-
-      // What a session wants, in its own row: the message a program gave, the
-      // kind of block when it gave none, or how far along it is. The full text
-      // is in the tooltip; the row has one line and a name to keep.
-      if (status === 'waiting') {
-        const note = el('span', 'tf-session-note is-warn', s.message || kindLabel(s.kind))
-        note.title = s.message || kindLabel(s.kind)
-        line.append(note)
-      } else if (status === 'working') {
-        const note = progress >= 0 ? `${progress}%` : ago(s.since || 0)
-        if (note) {
-          const chip = el('span', 'tf-session-note is-quiet', note)
-          chip.title = progress >= 0 ? `进度 ${progress}%` : '运行中'
-          line.append(chip)
-        }
-      }
-
-      if (when) line.append(el('span', 'tf-session-when', when))
-      line.append(statusGlyph(status, unread))
-
-      // 结束 is the row's one destructive control, and it arrives with the
-      // pointer: the slot is reserved whether or not it is drawn, so hovering
-      // never moves the glyph beside it.
-      const act = el('span', 'tf-session-act')
+      // The trailing edge is one slot: the run time at rest, the × while the
+      // pointer is on the row. They take turns in the same place, so the time
+      // never moves when the close arrives and the close never squeezes it.
+      const tail = el('span', 'tf-session-tail')
+      const run = runTime(s)
+      if (run) tail.append(el('span', 'tf-session-run', run))
       if (s.alive) {
+        row.classList.add('closable')
         const kill = el('button', 'tf-kill', '✕')
         kill.type = 'button'
         kill.title = '结束该会话（终止主机上的进程）'
@@ -1618,9 +1669,9 @@ export class App {
           ev.stopPropagation()
           this.killSession(mv, s)
         }
-        act.append(kill)
+        tail.append(kill)
       }
-      line.append(act)
+      row.append(tail)
 
       const standing = !s.alive
         ? '已退出'
@@ -1632,15 +1683,16 @@ export class App {
       row.title = [
         s.title || basename(s.cwd) || s.sessionId,
         s.cwd,
+        s.branch,
         s.sessionId,
         `pid ${s.pid} · ${s.cols}×${s.rows}`,
         standing,
         s.message,
+        s.kind && !s.message ? kindLabel(s.kind) : '',
       ]
         .filter(Boolean)
         .join('\n')
 
-      row.append(line)
       row.onclick = () => {
         if (this.suppressRowClick) return
         this.attachOrFocus(mv.id, s.sessionId)
