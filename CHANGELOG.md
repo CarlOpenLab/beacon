@@ -4,6 +4,17 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.17
+
+**Beacon 0.7.17: 两行会话行与 Windows 实时目录 — Two-line session rows and live Windows cwd**
+
+- **A session row says its name, directory and run time on two lines, in both clients.** The branch no longer takes a third line — it made every row taller than the list could spare — and now lives in the row's tooltip, still following the live checkout (a detached HEAD shows the short commit). Rows are 48 points high; the run time sits at the trailing edge and gives its place to the close × on hover, and an exited shell keeps its final number instead of counting past its life.
+  — 桌面端与网页端的会话行都用两行说清名称、目录与运行时长。分支不再占第三行——它让每个会话都高出一截——改到悬停说明里，仍随实时 checkout 更新（detached HEAD 显示短哈希）。行高 48；时长在最右，悬停时让位给关闭 ×；已退出的 shell 冻结在退出那一刻，不再继续增长。
+- **Split panes follow the same rule.** The workspace row and every pane under it use the same two lines, run time and hover close, instead of panes being a different, single-line kind of row.
+  — 分屏窗格使用同一套规则：workspace 行与它下面的每个 pane 都是同样的两行、同样的时长与悬停关闭，不再是另一种单行样式。
+- **Windows tabs follow the shell, and a second launch raises the open window.** The live directory is read from the shell's own process on Windows too, so a PowerShell or cmd tab that has cd'd opens the next tab where the shell actually stands; PowerShell runs with a prompt wrapper that keeps its process directory in step with Set-Location. Starting Beacon again raises the existing window instead of starting a second hub under the same machine.
+  — Windows 上的标签跟随 shell：实时目录同样直接读 shell 进程，PowerShell 或 cmd 里 cd 过之后，新标签在 shell 实际所在处打开；PowerShell 以 prompt 包装启动，让进程目录跟随 Set-Location。再次启动 Beacon 会抬起已打开的窗口，而不是在同一台机器上启动第二个 hub。
+
 ## 0.7.16
 
 **Beacon 0.7.16: 亚克力材质上的界面文字恢复可读 — Legible chrome on the acrylic material**
