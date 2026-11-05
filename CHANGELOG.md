@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.18
+
+**Beacon 0.7.18: 新建终端不再卡在「正在创建终端…」 — A new terminal no longer waits forever**
+
+- **A new terminal always gets an answer.** A create the hub refuses — most often a shell whose inherited working directory was deleted — used to answer about a session id the client had never seen, so the answer was dropped and the tab stayed at "正在创建终端…". The refusal now reaches the tab that asked for it, which leaves the strip with the reason on screen ("新建终端失败：…"); if the directory is gone, the shell opens at home instead and the log names the directory that was replaced.
+  — 新建终端总有答复：hub 拒绝的创建（最常见的是继承来的工作目录已被删除）过去以一个客户端从未见过的会话 id 作答，答复被丢弃，tab 永远停在「正在创建终端…」。现在拒绝会送到发起它的 tab，带着原因离开（「新建终端失败：…」）；目录已不存在时，shell 改在 home 打开，日志说明被替换掉的目录。
+- **One failure no longer poisons every later create.** A tab closed while its create was still in flight stayed in the link's pending list; every later create bound its answer to that closed tab, so after one failure each new terminal stayed at "正在创建终端…" while the shell was mounted as a separate tab. The pending list now lets a closed tab go, the hub announces a new session before its watcher can put it in the session list, and the browser client takes the same path as the desktop.
+  — 一次失败不再拖垮之后的所有创建：创建途中被关闭的 tab 会一直留在 link 的 pending 列表里，之后每次创建都把答复绑给这个已关闭的 tab，于是一次失败后每个新终端都停在「正在创建终端…」，而 shell 被挂成另一个 tab。现在关闭的 tab 会从 pending 列表移除；hub 先答复创建，再让 watcher 把会话放进会话列表；浏览器端与桌面端走同一条路径。
+
 ## 0.7.17
 
 **Beacon 0.7.17: 两行会话行与 Windows 实时目录 — Two-line session rows and live Windows cwd**
