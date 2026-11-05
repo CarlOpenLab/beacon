@@ -823,6 +823,19 @@ export class App {
           this.syncComposer()
           return
         }
+        if (code === ERR.badRequest) {
+          // A create the hub refused before it made a shell (a directory that
+          // is gone, a shell that is not there): the tab still waiting for an
+          // id has nothing to wait for, so it goes and the reason is said out
+          // loud. Left in place it would read "新终端" forever.
+          const tab = sessionId ? this.findTab(machineId, sessionId) : undefined
+          if (!tab) {
+            const waiting = this.pendingTab(machineId)
+            if (waiting) this.removeTab(waiting)
+          }
+          this.toast(`新建终端失败：${message}`, 'error')
+          return
+        }
         this.toast(`${code}: ${message}`, 'error')
       },
     }

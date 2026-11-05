@@ -83,6 +83,31 @@ func TestANewShellKeepsTheDirectoryItWasGiven(t *testing.T) {
 	}
 }
 
+// A directory that was chosen and has since gone — a finished agent's worktree,
+// a deleted scratch directory — cannot be a shell's working directory: the PTY
+// refuses to start there, and the new terminal used to stay stuck at
+// "正在创建终端…" with no shell behind it. The shell opens at home instead.
+func TestANewShellFallsBackHomeWhenItsDirectoryIsGone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	gone := t.TempDir()
+	if err := os.Remove(gone); err != nil {
+		t.Fatalf("remove the directory: %v", err)
+	}
+
+	sess, err := Start("s-gone", 80, 24, gone, "")
+	if err != nil {
+		t.Fatalf("Start in a deleted directory: %v", err)
+	}
+	defer sess.Close()
+
+	if got := sess.Summary().Cwd; !sameDir(got, home) {
+		t.Fatalf("Cwd = %q, want the fallback directory %q", got, home)
+	}
+}
+
 // The foreground program is what a card's header chips: the shell at its prompt,
 // whatever the shell is running on top of it. `exec` replaces the shell in its
 // own process group, which is the same place a job-control shell puts a command,

@@ -335,6 +335,22 @@ func (l *link) dispatch(m protocol.Msg) {
 	}
 	s := l.session(m.SessionID)
 	if s == nil {
+		// A create the hub refused is answered about a session id this side has
+		// never seen: the hub names the shell before it exists, and the tab
+		// waiting for it is still unbound. That waiting tab is the only thing
+		// the answer can be for, and dropping it left the tab reading
+		// "正在创建终端…" forever. Only the codes a create can be refused with
+		// are taken; a late error about a tab that was just closed must not
+		// consume the create. The pending list is FIFO, the same order `created`
+		// adopts in.
+		if m.T == protocol.STError && (m.Code == protocol.ErrBadRequest || m.SessionID == "") {
+			if waiting := l.takePending(); waiting != nil {
+				diag.Warnf("link", "create failed machine=%s session=%s code=%s message=%q",
+					l.label(), m.SessionID, m.Code, m.Message)
+				waiting.handlers.Failed(m.Code, m.Message)
+				return
+			}
+		}
 		// The hub is talking about a session this link has nobody for. It is
 		// the silent half of a blank pane: the replay was sent, and it landed
 		// here with no terminal behind it. Counted rather than logged per frame
@@ -401,17 +417,25 @@ func (l *link) droppedFrame(m protocol.Msg) {
 	}
 }
 
+// takePending removes and returns the oldest session waiting for its id. Both
+// an accepted create (`created`) and a refused one (`error`) answer the oldest
+// request, in the order this side sent them.
+func (l *link) takePending() *session {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.pending) == 0 {
+		return nil
+	}
+	s := l.pending[0]
+	l.pending = l.pending[1:]
+	return s
+}
+
 // adopt names a session the window is waiting for: the hub has created it, so
 // the tab waiting for it becomes the tab watching it, and the session list that
 // follows finds it already there.
 func (l *link) adopt(id string) {
-	l.mu.Lock()
-	var s *session
-	if len(l.pending) > 0 {
-		s = l.pending[0]
-		l.pending = l.pending[1:]
-	}
-	l.mu.Unlock()
+	s := l.takePending()
 	if s == nil || id == "" {
 		// A created frame nobody asked for: the tab that would have watched
 		// this shell is not here, and the shell is now a session this link
@@ -464,11 +488,23 @@ func (l *link) unwatchSession(s *session) {
 		return
 	}
 	id := s.sessionID()
-	if id == "" {
-		return
-	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if id == "" {
+		// A tab closed while its create is still in flight. Its place in the
+		// pending list must go with it: the created answer adopts the oldest
+		// waiting session, and one whose tab is gone would take every later
+		// create's answer, leaving the tab that asked for the shell waiting
+		// forever. The shell the hub makes anyway is mounted from the session
+		// list instead.
+		for i, p := range l.pending {
+			if p == s {
+				l.pending = append(l.pending[:i], l.pending[i+1:]...)
+				return
+			}
+		}
+		return
+	}
 	if l.sessions[id] == s {
 		delete(l.sessions, id)
 	}

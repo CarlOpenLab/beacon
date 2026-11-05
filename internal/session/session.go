@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CarlOpenLab/beacon/internal/diag"
 	"github.com/CarlOpenLab/beacon/internal/protocol"
 	"github.com/CarlOpenLab/beacon/internal/status"
 )
@@ -88,6 +89,20 @@ func Start(id string, cols, rows int, cwd, shell string) (*Session, error) {
 	}
 	path, args := shellCommand(shell)
 	dir := startDir(cwd)
+	// A directory that was chosen and has since gone — a finished agent's
+	// worktree, a deleted scratch directory — cannot be a shell's working
+	// directory: the PTY's chdir fails before the shell exists, and the client
+	// that asked for it can only report a terminal that never arrives. There is
+	// no shell to be had in a directory that is not there, so it opens at home
+	// instead, and the log names the directory that was replaced.
+	if cwd != "" && !dirUsable(dir) {
+		fallback := startDir("")
+		diag.Warnf("session", "cwd %q is gone; opening in %q", dir, fallback)
+		dir = fallback
+		if dir != "" && !dirUsable(dir) {
+			dir = ""
+		}
+	}
 	spec := ptySpec{
 		path: path,
 		args: args,
@@ -143,6 +158,14 @@ func startDir(cwd string) string {
 		return ""
 	}
 	return home
+}
+
+// dirUsable reports whether dir can be a session's working directory. A path
+// that exists but is not a directory fails chdir just the same as one that does
+// not exist at all.
+func dirUsable(dir string) bool {
+	st, err := os.Stat(dir)
+	return err == nil && st.IsDir()
 }
 
 // StatusChanges is signalled whenever what the session is doing changes.

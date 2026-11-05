@@ -2008,6 +2008,23 @@ func (h tabHandlers) Failed(code, message string) {
 			}
 			w.invalidate()
 		})
+	case protocol.ErrBadRequest:
+		// A create refused before a shell existed — a directory that cannot be
+		// opened, a shell that is not there. The tab that was waiting has
+		// nothing left to wait for; leaving it would read "正在创建终端…"
+		// forever over a shell that was never made. It goes, and the window
+		// says what the hub said. The same code on an attached tab is one
+		// frame's refusal, not the shell's end, and is only logged above.
+		w.update(func() {
+			tb := h.tab()
+			if tb == nil || tb.id != "" {
+				return
+			}
+			diag.Warnf("term", "create refused machine=%s: %s", tb.machine, message)
+			w.removeTab(tb)
+			w.setNotice(locales.AppCreateFailed(message))
+			w.invalidate()
+		})
 	case protocol.ErrControlOff:
 		// The machine said no: it allows other clients to watch and not to type.
 		// There is no holder to name, so this is not the popover — it is the line

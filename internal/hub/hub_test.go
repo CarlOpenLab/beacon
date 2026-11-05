@@ -172,6 +172,37 @@ func TestCreateInputOutput(t *testing.T) {
 	a.waitOutput("RES_42")
 }
 
+// A create's own watcher is what first puts its session in a session list. It
+// starts after the client that asked for the shell has been told which one it
+// got, so the list a create causes cannot arrive before the created answer. A
+// list that arrives first mounts the shell as a second tab, while the tab that
+// asked for it is still waiting for its id.
+func TestACreateAnnouncesItsSessionAfterTheCreatedAnswer(t *testing.T) {
+	ts := newTestHub(t)
+	c := dialTest(t, ts)
+
+	for i := 0; i < 5; i++ {
+		id := fmt.Sprintf("order%d", i)
+		c.send(protocol.Msg{
+			T: protocol.CTCreate, SessionID: id,
+			Cols: 80, Rows: 24, Shell: "/bin/sh",
+		})
+		for {
+			m := c.recv()
+			if m.T == protocol.STSessions {
+				for _, s := range m.Sessions {
+					if s.SessionID == id {
+						t.Fatalf("the session list named %s before the create answer", id)
+					}
+				}
+			}
+			if m.T == protocol.STCreated && m.SessionID == id {
+				break
+			}
+		}
+	}
+}
+
 func TestViewerCannotInputAndClaimPreempts(t *testing.T) {
 	ts := newTestHub(t)
 	a := dialTest(t, ts)

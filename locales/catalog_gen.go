@@ -4420,6 +4420,20 @@ func (msgs Messages) AppTerminalUnavailable(reason string) string {
 	return Catalog.Format(msgs.locale, "app_terminal_unavailable", map[string]any{"reason": reason})
 }
 
+// AppCreateFailed says "新建终端失败：{reason}"
+// in the language the app shows.
+//
+// The status bar, when a create request was refused before a shell existed.
+func AppCreateFailed(reason string) string { return In(i18n.Locale()).AppCreateFailed(reason) }
+
+// AppCreateFailed says "新建终端失败：{reason}"
+// in the language of msgs.
+//
+// The status bar, when a create request was refused before a shell existed.
+func (msgs Messages) AppCreateFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "app_create_failed", map[string]any{"reason": reason})
+}
+
 // PasteReadOnly says "只读：先取得这个终端的控制权"
 // in the language the app shows.
 func PasteReadOnly() string { return In(i18n.Locale()).PasteReadOnly() }

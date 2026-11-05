@@ -28,17 +28,12 @@ func (h *Hub) Create(id string, cols, rows int, cwd, shell, from string) (*sessi
 	return s, nil
 }
 
-// start makes the session without telling anyone about it. A caller that speaks
-// the client protocol announces the session itself, in the order its client
-// expects: the client that asked for it hears first, so its tab is the tab
-// watching the shell before the session list puts the shell in front of
-// everyone else.
+// start makes the session and begins watching it. A caller that speaks the
+// client protocol announces the session itself, in the order its client
+// expects — see handleCreate, which uses create so that the watcher cannot put
+// the session in a list before the asking client has heard which one it got.
 func (h *Hub) start(id string, cols, rows int, cwd, shell, from string) (*session.Session, error) {
-	if id == "" {
-		id = h.newSessionID()
-	}
-	cwd = h.inheritDir(from, cwd)
-	s, reused, err := h.mgr.Create(id, cols, rows, cwd, shell)
+	s, reused, err := h.create(id, cols, rows, cwd, shell, from)
 	if err != nil {
 		return nil, err
 	}
@@ -46,6 +41,19 @@ func (h *Hub) start(id string, cols, rows int, cwd, shell, from string) (*sessio
 		go h.watchSession(s)
 	}
 	return s, nil
+}
+
+// create makes the session without telling anyone about it and without starting
+// the watcher that broadcasts it. The caller announces it first, then starts
+// the watcher: a session list that carries the new shell before the created
+// answer does makes the asking client mount a second tab for a shell whose tab
+// was already there, waiting to be named.
+func (h *Hub) create(id string, cols, rows int, cwd, shell, from string) (*session.Session, bool, error) {
+	if id == "" {
+		id = h.newSessionID()
+	}
+	cwd = h.inheritDir(from, cwd)
+	return h.mgr.Create(id, cols, rows, cwd, shell)
 }
 
 // Sessions lists the live sessions in the shape clients receive them, in the

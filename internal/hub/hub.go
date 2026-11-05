@@ -520,8 +520,14 @@ func (h *Hub) handleCreate(c *client, m protocol.Msg) {
 	if id == "" {
 		id = h.newSessionID()
 	}
-	s, err := h.start(id, m.Cols, m.Rows, m.Cwd, m.Shell, m.From)
+	s, reused, err := h.create(id, m.Cols, m.Rows, m.Cwd, m.Shell, m.From)
 	if err != nil {
+		// The failure a create can have is the one that leaves a client waiting
+		// with nothing to show: no session was made, so there is no session
+		// line to read it off. Name the request and the reason here, where the
+		// directory the shell was asked to open in is still known.
+		diag.Warnf("hub", "create failed session=%s client=%s cols=%d rows=%d shell=%q cwd=%q from=%s: %v",
+			id, c.id, m.Cols, m.Rows, m.Shell, m.Cwd, m.From, err)
 		c.fail(protocol.ErrBadRequest, err.Error(), id)
 		return
 	}
@@ -529,6 +535,14 @@ func (h *Hub) handleCreate(c *client, m protocol.Msg) {
 		s.ID, c.id, m.Cols, m.Rows, m.Shell, m.Cwd, m.From)
 	c.send(protocol.Msg{T: protocol.STCreated, SessionID: s.ID})
 	h.attach(c, s, 0)
+	// The watcher is what puts the session in a session list, and it starts
+	// only after the client that asked for the shell has been told which one it
+	// got and has been attached. A list that arrives first makes that client
+	// mount the shell as a second tab, because the tab it opened for the create
+	// is still waiting for the id.
+	if !reused {
+		go h.watchSession(s)
+	}
 }
 
 func (h *Hub) handleAttach(c *client, id string, cursor int64) {
