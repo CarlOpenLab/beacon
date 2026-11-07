@@ -746,8 +746,11 @@ func (w *window) rowFacts(c *ui.Context, pal *uitokens.Palette, e sessionEntry, 
 			return
 		}
 		if run := runtimeText(e, c.Now()); run != "" {
+			// The run time takes the path's ink, not the faintest one: on the
+			// acrylic material in dark mode the faint grey disappears, and the
+			// two lines under the name are the same kind of fact.
 			ui.Text(c, run).FontSize(11).FixedLineHeight(14).SingleLine().
-				TextColor(pal.TextFaint).Width(24).TextAlign(ui.End)
+				TextColor(pal.TextMuted).Width(24).TextAlign(ui.End)
 		}
 	})
 	// A live shell's run time grows, and nothing else on the row changes with
