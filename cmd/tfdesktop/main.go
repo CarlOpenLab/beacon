@@ -14,6 +14,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -63,19 +64,7 @@ func main() {
 	// either way.
 	mygo.Use(native.New(updater.Options{DisableAutomaticChecks: true}))
 
-	addr := flag.String("addr", "127.0.0.1:0",
-		"loopback address for the daemon under the window; port 0 picks a free one")
-	webDir := flag.String("web-dir", "",
-		"serve the browser client from this directory instead of the embedded copy")
-	shell := flag.String("shell", "",
-		"shell to run in new tabs (default: the login shell)")
-	cwd := flag.String("cwd", "",
-		"working directory for new tabs (default: this machine's home directory)")
-	logLevel := flag.String("log-level", "",
-		"diagnostic log level: error, warn, info or debug (default: info, or debug when Settings → Diagnostics asked for it)")
-	logDir := flag.String("log-dir", "",
-		"where diagnostic logs are written (default: <settings dir>/logs)")
-	flag.Parse()
+	o := parseOptions(os.Args[1:], os.Stderr, flag.ExitOnError)
 
 	// Ctrl-C in a terminal, or the signal a service manager sends, shuts the
 	// window's shells down the same way closing the window does.
@@ -104,15 +93,15 @@ func main() {
 	// hot paths summarise themselves (see internal/diag and termConn.feed), so
 	// the file stays small; the flag is there to quieten it when it does not.
 	level := diag.Debug
-	if *logLevel != "" {
-		parsed, err := diag.ParseLevel(*logLevel)
+	if o.logLevel != "" {
+		parsed, err := diag.ParseLevel(o.logLevel)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "tfdesktop: -log-level: %v\n", err)
 			os.Exit(2)
 		}
 		level = parsed
 	}
-	logPath := *logDir
+	logPath := o.logDir
 	if logPath == "" {
 		logPath = filepath.Join(store.Dir(), "logs")
 	}
@@ -132,8 +121,8 @@ func main() {
 	var startupErr error
 
 	f := newFleet(ctx, log.Default())
-	f.addr = *addr
-	f.webDir = *webDir
+	f.addr = o.addr
+	f.webDir = o.webDir
 
 	// Apply what was saved before the window opens, so the first tab already
 	// has the right font and the machine is already on the relay it joined.
@@ -188,13 +177,17 @@ func main() {
 		}
 	}()
 
-	app := newWindow(f, store, *shell, *cwd)
-	// A second launch — the taskbar icon double-clicked, the exe run again —
-	// was handed to this instance by RequestSingleInstanceLock. There is one
-	// window, so the answer is to raise it rather than to open another.
-	mygo.App.OnSecondInstance(func([]string, string) {
-		app.raise()
-	})
+	app := newWindow(f, store, o.shell, o.cwd)
+	// A command line that named a directory opens the window's first shell
+	// there; one that named none leaves New Tab to choose, as it always did.
+	wd, _ := os.Getwd()
+	app.startupDir = resolveDir(o.dir, wd)
+	// A second launch — the taskbar icon double-clicked, the exe run again from
+	// a shell — was handed to this instance by RequestSingleInstanceLock. There
+	// is one window, so the answer is to raise it rather than to open another;
+	// a line that named a directory also opens a tab there, which is what
+	// "beacon ." means when Beacon is already up.
+	mygo.App.OnSecondInstance(app.handleSecondInstance)
 	// If the service could not start — the usual cause on macOS is the
 	// application firewall — the window says so where it already says what the
 	// fleet is doing, rather than leaving a machine that looks joined and
@@ -235,11 +228,92 @@ func main() {
 		// it — and about every other shell on this machine — arrives on the
 		// window's own link, so there is no polling loop to run. The tab is
 		// window state, so it is opened on the window's thread.
-		app.win.Update(app.newTab)
+		app.win.Update(app.startFirstTab)
 	})
 
 	if err := mygo.App.Run(); err != nil {
 		log.Fatalf("tfdesktop: %v", err)
 	}
 	stop()
+}
+
+// options is one command line: the flags the app was started with. The first
+// instance parses its own; a later instance's line arrives through
+// RequestSingleInstanceLock and is read by the same function, so "beacon ."
+// means the same thing whether the app was running or not.
+type options struct {
+	addr     string
+	webDir   string
+	shell    string
+	cwd      string
+	logLevel string
+	logDir   string
+	// dir is the first positional argument: the directory to open a tab in.
+	// Empty when the line named none.
+	dir string
+}
+
+// parseOptions reads a command line. onError decides what a flag this build
+// does not know does: the first launch exits with usage (flag.ExitOnError),
+// while a line handed over by a newer build is read for the arguments this
+// build understands instead of dropping the whole request.
+func parseOptions(args []string, output io.Writer, onError flag.ErrorHandling) *options {
+	fs := flag.NewFlagSet("tfdesktop", onError)
+	fs.SetOutput(output)
+	o := &options{}
+	fs.StringVar(&o.addr, "addr", "127.0.0.1:0",
+		"loopback address for the daemon under the window; port 0 picks a free one")
+	fs.StringVar(&o.webDir, "web-dir", "",
+		"serve the browser client from this directory instead of the embedded copy")
+	fs.StringVar(&o.shell, "shell", "",
+		"shell to run in new tabs (default: the login shell)")
+	fs.StringVar(&o.cwd, "cwd", "",
+		"working directory for new tabs (default: this machine's home directory)")
+	fs.StringVar(&o.logLevel, "log-level", "",
+		"diagnostic log level: error, warn, info or debug (default: info, or debug when Settings → Diagnostics asked for it)")
+	fs.StringVar(&o.logDir, "log-dir", "",
+		"where diagnostic logs are written (default: <settings dir>/logs)")
+	_ = fs.Parse(args)
+	if rest := fs.Args(); len(rest) > 0 {
+		o.dir = rest[0]
+	}
+	return o
+}
+
+// forwardedDir is the directory a second launch asked for: its first
+// positional argument, else -cwd, resolved against the shell that typed it.
+// Empty when the line asked for nothing but the window.
+func forwardedDir(args []string, wd string) string {
+	o := parseOptions(args, io.Discard, flag.ContinueOnError)
+	dir := o.dir
+	if dir == "" {
+		dir = o.cwd
+	}
+	return resolveDir(dir, wd)
+}
+
+// resolveDir turns a command line's directory into an absolute one. A relative
+// path belongs to the shell that typed it, so it is joined to that shell's
+// working directory — not this process's, which for an app the window server
+// started is a place nobody chose. A file names its directory, so
+// "beacon main.go" opens a shell beside the file. Empty stays empty.
+func resolveDir(dir, wd string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	if !filepath.IsAbs(dir) {
+		base := wd
+		if base == "" {
+			base, _ = os.Getwd()
+		}
+		if base != "" {
+			dir = filepath.Join(base, dir)
+		}
+	}
+	dir = filepath.Clean(dir)
+	if info, err := os.Stat(dir); err == nil && !info.IsDir() {
+		return filepath.Dir(dir)
+	}
+	return dir
 }

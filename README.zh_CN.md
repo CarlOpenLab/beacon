@@ -143,6 +143,22 @@ pnpm run build
 
 ---
 
+### 3. 从命令行唤起
+
+桌面端接受一个目录参数，并在其中打开一个 tab。Beacon 已经开着时再次启动会交给已有窗口：窗口置前，再加上这个 tab。相对路径相对输入这条命令的 shell；参数是文件时取它所在的目录；不带参数时只把窗口置前。
+
+```sh
+beacon .                  # 在当前 shell 所在目录开一个 tab
+beacon ~/src/project      # 在指定目录开一个 tab
+beacon main.go            # 在这个文件旁边开一个 tab
+```
+
+命令就是应用自身的可执行文件：Linux 的 `.deb` 会把 `beacon` 放进 `PATH`；Windows 用 `%LOCALAPPDATA%\Programs\Beacon\Beacon.exe`（把这个目录加进 `PATH` 后即可直接输入 `beacon`）；macOS 的可执行文件是 `Beacon.app/Contents/MacOS/Beacon`，全新启动也可以 `open -a Beacon --args <目录>`。
+
+首次启动时 `-shell`（新 tab 运行的程序）与 `-cwd`（新 tab 打开的位置）照旧可用；交给已运行窗口的命令行则读取位置参数或 `-cwd`。
+
+---
+
 ## 桌面端快捷键速查
 
 | 快捷键 | 动作 |

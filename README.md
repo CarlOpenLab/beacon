@@ -145,6 +145,22 @@ Once joined, opening `https://relay.example.com/` in any browser or phone connec
 
 ---
 
+### 3. Launch from a Terminal
+
+The desktop app takes a directory and opens one tab there. Started again while Beacon is up, the launch is handed to the open window: it comes forward and the tab is added. A relative path belongs to the shell that typed it; a file names its directory; a line with no argument only brings the window forward.
+
+```sh
+beacon .                  # a tab where this shell stands
+beacon ~/src/project      # a tab in a named directory
+beacon main.go            # a tab beside the file
+```
+
+The command is the app's own executable. Linux puts `beacon` on `PATH` from the `.deb`; on Windows run `Beacon.exe` from `%LOCALAPPDATA%\Programs\Beacon` (add that folder to `PATH` to type `beacon`); on macOS the executable is `Beacon.app/Contents/MacOS/Beacon`, and `open -a Beacon --args <dir>` launches a new instance with a directory.
+
+`-shell` (the program new tabs run) and `-cwd` (the directory they open in) work as before on the first launch. A line handed to a running window reads its positional directory, or `-cwd`.
+
+---
+
 ## Desktop Keybindings
 
 The desktop client is optimized for seamless keyboard navigation:

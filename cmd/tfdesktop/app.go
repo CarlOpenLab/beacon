@@ -36,6 +36,10 @@ type window struct {
 	font  terminal.Font
 	shell string
 	cwd   string
+	// startupDir is where a command line asked the window's first tab to
+	// open. Empty means New Tab chooses, which is what a launch from the
+	// desktop does.
+	startupDir string
 
 	// win is the main window handle, kept so a settings change can re-letter
 	// the terminals through Update — they belong to this window's UI thread.
@@ -1094,6 +1098,39 @@ func (w *window) newTab() {
 	}
 }
 
+// startFirstTab opens the window's first shell. A command line that named a
+// directory opens it there; anything else opens where New Tab would, so a
+// launch from the dock or the Start menu behaves as it always has.
+func (w *window) startFirstTab() {
+	if w.startupDir != "" {
+		w.newTabAt(w.startupDir)
+		return
+	}
+	w.newTab()
+}
+
+// newTabAt opens one shell in dir. dir is a path on this machine — a command
+// line names this machine's directories, not another machine's — so the tab is
+// a local one whichever machine the window happens to be showing.
+func (w *window) newTabAt(dir string) {
+	if dir == "" {
+		return
+	}
+	if tb := w.startLocalTabIn(dir, ""); tb != nil {
+		w.showInFocus(tb)
+	}
+}
+
+// handleSecondInstance is what a command line handed over by a second launch
+// does, on the window's own thread where mygo delivers it: a line that named a
+// directory opens a tab there, and the window comes forward either way.
+func (w *window) handleSecondInstance(args []string, wd string) {
+	if dir := forwardedDir(args, wd); dir != "" {
+		w.newTabAt(dir)
+	}
+	w.raise()
+}
+
 // startLocalTab asks this machine's hub for a shell and gives it a tab to land
 // in. It runs on the window's own thread — the tab is window state, and a
 // goroutine that opened one would race the frame that draws it — and the hub's
@@ -1110,6 +1147,13 @@ func (w *window) startLocalTab() *tab {
 	if dir == "" {
 		dir = w.cwd
 	}
+	return w.startLocalTabIn(dir, from)
+}
+
+// startLocalTabIn asks this machine's hub for a shell in dir and gives it a tab
+// to land in. from names a live session whose directory the new shell should
+// inherit when dir is empty; a directory the caller named is used as it stands.
+func (w *window) startLocalTabIn(dir, from string) *tab {
 	tb := w.openTab(machineLocal, "")
 	if tb == nil {
 		w.linkNote = w.noLinkReason(machineLocal)
