@@ -42,6 +42,39 @@ func TestASessionRowShowsTitlePathAndRuntime(t *testing.T) {
 	}
 }
 
+// The run time is the path line's trailing fact, not a third place to look:
+// it sits on the path's baseline at the row's trailing edge, so the row reads
+// as two lines — the name, and the line the secondary facts share.
+func TestTheRunTimeSitsOnThePathLine(t *testing.T) {
+	w, _ := newTestShellWindow(t, "fix the row")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("no home directory: %v", err)
+	}
+	cwd := filepath.Join(home, "dev", "own", "beacon")
+	w.tabs[1].alive = true
+	w.live = []protocol.Summary{{
+		SessionID: "s1", Title: "fix the row", Cwd: cwd, Alive: true,
+		CreatedAt: time.Now().Add(-90 * time.Minute).Format(time.RFC3339Nano),
+	}}
+
+	nav := drawNav(t, w)
+	path, ok := nav.Find(displayCwd(cwd))
+	if !ok {
+		t.Fatalf("the row has no path; texts = %v", nav.Texts())
+	}
+	run, ok := nav.Find("1h")
+	if !ok {
+		t.Fatalf("the row has no run time; texts = %v", nav.Texts())
+	}
+	if run.Y != path.Y || run.H != path.H {
+		t.Errorf("the run time (y=%.1f h=%.1f) is not on the path's line (y=%.1f h=%.1f)", run.Y, run.H, path.Y, path.H)
+	}
+	if run.X <= path.X {
+		t.Errorf("the run time is not at the trailing edge: time x=%.1f, path x=%.1f", run.X, path.X)
+	}
+}
+
 // A fresh shell is named after its directory. The path line then gives the
 // parent, so the two lines together read as one path instead of saying the
 // same directory twice.
