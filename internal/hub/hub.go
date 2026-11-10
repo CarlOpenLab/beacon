@@ -282,12 +282,22 @@ func (h *Hub) mayControl(c *client) bool {
 }
 
 // Run drives the janitor that releases idle controllers until ctx is done.
+//
+// The end of ctx is also the end of every shell this hub hosts. A PTY has no
+// owner but this hub: a shell left behind when the hub stops is one no client
+// can reach, holding a PTY device the machine cannot hand out again — and a
+// machine only has so many. macOS allows 511, so a program that starts and
+// drops hubs — a test suite running a case twenty times, a window reopening
+// after a crash — takes the system's own terminals down with it: Ghostty's next
+// window is refused a PTY. The daemon has always ended its sessions when its
+// context ends; the desktop's hub now keeps the same promise.
 func (h *Hub) Run(ctx context.Context) {
 	t := time.NewTicker(time.Minute)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
+			h.mgr.Shutdown()
 			return
 		case <-t.C:
 			h.reapIdleControllers()

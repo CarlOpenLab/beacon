@@ -12,9 +12,21 @@ import (
 func newTestFleet(t *testing.T) *fleet {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
 	f := newFleet(ctx, log.New(io.Discard, "", 0))
-	t.Cleanup(f.Close)
+	// A test's shells are real processes on real PTY devices, and a fleet that
+	// is merely Closed keeps them: Close drops the listener and the client, and
+	// the shells it never asked about go on running until the test binary
+	// exits. A case run with -count=20 then holds hundreds of PTYs while the
+	// package runs, and the machine has 511 of them in total — enough to leave
+	// the developer's own terminal unable to open a window, which is exactly
+	// how this was found. Shutting the hub's sessions down is part of tearing a
+	// test's fleet down, so do it explicitly rather than leaving it to the
+	// cancellation goroutine's scheduling.
+	t.Cleanup(func() {
+		f.Hub().Manager().Shutdown()
+		f.Close()
+	})
+	t.Cleanup(cancel)
 	return f
 }
 
