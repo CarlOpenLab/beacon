@@ -1288,6 +1288,9 @@ func (w *window) remoteHolder(machine, sessionID string) string {
 // on the UI thread.
 func (w *window) reconcile(live []protocol.Summary) {
 	w.live = live
+	// What the window is showing before the list moves the tab set: a tab that
+	// goes must leave the person on a shell the same pick would show.
+	on := w.activeTab()
 	present := make(map[string]bool, len(live))
 	for _, sum := range live {
 		present[sum.SessionID] = true
@@ -1318,6 +1321,7 @@ func (w *window) reconcile(live []protocol.Summary) {
 	// thing an ended shell needs no watching for. This is what used to put a
 	// 已退出 tab back on screen a moment after it was closed — a tab nobody
 	// could get rid of, because the next session list put it back.
+	mounted := false
 	for _, s := range live {
 		if !s.Alive {
 			continue
@@ -1340,19 +1344,26 @@ func (w *window) reconcile(live []protocol.Summary) {
 		}
 		if err := w.mount(s); err != nil {
 			log.Printf("tfdesktop: tab for %s: %v", s.SessionID, err)
+		} else {
+			mounted = true
 		}
 	}
 
-	if w.selected >= len(w.order) {
-		w.selected = len(w.order) - 1
+	switch {
+	case w.split != nil:
+		// A shell that appeared — started from a browser, say — has a tab and
+		// the strip now points at it; with panes on screen the strip follows
+		// the pane instead.
+		w.syncSplit()
+	case mounted:
+		// The newly mounted tab is the one to show, so the strip's last
+		// selection stands.
+	default:
+		// No shell appeared: keep the tab the person was looking at if it is
+		// still here, and otherwise show the strip's neighbour the way a pick
+		// would — its workspace with it.
+		w.showAfterTabsChanged(on)
 	}
-	if w.selected < 0 {
-		w.selected = 0
-	}
-	// A shell that appeared — started from a browser, say — has a tab and the
-	// strip now points at it; with panes on screen the strip follows the pane
-	// instead.
-	w.syncSplit()
 }
 
 // nextOrdinal finds the lowest unused 1-based index for tabs on the given machine.
@@ -1732,6 +1743,9 @@ func (w *window) removeTab(tb *tab) {
 	if key < 0 {
 		return
 	}
+	// What the window is showing before the strip moves: an earlier tab going
+	// must not take the person off the shell they are looking at.
+	on := w.activeTab()
 	// A pane showing this tab goes with it, quietly: the tree is settled after
 	// the tab set has moved, because selecting the pane that is left would name
 	// a strip index that is about to change. A workspace that is put away is
@@ -1747,13 +1761,49 @@ func (w *window) removeTab(tb *tab) {
 	tb.close()
 	delete(w.tabs, key)
 	w.order = dropKey(w.order, key)
+	w.showAfterTabsChanged(on)
+}
+
+// hasTab reports whether a tab is still on the strip.
+func (w *window) hasTab(tb *tab) bool {
+	for _, key := range w.order {
+		if w.tabs[key] == tb {
+			return true
+		}
+	}
+	return false
+}
+
+// showAfterTabsChanged puts the body back on what it should be showing once
+// tabs have left the strip. on is the tab that was on screen before they went:
+// it stays while it is still here, so closing a tab above it does not move the
+// person to the shell below. With it gone, the body takes the strip's neighbour
+// — and a neighbour belonging to a workspace brings that workspace's layout
+// back, exactly as picking it from the strip does. Drawing a pane of a split
+// alone leaves the sidebar's workspace row over a body that is not that
+// workspace, which is what a close used to do.
+func (w *window) showAfterTabsChanged(on *tab) {
+	if w.split != nil {
+		// The workspace on screen still holds the body; the strip follows its
+		// focused pane.
+		w.syncSplit()
+		return
+	}
+	if on != nil && w.hasTab(on) {
+		w.selectTab(on)
+		return
+	}
 	if w.selected >= len(w.order) {
 		w.selected = len(w.order) - 1
 	}
 	if w.selected < 0 {
 		w.selected = 0
 	}
-	w.syncSplit()
+	if w.selected < len(w.order) {
+		if tb := w.tabs[w.order[w.selected]]; tb != nil {
+			w.selectTab(tb)
+		}
+	}
 }
 
 // forgetSession drops a session from the list the panel draws, for one the hub
