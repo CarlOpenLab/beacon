@@ -670,6 +670,15 @@ func (w *window) followLease() {
 	if on == nil || on.conn == nil || on == w.arranged {
 		return
 	}
+	// A tab still waiting for its shell has no session to claim: the create
+	// answer has not named it yet. A claim sent now carries no id, and the
+	// hub's answer to it — an error with no session either — is read by the
+	// link as a refused create, which closes the tab the person just opened.
+	// The attach that creates the shell settles the lease by itself; this is
+	// read again next frame, once the tab has an id.
+	if on.id == "" {
+		return
+	}
 	// The shell on screen has changed: settle its lease once.
 	w.arranged = on
 	if on.held() {

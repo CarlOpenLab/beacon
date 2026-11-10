@@ -3,6 +3,7 @@ package main
 import (
 	"image"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -579,4 +580,45 @@ func TestTermConnResizeSyncOnClaim(t *testing.T) {
 
 	// syncSize should now propagate the saved dimensions without error.
 	conn.syncSize(0, 0)
+}
+
+// A tab that is still waiting for its shell has no session to claim. Asking
+// anyway sends a claim with no id, and the hub's answer to that — an error
+// naming no session — is taken by the link as a refused create, which closes
+// the tab the person just opened. The attach that creates the shell settles the
+// lease by itself.
+func TestAWaitingTabDoesNotAskForTheLease(t *testing.T) {
+	w, _ := newTestShellWindow(t)
+	l := newLink()
+	l.name = machineLocal
+	l.onSessions = w.sessionsArrived
+	w.local = &localLink{link: l}
+
+	var mu sync.Mutex
+	var sent []protocol.Msg
+	l.setSend(func(m protocol.Msg) bool {
+		mu.Lock()
+		sent = append(sent, m)
+		mu.Unlock()
+		return true
+	})
+
+	waiting := w.openTab(machineLocal, "")
+	if waiting == nil {
+		t.Fatal("the window opened no waiting tab")
+	}
+
+	// The view runs followLease every frame, as the real window does.
+	drawWindow(w).Frame()
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, m := range sent {
+		if m.T == protocol.CTClaim && m.SessionID == "" {
+			t.Fatalf("a tab with no shell yet asked for its lease: %v", m)
+		}
+	}
+	if !w.hasTab(waiting) {
+		t.Fatal("the waiting tab left the strip before its shell was named")
+	}
 }
