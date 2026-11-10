@@ -1306,6 +1306,17 @@ func (w *window) reconcile(live []protocol.Summary) {
 		if tb == nil || tb.machine != machineLocal || tb.id == "" || present[tb.id] || tb.alive || tb.done {
 			continue
 		}
+		// A list is a snapshot, and one taken before this tab's create can
+		// arrive after the create answer named it: the tab is in the strip,
+		// bound, but its attach has not been answered, so the list does not
+		// name it yet. Judging the tab by that list tore a fresh pane out of
+		// the split it was just put in — ⌘D's second shell vanishing while it
+		// was still being created. An attached tab is judged by the list; one
+		// the hub has not answered for is judged by the attach's own answer,
+		// which removes it when the session is gone (see Failed).
+		if !tb.everAttached() {
+			continue
+		}
 		// A pane showing this tab goes with it, the way removeTab takes one:
 		// the tree is settled below, once the tab set has stopped moving.
 		if n := w.leafOf(tb); n != nil {
