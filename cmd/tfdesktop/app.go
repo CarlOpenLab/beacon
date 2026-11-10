@@ -1906,13 +1906,29 @@ func (h tabHandlers) Created(id string) {
 	w.update(func() {
 		// The tab that asked for this shell is the one watching it now: its
 		// label, its pane and its lease all belong to the same tab.
-		if tb := w.tabOfSession(h.sess); tb != nil {
-			tb.bind(id)
-			if tb.held() {
-				// The view's size, which syncSize reads off the conn: the
-				// screen may still be the size the shell had a moment ago.
-				h.conn.syncSize(0, 0)
-			}
+		tb := w.tabOfSession(h.sess)
+		if tb == nil {
+			w.invalidate()
+			return
+		}
+		// A tab already watching this id is the same shell in a second tab. A
+		// hub can broadcast the session list before this answer — another
+		// session's watcher is what sends it — and the list then mounts a tab
+		// for a shell whose waiting tab had no id yet. The link routes a
+		// session's frames to one session object, so the older tab is the one
+		// that goes blank; the tab that asked for the shell is the one kept.
+		if dup := w.tabOf(tb.machine, id); dup != nil && dup != tb {
+			diag.Warnf("term", "one shell in two tabs machine=%s session=%s: keeping the tab that asked", tb.machine, id)
+			w.removeTab(dup)
+			// The mount had put itself on screen; the tab that asked for the
+			// shell is the one the person opened.
+			w.selectTab(tb)
+		}
+		tb.bind(id)
+		if tb.held() {
+			// The view's size, which syncSize reads off the conn: the
+			// screen may still be the size the shell had a moment ago.
+			h.conn.syncSize(0, 0)
 		}
 		w.invalidate()
 	})

@@ -84,6 +84,15 @@ type Hub struct {
 	// Written under mu like everything else a frame can change.
 	dismissed map[string]bool
 
+	// announced is the sessions a session list may name. A create puts its
+	// shell in the manager before the asking client is told which id it got,
+	// and this process broadcasts lists from every session's watcher: a list
+	// that carried the new shell in that window made the asking client mount it
+	// as a second tab while the tab that asked for it was still unnamed. The
+	// create announces the session after its answer is on the wire, so no list
+	// can name it earlier. Written under mu.
+	announced map[string]bool
+
 	// allowControl is whether a client that is not this machine's own window may
 	// be given a shell's lease. It is read and written under mu, like everything
 	// else a client's frame can change while other clients are being served.
@@ -198,6 +207,7 @@ func New(opts Options) *Hub {
 		allowControl: !opts.ControlOff,
 		clients:      map[*client]struct{}{},
 		dismissed:    map[string]bool{},
+		announced:    map[string]bool{},
 		watches:      map[string]*watch{},
 	}
 }
@@ -534,6 +544,10 @@ func (h *Hub) handleCreate(c *client, m protocol.Msg) {
 	diag.Infof("hub", "create session=%s client=%s cols=%d rows=%d shell=%q cwd=%q from=%s",
 		s.ID, c.id, m.Cols, m.Rows, m.Shell, m.Cwd, m.From)
 	c.send(protocol.Msg{T: protocol.STCreated, SessionID: s.ID})
+	// The answer is on this client's wire before any list may name the shell.
+	// A list that arrives first is mounted as a second tab by the client, which
+	// is still waiting for the id it has just been sent.
+	h.announce(s.ID)
 	h.attach(c, s, 0)
 	// The watcher is what puts the session in a session list, and it starts
 	// only after the client that asked for the shell has been told which one it
@@ -983,6 +997,9 @@ func (h *Hub) onSessionExit(s *session.Session) {
 	// a dismissal nobody asked for.
 	dismiss := h.dismissed[s.ID]
 	delete(h.dismissed, s.ID)
+	// The shell is gone, so its id is no longer announced: a later session made
+	// under the same id waits for its own create answer like any other.
+	delete(h.announced, s.ID)
 	var targets []*client
 	if w != nil {
 		targets = w.attached()
@@ -1063,9 +1080,27 @@ func (h *Hub) listSummaries() []protocol.Summary {
 	sessions := h.mgr.List()
 	out := make([]protocol.Summary, 0, len(sessions))
 	for _, s := range sessions {
+		if !h.announced[s.ID] {
+			// A create in flight: the shell exists, and the client that asked
+			// for it has not been told which one it got. A list naming it here
+			// would be mounted beside the tab that is still waiting.
+			continue
+		}
 		out = append(out, h.summaryLocked(s))
 	}
 	return out
+}
+
+// announce lets session lists name a session: its create answer is on the wire,
+// so the client that asked for it can no longer mistake the list for a shell it
+// did not open.
+func (h *Hub) announce(id string) {
+	h.mu.Lock()
+	if h.announced == nil {
+		h.announced = map[string]bool{}
+	}
+	h.announced[id] = true
+	h.mu.Unlock()
 }
 
 func (h *Hub) summaryLocked(s *session.Session) protocol.Summary {

@@ -24,6 +24,10 @@ func (h *Hub) Create(id string, cols, rows int, cwd, shell, from string) (*sessi
 	if err != nil {
 		return nil, err
 	}
+	// Lists may name it from here on. There is no waiting client on this path,
+	// but the invariant is the same one handleCreate keeps: a list never names
+	// a shell whose create has not been answered.
+	h.announce(s.ID)
 	h.broadcastSessions()
 	return s, nil
 }
