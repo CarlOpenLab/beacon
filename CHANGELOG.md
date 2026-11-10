@@ -4,6 +4,21 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.19
+
+**Beacon 0.7.19: 一个 shell 只占一个标签，会话行更好读 — One shell, one tab; rows you can read**
+
+- **A create race no longer leaves two tabs for one shell.** The hub put a new session in the manager before the asking client was told its id, and any other session's watcher could broadcast the full list in that window. The desktop mounted the shell as a second tab while the tab that asked was still unnamed; the created answer then bound the same shell to that tab, and the link routes one id to one session object — one tab drew, the other stayed blank. A session is now in no list until its create has been answered on the wire; the desktop also heals an older hub's order by keeping the tab that asked and dropping the duplicate mount.
+  — 创建会话的竞态不再留下两个标签：hub 过去在告知发起创建的客户端会话 id 之前就把它放进 manager，这段时间里任何其他会话的 watcher 都可能广播完整列表。桌面端在发起创建的标签还没有 id 时就把这个 shell 挂成了第二个标签；随后创建答复又把同一个 shell 绑给等待的标签，而 link 每个 id 只保留一个会话对象——一个标签有画面，另一个永远空白。现在会话在创建答复上线之前不会出现在任何列表里；桌面端也会兼容旧 hub 的顺序，保留发起创建的标签并移除误挂的重复标签。
+- **A shell still being created is not closed by a stale answer.** Two races could take a new tab away while its create was in flight: a session list snapshotted before the shell existed could arrive after the create answer had named the tab, and the window's automatic lease claim could go out before the tab had an id — both read as a refused create, so the tab closed and the shell mounted again somewhere else. A tab the hub has not answered for is now judged only by its attach answer, which removes it when the session is really gone.
+  — 正在创建的 shell 不会被过时的答复关掉：两个竞态会在创建途中拿走新标签——在 shell 存在之前拍下的会话列表可能在创建答复之后才到；窗口的自动租约请求也可能在标签还没有 id 时发出——两者都会被当成创建被拒，标签关闭、shell 又挂到别处。现在 hub 尚未答复的标签只由 attach 的答复判定，会话确实不在了才会移除。
+- **Closing the last tab brings its workspace back.** Closing a tab only clamped the strip's index and handed the body to the split logic; a close could land on one pane of a workspace that had been put away, with none of its layout and with the sidebar still listing it as a split. The window now keeps the tab on screen while it survives, and otherwise selects the strip's neighbour the way a pick would — a tab belonging to a workspace brings the workspace's layout back with it.
+  — 关闭最后一个标签会把 workspace 一起带回来：过去关闭标签只把选中索引收进范围，再把 body 交给分屏逻辑；关闭可能停在一个已收起 workspace 的单个 pane 上，布局没有恢复，侧栏却仍把它画成分屏。现在屏幕上的标签还在就保持选中，不在就按「点选」的方式选相邻标签——属于 workspace 的标签会连同布局一起回来。
+- **The run time is legible and on the path's line.** The time sat at the row's centre between the name and the path, in the faintest ink, so it read as a third place to look — and on the light theme it was the hardest text in the list. It now shares the path's baseline and its colour at the trailing edge; the × still takes the time's place on hover, and the row stays two lines and 48 points.
+  — 运行时间现在清楚且与路径同线：过去时间悬在名字和路径之间的行中央，用最淡的颜色，像是第三个要看的地方，浅色主题下又是列表里最难读的文字。现在它与路径共用一条基线和同一个颜色，仍在行尾；悬停时 × 仍在原位替换时间，行仍是两行 48 点。
+- **A tab from the command line.** `beacon [dir]` opens a tab in that directory — a file names its directory, and a relative path is resolved against the shell that typed it. A second launch hands the line to the running window, which comes forward and adds the tab; with no argument the window only comes forward, as before.
+  — 命令行打开标签：`beacon [目录]` 会在该目录打开一个标签——文件则以它所在的目录为准，相对路径按输入它的 shell 解析。再次启动会把参数交给已在运行的窗口，窗口抬起并打开标签；不带参数时只抬起窗口，行为与以前一致。
+
 ## 0.7.18
 
 **Beacon 0.7.18: 新建终端不再卡在「正在创建终端…」 — A new terminal no longer waits forever**
