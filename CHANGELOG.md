@@ -4,6 +4,13 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.20
+
+**Beacon 0.7.20: hub 退出时带走它的 shell，PTY 不再泄漏 — Stopping a hub no longer leaks its shells**
+
+- **A hub's shells end with it.** A PTY has no owner but the hub that opened it, and the desktop's hub used to leave its shells running when it stopped: the processes became unreachable while still holding PTY devices. macOS allows 511 in total, so repeated window restarts — or a test suite running a case twenty times — leaked silently until the machine's own terminal could not open a window. The hub now ends its sessions when its context ends, the same promise the daemon has always kept.
+  — hub 退出时带走它的 shell：PTY 只属于创建它的 hub，而桌面端的 hub 过去在停止时把 shell 留了下来——进程已经无人可达，却继续占着 PTY 设备。macOS 总共只有 511 个 PTY，反复重开窗口（或测试把一个用例跑二十遍）会悄悄泄漏，直到机器自己的终端也开不了窗口。现在 hub 在 context 结束时关闭自己的会话，与 daemon 一直遵守的约定一致。
+
 ## 0.7.19
 
 **Beacon 0.7.19: 一个 shell 只占一个标签，会话行更好读 — One shell, one tab; rows you can read**
