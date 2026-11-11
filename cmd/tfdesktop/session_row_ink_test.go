@@ -38,7 +38,7 @@ func TestTheRowsSecondLineTakesThePrimaryInk(t *testing.T) {
 	pal := uitokens.Dark
 	want := [3]uint32{uint32(pal.Text.R), uint32(pal.Text.G), uint32(pal.Text.B)}
 
-	for _, fact := range []string{"~/dev/own/beacon", "1h"} {
+	for _, fact := range []string{displayCwd(cwd), "1h"} {
 		box, ok := nav.Find(fact)
 		if !ok {
 			t.Fatalf("the row does not show %q; texts = %v", fact, nav.Texts())
