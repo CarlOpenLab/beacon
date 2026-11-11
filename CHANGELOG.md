@@ -4,6 +4,13 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## Unreleased
+
+**macOS 权限在重新构建后继续保留 — Permission grants survive rebuilds on macOS**
+
+- **Sign macOS desktop builds with a stable Apple Development identity.** Ad-hoc signatures bind TCC grants to a cdhash that changes on every build, so Screen Recording, Files & Folders and Accessibility prompts came back after each install. The release workflow now imports `MACOS_CERTIFICATE` and passes `-sign` to mygo, and `scripts/dev.sh` / `scripts/build.sh` pick the same identity for local builds.
+  — macOS 桌面端改用稳定的 Apple Development 证书签名：ad-hoc 签名把 TCC 授权绑在每次构建都会变的 cdhash 上，导致每次重装后都要重新申请屏幕录制、文件与文件夹、辅助功能权限。发布流水线现在导入 `MACOS_CERTIFICATE` 并给 mygo 传 `-sign`；本地开发可用 `scripts/dev.sh` / `scripts/build.sh` 选择同一身份签名。
+
 ## 0.7.22
 
 **Beacon 0.7.22: 会话行的第二行在白底上也读得清 — The row's second line reads on a bright material**
