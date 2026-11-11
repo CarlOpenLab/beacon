@@ -288,9 +288,24 @@ jobs:
       - run: pnpm --dir web install --frozen-lockfile
 
       # mygo build only downloads NSIS by itself on Windows; on this runner it has
-      # to be installed or the Setup .exe is silently skipped.
+      # to be installed or the Setup .exe is silently skipped. The mirror this
+      # runner resolves first has been refusing connections (four straight
+      # attempts died here before any of our code ran), so retry the install
+      # rather than shipping a release with no Windows installer.
       - name: Install NSIS
-        run: sudo apt-get update && sudo apt-get install -y nsis
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3 4 5; do
+            if sudo apt-get update -o Acquire::Retries=3 \
+               && sudo apt-get install -y -o Acquire::Retries=3 nsis; then
+              echo "NSIS installed on attempt $attempt"
+              exit 0
+            fi
+            echo "NSIS install failed on attempt $attempt; retrying"
+            sleep 15
+          done
+          echo "::error::could not install NSIS after five attempts"
+          exit 1
 
       - name: Build the installer and the portable executable
         env:
