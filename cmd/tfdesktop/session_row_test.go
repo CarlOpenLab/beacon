@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,10 +43,12 @@ func TestASessionRowShowsTitlePathAndRuntime(t *testing.T) {
 	}
 }
 
-// The run time is the path line's trailing fact, not a third place to look:
-// it sits on the path's baseline at the row's trailing edge, so the row reads
-// as two lines — the name, and the line the secondary facts share.
-func TestTheRunTimeSitsOnThePathLine(t *testing.T) {
+// The trailing slot is the row's own child, so the row's items-center centres
+// it the way it centres the state glyph: the run time at rest and the × on
+// hover both sit at the row's middle. Riding the path's line instead put both
+// in the row's bottom half with nothing else there, and it is the one place
+// the browser client's row has never put the same slot.
+func TestTheTrailingSlotSitsAtTheRowsCentre(t *testing.T) {
 	w, _ := newTestShellWindow(t, "fix the row")
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -59,19 +62,31 @@ func TestTheRunTimeSitsOnThePathLine(t *testing.T) {
 	}}
 
 	nav := drawNav(t, w)
-	path, ok := nav.Find(displayCwd(cwd))
+	row, ok := nav.Find("fix the row")
 	if !ok {
-		t.Fatalf("the row has no path; texts = %v", nav.Texts())
+		t.Fatalf("the row is missing; texts = %v", nav.Texts())
 	}
+	mid := row.Y + row.H/2
 	run, ok := nav.Find("1h")
 	if !ok {
 		t.Fatalf("the row has no run time; texts = %v", nav.Texts())
 	}
-	if run.Y != path.Y || run.H != path.H {
-		t.Errorf("the run time (y=%.1f h=%.1f) is not on the path's line (y=%.1f h=%.1f)", run.Y, run.H, path.Y, path.H)
+	if got := run.Y + run.H/2; math.Abs(float64(got-mid)) > 0.5 {
+		t.Errorf("the run time's middle is %.1f, want the row's %.1f", got, mid)
 	}
-	if run.X <= path.X {
-		t.Errorf("the run time is not at the trailing edge: time x=%.1f, path x=%.1f", run.X, path.X)
+	if run.X <= row.X+row.W/2 {
+		t.Errorf("the run time is not at the trailing edge: time x=%.1f, row x=%.1f w=%.1f", run.X, row.X, row.W)
+	}
+
+	// The × takes the same centred place when the pointer arrives.
+	nav.Move(row.X+row.W-14, mid)
+	nav.Frame()
+	kill, ok := nav.Find(locales.TabCloseNamed("fix the row"))
+	if !ok {
+		t.Fatalf("the hovered row has no close; texts = %v", nav.Texts())
+	}
+	if got := kill.Y + kill.H/2; math.Abs(float64(got-mid)) > 0.5 {
+		t.Errorf("the close's middle is %.1f, want the row's %.1f", got, mid)
 	}
 }
 

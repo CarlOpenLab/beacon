@@ -722,40 +722,40 @@ func (w *window) rowFacts(c *ui.Context, pal *uitokens.Palette, e sessionEntry, 
 		if !e.alive {
 			name.TextColor(pal.TextMuted)
 		}
-		// The path and the run time share the second line, in the same ink: the
-		// time used to sit at the row's centre, between the name and the path,
-		// in TextFaint — a column a person had to look for.
-		line := ui.Row(c).FillWidth().Height(20).AlignItems(ui.Center).Gap(6)
-		line.Children(func() {
-			path := rowPath(e)
-			if path != "" {
-				ui.Text(c, path).FontSize(11).FixedLineHeight(14).SingleLine().Ellipsis("…").
-					TextColor(pal.TextMuted).Grow(1).MinWidth(0)
-			} else {
-				// The line is kept even when it is empty, so a shell that has not
-				// reported its directory yet lines up with every other row.
-				ui.Box(c).Height(14).Grow(1)
+		// The path keeps its line even when it is empty, so a shell that has not
+		// reported its directory yet lines up with every other row.
+		if path := rowPath(e); path != "" {
+			ui.Text(c, path).FontSize(11).FixedLineHeight(14).SingleLine().Ellipsis("…").
+				TextColor(pal.TextMuted)
+		} else {
+			ui.Box(c).Height(14)
+		}
+	})
+	// The trailing edge is one slot: the shell's run time at rest, the × while
+	// the pointer is on the row. They take turns in the same place, so the time
+	// never moves when the close arrives and the close never squeezes the time.
+	// The slot is the row's own child, not a rider on the path's line: the row's
+	// AlignItems then centres it where it centres the state glyph — the middle
+	// of the row, where a hand goes looking for a close. Riding the path's line
+	// put both the time and the × in the row's bottom half with nothing else,
+	// and it is the one place the browser client's row has never put them.
+	tail := ui.Row(c).Width(24).Height(20).Shrink(0).Justify(ui.End).AlignItems(ui.Center)
+	tail.Children(func() {
+		if hovered && closeFn != nil {
+			// The row is on the acrylic column: the × takes the row's own ink,
+			// and a wash rather than an opaque square.
+			if iconButtonInk(c, iconClose, locales.TabCloseNamed(e.label), 20, pal.RowHover, pal.Text).Clicked() {
+				closeFn()
 			}
-			// The trailing edge is one slot: the shell's run time at rest, the ×
-			// while the pointer is on the row. They take turns in the same place
-			// on the path's line, so the time never moves when the close arrives
-			// and the close never squeezes the time.
-			tail := ui.Row(c).Width(24).Height(20).Shrink(0).Justify(ui.End).AlignItems(ui.Center)
-			tail.Children(func() {
-				if hovered && closeFn != nil {
-					// The row is on the acrylic column: the × takes the row's own
-					// ink, and a wash rather than an opaque square.
-					if iconButtonInk(c, iconClose, locales.TabCloseNamed(e.label), 20, pal.RowHover, pal.Text).Clicked() {
-						closeFn()
-					}
-					return
-				}
-				if run := runtimeText(e, c.Now()); run != "" {
-					ui.Text(c, run).FontSize(11).FixedLineHeight(14).SingleLine().
-						TextColor(pal.TextMuted).Width(24).TextAlign(ui.End)
-				}
-			})
-		})
+			return
+		}
+		if run := runtimeText(e, c.Now()); run != "" {
+			// The run time takes the path's ink, not the faintest one: on the
+			// acrylic material in dark mode the faint grey disappears, and both
+			// lines are the same kind of fact.
+			ui.Text(c, run).FontSize(11).FixedLineHeight(14).SingleLine().
+				TextColor(pal.TextMuted).Width(24).TextAlign(ui.End)
+		}
 	})
 	// A live shell's run time grows, and nothing else on the row changes with
 	// the wall clock: one frame a little past every half minute keeps the
