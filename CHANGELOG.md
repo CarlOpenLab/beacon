@@ -4,6 +4,13 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.21
+
+**Beacon 0.7.21: 行的尾槽回到行正中 — The trailing slot is centred in the row again**
+
+- **The close × and the run time sit at the row's middle.** The trailing slot had moved onto the path's second line, which left both the × and the run time in the bottom half of the 48-point row while the state glyph stayed centred at its middle — a flex row centres its own children, not its grandchildren, so the row's items-center no longer reached the slot. It is also the one place the browser client's row has never put the same slot. The slot is the row's own child again, centred beside the state glyph where a hand goes looking for a close; the run time keeps the path's ink, and the × still takes the time's place on hover.
+  — 关闭 × 和运行时间回到行的正中：尾槽此前挪到了路径所在的第二行，× 和运行时间都落在 48 点行的下半区，而状态 glyph 仍居中在行中央——flex 行居中的是自己的直接子元素，不是孙元素，行的 items-center 管不到这个槽。这也是网页端会话行唯一没把这个槽放在过的地方。尾槽重新成为行的直接子元素，与状态 glyph 一起居中，手找关闭键的地方；运行时间保留路径的墨色，悬停时 × 仍在原位替换时间。
+
 ## 0.7.20
 
 **Beacon 0.7.20: hub 退出时带走它的 shell，PTY 不再泄漏 — Stopping a hub no longer leaks its shells**
