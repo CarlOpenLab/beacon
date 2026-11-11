@@ -723,10 +723,14 @@ func (w *window) rowFacts(c *ui.Context, pal *uitokens.Palette, e sessionEntry, 
 			name.TextColor(pal.TextMuted)
 		}
 		// The path keeps its line even when it is empty, so a shell that has not
-		// reported its directory yet lines up with every other row.
+		// reported its directory yet lines up with every other row. The column
+		// stands on the acrylic material rather than inside a card, so the line
+		// takes the primary ink the card header's path already takes: on a
+		// bright material the muted grey falls under 2:1 and the line cannot be
+		// read at all.
 		if path := rowPath(e); path != "" {
 			ui.Text(c, path).FontSize(11).FixedLineHeight(14).SingleLine().Ellipsis("…").
-				TextColor(pal.TextMuted)
+				TextColor(pal.Text)
 		} else {
 			ui.Box(c).Height(14)
 		}
@@ -750,11 +754,11 @@ func (w *window) rowFacts(c *ui.Context, pal *uitokens.Palette, e sessionEntry, 
 			return
 		}
 		if run := runtimeText(e, c.Now()); run != "" {
-			// The run time takes the path's ink, not the faintest one: on the
-			// acrylic material in dark mode the faint grey disappears, and both
-			// lines are the same kind of fact.
+			// The run time takes the row's own ink, not the muted grey: it stands
+			// on the acrylic column with the path above it, where a bright
+			// material leaves that grey under 2:1.
 			ui.Text(c, run).FontSize(11).FixedLineHeight(14).SingleLine().
-				TextColor(pal.TextMuted).Width(24).TextAlign(ui.End)
+				TextColor(pal.Text).Width(24).TextAlign(ui.End)
 		}
 	})
 	// A live shell's run time grows, and nothing else on the row changes with

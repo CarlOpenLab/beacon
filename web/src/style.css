@@ -551,7 +551,13 @@ html.tf-row-dragging .tf-session .tf-kill {
 }
 
 /* The path keeps its line when empty, so rows stay the same height and the
-   text inside them does not move. */
+   text inside them does not move.
+
+   The sidebar stands on the window's acrylic material, not inside a card, so
+   this line takes the primary ink rather than the muted tier meant for text on
+   a surface: over a bright backdrop that grey falls under 2:1 and the line
+   cannot be read. a07947e raised the column's other chrome for this; the
+   session row's second line was missed. */
 .tf-session-path {
   min-height: 14px;
   overflow: hidden;
@@ -559,7 +565,7 @@ html.tf-row-dragging .tf-session .tf-kill {
   white-space: nowrap;
   font-size: var(--fs-11);
   line-height: 14px;
-  color: var(--fg-dim);
+  color: var(--fg);
 }
 
 /* The shell's life, at the row's trailing edge: the one number that keeps
@@ -577,9 +583,10 @@ html.tf-row-dragging .tf-session .tf-kill {
 }
 
 .tf-session-run {
-  /* The path's ink, not the faintest one: in dark mode the faint grey
-     disappears against the material, and both lines are the same kind of fact. */
-  color: var(--fg-dim);
+  /* The row's own ink, not the muted grey: the run time stands on the acrylic
+     column beside the path above it, where a bright backdrop leaves that grey
+     under 2:1. */
+  color: var(--fg);
   font-size: var(--fs-11);
   line-height: 14px;
   text-align: right;
