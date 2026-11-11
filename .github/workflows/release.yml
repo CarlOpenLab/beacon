@@ -186,8 +186,15 @@ jobs:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
-          set -euo pipefail
-          test -n "$MACOS_CERTIFICATE" || { echo "::error::Missing MACOS_CERTIFICATE secret"; exit 1; }
+          set -uo pipefail
+          # Without the secret the build falls back to an ad-hoc signature: users
+          # then re-grant permissions after each install, but they still get the
+          # release. Failing the whole job instead would take the macOS download
+          # down over a missing optional secret.
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "::warning title=macOS not signed::no MACOS_CERTIFICATE secret; the app is ad-hoc signed, so macOS asks for permissions again after each install"
+            exit 0
+          fi
           keychain="$RUNNER_TEMP/signing.keychain-db"
           password="$(openssl rand -base64 24)"
           security create-keychain -p "$password" "$keychain"
@@ -201,7 +208,10 @@ jobs:
           security list-keychains -d user -s "$keychain" login.keychain
           identity="$(security find-identity -v -p codesigning "$keychain" |
             sed -n 's/.*"\(Apple Development: .*\)"/\1/p' | head -1)"
-          test -n "$identity" || { echo "::error::No Apple Development identity in certificate"; exit 1; }
+          if [ -z "$identity" ]; then
+            echo "::warning title=macOS not signed::the certificate holds no Apple Development identity; the app is ad-hoc signed"
+            exit 0
+          fi
           echo "MACOS_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
 
       # universal only: the DMG is named "<name> <version>.dmg" without the arch,
@@ -209,7 +219,12 @@ jobs:
       - name: Build the app bundle and disk image
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
-        run: go tool mygo build -platform darwin/universal -sign "$MACOS_SIGNING_IDENTITY" -upload
+        run: |
+          set -euo pipefail
+          if [ -n "${MACOS_SIGNING_IDENTITY:-}" ]; then
+            exec go tool mygo build -platform darwin/universal -sign "$MACOS_SIGNING_IDENTITY" -upload
+          fi
+          exec go tool mygo build -platform darwin/universal -upload
 
       - name: Upload
         env:

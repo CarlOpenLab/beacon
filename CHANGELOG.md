@@ -10,6 +10,8 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
 
 - **Sign macOS desktop builds with a stable Apple Development identity.** Ad-hoc signatures bind TCC grants to a cdhash that changes on every build, so Screen Recording, Files & Folders and Accessibility prompts came back after each install. The release workflow now imports `MACOS_CERTIFICATE` and passes `-sign` to mygo, and `scripts/dev.sh` / `scripts/build.sh` pick the same identity for local builds.
   — macOS 桌面端改用稳定的 Apple Development 证书签名：ad-hoc 签名把 TCC 授权绑在每次构建都会变的 cdhash 上，导致每次重装后都要重新申请屏幕录制、文件与文件夹、辅助功能权限。发布流水线现在导入 `MACOS_CERTIFICATE` 并给 mygo 传 `-sign`；本地开发可用 `scripts/dev.sh` / `scripts/build.sh` 选择同一身份签名。
+- **A release no longer dies on a missing signing secret.** The signing step treated `MACOS_CERTIFICATE` as required, so with the secret absent the whole macOS job failed before a single line of our code ran and the release shipped without its installer. It now warns and falls back to an ad-hoc signature: users re-grant permissions after an install, but the download is there. The Windows job's NSIS install retries too — its runner has been unable to reach its apt mirror, which is what cost v0.7.22 its installer on four straight attempts.
+  — 发布不再因缺少签名 secret 而失败：签名步骤原先把 `MACOS_CERTIFICATE` 当作必需，secret 不存在时整个 macOS job 在我们任何代码运行之前就失败了，发布里也就没有安装包。现在它只发出警告并退回 ad-hoc 签名——用户重装后要重新授权，但至少下载得到。Windows job 的 NSIS 安装同样会重试：它的 runner 一直连不上 apt 镜像，这正是 v0.7.22 连续四次丢掉安装包的原因。
 
 ## 0.7.22
 
