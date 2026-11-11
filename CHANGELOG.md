@@ -4,6 +4,15 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.22
+
+**Beacon 0.7.22: 会话行的第二行在白底上也读得清 — The row's second line reads on a bright material**
+
+- **The path and the run time take the row's own ink.** Both lines stand on the window's acrylic material rather than inside a card, and both were painted in the muted grey meant for text on a surface. a07947e raised the sidebar's counts, its controls, the machine rail and the card header's path for exactly this, but the session row's second line was missed: over a bright material that grey falls under 2:1 and the line cannot be read at all — the case where the dark theme sits on a white backdrop. The row's two secondary facts now take the primary text ink, the same ink the shell's name takes, in both the desktop client (`nav.go`) and the browser client's stylesheet. On a dark material nothing visibly changes; that is the point.
+  — 路径和运行时间改用行自身的主墨：这两行站在窗口的亚克力材质上，而不是卡片里，却都用了「表面上的文字」那一档的灰。a07947e 为此把侧栏的计数、控件、机器轨和卡片头的路径都提了一档，唯独漏了会话行的第二行——材质亮起来时那层灰连 2:1 都不到，这一行就完全读不出来，暗黑主题叠在白底上正是这种情况。现在这一行的两个次要信息与 shell 名字同墨，桌面端（`nav.go`）和网页端样式表一并修改；深色材质下看起来没有变化，这正是目的。
+- **The browser client's bundle is rebuilt.** The running daemon serves the client from disk on every request, and the bundle it was serving was built three days before the ink fix, so the browser and the phone kept the old grey while the desktop was already right. Rebuilding the bundle makes the running daemon serve the new ink without a restart; each client is now pinned by a test that reads the stylesheet the browser actually loads.
+  — 浏览器端资源包重新构建：daemon 每个请求都从磁盘读取客户端，而它在 serve 的包比墨色修复早了三天，于是桌面端已经修好、浏览器和手机上却还是旧灰。重新构建后，运行中的 daemon 无需重启就是新墨；两个客户端现在各有一个测试钉住这条墨色，其中网页端的测试读的正是浏览器真正加载的那张样式表。
+
 ## 0.7.21
 
 **Beacon 0.7.21: 行的尾槽回到行正中 — The trailing slot is centred in the row again**
