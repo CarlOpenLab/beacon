@@ -17,6 +17,10 @@ import (
 func TestADoubleClickOnTheRowNamesTheShell(t *testing.T) {
 	w, f := newSplitWindow(t)
 	tb := openShell(t, w, f, testDir(t))
+	// Let the shell finish naming itself before the name is used as a target:
+	// cmd writes its own window title after it starts, and a row found by the
+	// title that was there a moment ago is a row that is not there any more.
+	settleName(t, w, tb)
 	if got := tb.name(); got == "" {
 		t.Fatal("the shell has no name to edit")
 	}
@@ -55,6 +59,9 @@ func TestADoubleClickOnTheRowNamesTheShell(t *testing.T) {
 		t.Fatalf("the hub names the shell %q, want the name that was typed", named)
 	}
 	// And the tab reads it, which is the person who typed it seeing it land.
+	// The hub's answer is one broadcast; the tab's title arrives on it, so the
+	// wait is for the name rather than for the field to close.
+	drainFor(t, w, func() bool { return tb.name() == "build box" })
 	if got := tb.name(); got != "build box" {
 		t.Fatalf("the tab reads %q, want the name it was given", got)
 	}
