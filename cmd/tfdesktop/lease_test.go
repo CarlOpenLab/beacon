@@ -53,12 +53,16 @@ func TestLeaseChromeFollowsTheLease(t *testing.T) {
 	}
 
 	// The row keeps the mark in its tooltip: the status glyph already leads the
-	// row, so the words are for the pointer rather than for over the name.
+	// row, so the words are for the pointer rather than for over the name. The
+	// holder's line is what is looked for, not the holder's name on its own: the
+	// tooltip's first line is this machine's hostname, and a machine whose name
+	// happens to contain the holder's would answer a name-shaped question
+	// whether or not the lease was named at all.
 	tt := drawNav(t, w)
 	if tt.HasText(locales.StateReadonly()) {
 		t.Errorf("the tab row writes 只读; texts = %v", tt.Texts())
 	}
-	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, "c9") {
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, locales.StateControllerOther("c9")) {
 		t.Fatalf("the tab row's tooltip does not name the holder; tooltip = %q", got)
 	}
 
@@ -298,7 +302,7 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 	if nav.HasText(locales.StateReadonly()) {
 		t.Errorf("the machine panel writes 只读 on the row; texts = %v", nav.Texts())
 	}
-	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, "c9") {
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, locales.StateControllerOther("c9")) {
 		t.Errorf("the machine panel's row does not name the holder in its tooltip; tooltip = %q", got)
 	}
 
@@ -314,8 +318,17 @@ func TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel(t *testing.T) {
 		t.Error("the header still offers back a shell this window holds")
 	}
 	nav.Frame()
-	if got := w.sessionTooltip(w.sessionEntries()[0]); strings.Contains(got, "c9") {
+	// The holder's whole line goes, not just the letters of the holder's name:
+	// the tooltip's first line is this machine's hostname, and a machine named
+	// after a holder — or containing the holder's name the way a runner named
+	// "…153a5c9c…" does — would keep answering a name-shaped question long after
+	// the lease came back. What is left is the line that says this window holds
+	// the shell.
+	if got := w.sessionTooltip(w.sessionEntries()[0]); strings.Contains(got, locales.StateControllerOther("c9")) {
 		t.Errorf("the row's tooltip still names a holder after the lease came back; tooltip = %q", got)
+	}
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, locales.StateControllerSelf()) {
+		t.Errorf("the row's tooltip does not say this window holds the shell again; tooltip = %q", got)
 	}
 }
 

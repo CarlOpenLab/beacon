@@ -229,7 +229,7 @@ func TestASessionRowDoesNotWriteTheLeaseAsAChip(t *testing.T) {
 	if nav.HasText(locales.StateReadonly()) {
 		t.Errorf("the row writes 只读 over its name; texts = %v", nav.Texts())
 	}
-	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, "c9") {
+	if got := w.sessionTooltip(w.sessionEntries()[0]); !strings.Contains(got, locales.StateControllerOther("c9")) {
 		t.Errorf("the tooltip lost the holder; tooltip = %q", got)
 	}
 
