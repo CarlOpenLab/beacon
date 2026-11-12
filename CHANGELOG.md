@@ -6,6 +6,11 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
 
 ## Unreleased
 
+**Tests that could not fail**
+
+- **A row's tooltip no longer answers a holder question with the machine's own name.** Four tests asked whether the holder's name appears in a session row's tooltip — but the tooltip's first line is this machine's hostname, so a runner whose name happens to contain the holder's (the macOS runner's `…153a5c9c…` contains `c9`) answered yes whether or not the lease was ever named. The assertions had no teeth at all: `TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel` failed on macOS for that reason while the tooltip was already correct. They now ask for the holder's whole line, and the lease's return is asserted as the line that says this window holds the shell, not merely as the holder's line being gone — a check that only looks at what left can pass on a tooltip that never said anything.
+  — 会话行的提示不再用机器自己的名字回答持有者问题：四个测试问的是持有者的名字是否出现在提示里，但提示的第一行是本机的 hostname，于是名字里恰好含持有者名字的 runner（macOS runner 的 `…153a5c9c…` 含 `c9`）会在租约从未被命名时也答「是」。这些断言根本没有牙齿——`TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel` 在 macOS 上正是因此失败，而那时的提示本来就是对的。现在它们改问持有者所在的那一整行，并把租约的归还断言为「本窗口持有」那一行出现，而不只是持有者那一行消失——只看什么消失了的检查，能在一个什么都没说的提示上通过。
+
 **Resizing a pane no longer races the shell's last output**
 
 - **A pane being resized while its shell exits no longer races the runtime.** `Resize` and the foreground poll both ask the kernel for the PTY's window on the raw descriptor, and both took it through `os.File.Fd()` — which reads the runtime's descriptor field with no reference held. The last read to return, pump's when the shell's output ends, drops the last reference and clears that field, so the ioctl could read a descriptor that was being destroyed underneath it. Both now take the descriptor through `SyscallConn().Control`, which holds a reference for the length of the call. The race was already failing `Test (race)` on every run of CI; the two tests that reproduce it run against a real PTY and the production code paths, not a stand-in.
