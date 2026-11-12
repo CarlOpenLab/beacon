@@ -11,6 +11,9 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
 - **A pane being resized while its shell exits no longer races the runtime.** `Resize` and the foreground poll both ask the kernel for the PTY's window on the raw descriptor, and both took it through `os.File.Fd()` — which reads the runtime's descriptor field with no reference held. The last read to return, pump's when the shell's output ends, drops the last reference and clears that field, so the ioctl could read a descriptor that was being destroyed underneath it. Both now take the descriptor through `SyscallConn().Control`, which holds a reference for the length of the call. The race was already failing `Test (race)` on every run of CI; the two tests that reproduce it run against a real PTY and the production code paths, not a stand-in.
   — 调整窗格大小不再与 shell 退出前的最后输出竞争：`Resize` 和前台轮询都通过 `os.File.Fd()` 拿裸描述符去问内核窗口大小，而 `Fd()` 读运行时的描述符字段时并不持有引用。最后一次返回的读——shell 输出结束时 pump 的那次——会丢掉最后一个引用并把该字段清掉，于是 ioctl 可能在描述符正被销毁时去读它。现在两者都改用 `SyscallConn().Control`，在调用期间持有引用。这个 race 此前让 CI 的 `Test (race)` 每次都失败；复现它的两个测试跑在真实 PTY 和生产代码路径上，而不是替身。
 
+- **A rename now waits for the name to land before the test reads it.** `TestADoubleClickOnTheRowNamesTheShell` read the tab's title the moment the rename field closed, but the hub's answer is a separate broadcast, so the title had not arrived yet — and on Windows `cmd` writes its own window title after it starts, which moved the row the test was about to click. It now waits for the name, and settles the row first, the way the two sibling tests in the same file already did.
+  — 重命名现在会等名字真正落到标签上再断言：该测试在输入框关闭的那一刻就读标签标题，而 hub 的答复是另一次广播，标题那时还没到；在 Windows 上 `cmd` 启动后还会写入自己的窗口标题，把即将被点击的那一行挪走。现在它等待名字落地，并先让行稳定下来——同一文件里另外两个测试本来就是这样做的。
+
 ## 0.7.23
 
 **Beacon 0.7.23: 设置里能试发一条通知 — A test notification you can send from Settings**
