@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -179,6 +180,10 @@ type settingsWindow struct {
 	notifyDone    bool
 	notifyError   bool
 	dockBadge     bool
+	// canNotify is whether this machine posts system notifications at all. It is
+	// asked once when the window opens rather than every frame, because the
+	// answer comes back over the app's event loop — a draw cannot wait for it.
+	canNotify bool
 
 	// language is the interface language: "" follows the languages the system
 	// says the person reads, and a tag such as "en" or "zh-Hans" is a choice.
@@ -252,7 +257,19 @@ func newSettingsWindow(desk *window, store *settings.Store, f *fleet) *settingsW
 	}
 	s.caNote = caNoteFor(s.ca)
 	s.loadInstalledFamilies()
+	s.loadCanNotify()
 	return s
+}
+
+// loadCanNotify asks the system whether it posts notifications at all. The
+// answer comes back over the app's event loop, so it is asked off the draw like
+// the font scan and lands before the 通知 page is read; until it does the page
+// assumes the answer a running app gives.
+func (s *settingsWindow) loadCanNotify() {
+	go func() {
+		can := notificationsSupported()
+		s.onDesk(func() { s.canNotify = can })
+	}()
 }
 
 // loadInstalledFamilies reads the machine's font directories off the UI thread:
@@ -527,7 +544,7 @@ func settingsPageMatches(pane int, q string) bool {
 	case paneSidebar:
 		keywords = []string{"sidebar", "machine", "toggle", "hide", "show", "rail", "侧栏", "机器", "主机", "隐藏"}
 	case paneNotifications:
-		keywords = []string{"notification", "waiting", "done", "error", "badge", "dock", "sound", "bell", "通知", "徽标", "响铃", "审批"}
+		keywords = []string{"notification", "waiting", "done", "error", "badge", "dock", "sound", "bell", "test", "通知", "徽标", "响铃", "审批", "测试"}
 	case paneKeyboard:
 		keywords = []string{"keyboard", "shortcut", "key", "hotkey", "split", "tab", "pane", "快捷键", "键位", "分屏"}
 	case paneDiagnostics:
@@ -980,6 +997,11 @@ func (s *settingsWindow) setKeys(a action, accel string) {
 
 // notificationsPage is what the window tells the user while they are looking
 // elsewhere: the three events worth a notification, and the Dock badge.
+//
+// It also answers the one question those switches cannot: whether a
+// notification appears on this machine at all. That is only knowable here — a
+// build that is not a bundle, or a system that says no — and the page would be
+// a set of controls that quietly do nothing without it.
 func (s *settingsWindow) notificationsPage(c *ui.Context) {
 	pal := paletteFor(c)
 	groupRows = 0
@@ -996,9 +1018,44 @@ func (s *settingsWindow) notificationsPage(c *ui.Context) {
 		settingRow(c, pal, locales.SettingsDockBadge(), "", func() {
 			toggle(c, pal, "dock-badge", &s.dockBadge)
 		})
+		settingRow(c, pal, locales.SettingsNotifyTest(), locales.SettingsNotifyTestNote(), func() {
+			// A machine that cannot post a notification has nothing to test:
+			// the row is left as its label and the reason, and no button that
+			// would promise a banner that cannot arrive.
+			if !s.canNotify {
+				ui.Text(c, locales.SettingsNotifyOffNote()).FontSize(11).TextColor(pal.Attention).
+					SingleLine().Ellipsis("…")
+				return
+			}
+			if ui.Button(c, locales.SettingsNotifySend()).AlignSelf(ui.End).Clicked() {
+				s.sendTestNotification()
+			}
+		})
 	})
 	ui.Text(c, locales.SettingsNotifyNote()).FontSize(12).TextColor(pal.TextMuted).
 		LineHeight(1.4).Padding(0, 4)
+}
+
+// sendTestNotification posts one notification of fixed words and reports what
+// the system said. The footer is where the page answers, so the answer to "will
+// one appear?" is in the same line as every other thing the window did.
+func (s *settingsWindow) sendTestNotification() {
+	// Show returns once the system has the notification, which on macOS can be
+	// the wait for the person answering whether to allow them, so it runs off
+	// the UI thread and comes back through the window's own queue.
+	go func() {
+		err := postTestNotification(locales.NotifyTestTitle(), locales.NotifyTestBody())
+		s.onDesk(func() {
+			switch {
+			case err == nil:
+				s.notice(locales.SettingsNotifyTested())
+			case errors.Is(err, mygo.ErrNotificationsDenied):
+				s.fail(locales.SettingsNotifyDenied())
+			default:
+				s.fail(locales.SettingsNotifyFailed(err.Error()))
+			}
+		})
+	}()
 }
 
 func (s *settingsWindow) terminalPane(c *ui.Context) {

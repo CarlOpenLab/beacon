@@ -3914,6 +3914,142 @@ func (msgs Messages) SettingsNotifyNote() string {
 	return Catalog.Format(msgs.locale, "settings_notify_note", nil)
 }
 
+// SettingsNotifyTest says "测试通知"
+// in the language the app shows.
+//
+// Beacon UI: the notifications page's row that posts one to show they work
+func SettingsNotifyTest() string { return In(i18n.Locale()).SettingsNotifyTest() }
+
+// SettingsNotifyTest says "测试通知"
+// in the language of msgs.
+//
+// Beacon UI: the notifications page's row that posts one to show they work
+func (msgs Messages) SettingsNotifyTest() string {
+	return Catalog.Format(msgs.locale, "settings_notify_test", nil)
+}
+
+// SettingsNotifyTestNote says "发一条出来，确认系统真的会显示通知。"
+// in the language the app shows.
+//
+// Beacon UI: what the test notification row explains
+func SettingsNotifyTestNote() string { return In(i18n.Locale()).SettingsNotifyTestNote() }
+
+// SettingsNotifyTestNote says "发一条出来，确认系统真的会显示通知。"
+// in the language of msgs.
+//
+// Beacon UI: what the test notification row explains
+func (msgs Messages) SettingsNotifyTestNote() string {
+	return Catalog.Format(msgs.locale, "settings_notify_test_note", nil)
+}
+
+// SettingsNotifySend says "发送"
+// in the language the app shows.
+//
+// Beacon UI: the button that posts the test notification
+func SettingsNotifySend() string { return In(i18n.Locale()).SettingsNotifySend() }
+
+// SettingsNotifySend says "发送"
+// in the language of msgs.
+//
+// Beacon UI: the button that posts the test notification
+func (msgs Messages) SettingsNotifySend() string {
+	return Catalog.Format(msgs.locale, "settings_notify_send", nil)
+}
+
+// SettingsNotifyTested says "测试通知已发出。"
+// in the language the app shows.
+//
+// Beacon UI: what the notifications page says after a test notification was
+// sent
+func SettingsNotifyTested() string { return In(i18n.Locale()).SettingsNotifyTested() }
+
+// SettingsNotifyTested says "测试通知已发出。"
+// in the language of msgs.
+//
+// Beacon UI: what the notifications page says after a test notification was
+// sent
+func (msgs Messages) SettingsNotifyTested() string {
+	return Catalog.Format(msgs.locale, "settings_notify_tested", nil)
+}
+
+// SettingsNotifyOffNote says "这台机器不能发系统通知，测试也看不到。"
+// in the language the app shows.
+//
+// Beacon UI: the notifications page's warning when the platform has no
+// notifications
+func SettingsNotifyOffNote() string { return In(i18n.Locale()).SettingsNotifyOffNote() }
+
+// SettingsNotifyOffNote says "这台机器不能发系统通知，测试也看不到。"
+// in the language of msgs.
+//
+// Beacon UI: the notifications page's warning when the platform has no
+// notifications
+func (msgs Messages) SettingsNotifyOffNote() string {
+	return Catalog.Format(msgs.locale, "settings_notify_off_note", nil)
+}
+
+// SettingsNotifyDenied says "系统不允许 Beacon 发通知。在系统的通知设置里允许后重试。"
+// in the language the app shows.
+//
+// Beacon UI: what the notifications page says when the system refused the
+// notification
+func SettingsNotifyDenied() string { return In(i18n.Locale()).SettingsNotifyDenied() }
+
+// SettingsNotifyDenied says "系统不允许 Beacon 发通知。在系统的通知设置里允许后重试。"
+// in the language of msgs.
+//
+// Beacon UI: what the notifications page says when the system refused the
+// notification
+func (msgs Messages) SettingsNotifyDenied() string {
+	return Catalog.Format(msgs.locale, "settings_notify_denied", nil)
+}
+
+// SettingsNotifyFailed says "测试通知没发出去：{reason}"
+// in the language the app shows.
+//
+// Beacon UI: what the notifications page says when the test notification
+// failed
+func SettingsNotifyFailed(reason string) string {
+	return In(i18n.Locale()).SettingsNotifyFailed(reason)
+}
+
+// SettingsNotifyFailed says "测试通知没发出去：{reason}"
+// in the language of msgs.
+//
+// Beacon UI: what the notifications page says when the test notification
+// failed
+func (msgs Messages) SettingsNotifyFailed(reason string) string {
+	return Catalog.Format(msgs.locale, "settings_notify_failed", map[string]any{"reason": reason})
+}
+
+// NotifyTestTitle says "Beacon 通知可以用了"
+// in the language the app shows.
+//
+// Beacon UI: the title of the test notification
+func NotifyTestTitle() string { return In(i18n.Locale()).NotifyTestTitle() }
+
+// NotifyTestTitle says "Beacon 通知可以用了"
+// in the language of msgs.
+//
+// Beacon UI: the title of the test notification
+func (msgs Messages) NotifyTestTitle() string {
+	return Catalog.Format(msgs.locale, "notify_test_title", nil)
+}
+
+// NotifyTestBody says "会话需要你、跑完或出错时，系统会在这里告诉你。"
+// in the language the app shows.
+//
+// Beacon UI: the body of the test notification
+func NotifyTestBody() string { return In(i18n.Locale()).NotifyTestBody() }
+
+// NotifyTestBody says "会话需要你、跑完或出错时，系统会在这里告诉你。"
+// in the language of msgs.
+//
+// Beacon UI: the body of the test notification
+func (msgs Messages) NotifyTestBody() string {
+	return Catalog.Format(msgs.locale, "notify_test_body", nil)
+}
+
 // ActionNextSession says "下一个会话"
 // in the language the app shows.
 //

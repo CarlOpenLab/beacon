@@ -1338,6 +1338,42 @@
   "@settings_notify_note": {
     "description": "Beacon UI: settings notify note"
   },
+  "settings_notify_test": "测试通知",
+  "@settings_notify_test": {
+    "description": "Beacon UI: the notifications page's row that posts one to show they work"
+  },
+  "settings_notify_test_note": "发一条出来，确认系统真的会显示通知。",
+  "@settings_notify_test_note": {
+    "description": "Beacon UI: what the test notification row explains"
+  },
+  "settings_notify_send": "发送",
+  "@settings_notify_send": {
+    "description": "Beacon UI: the button that posts the test notification"
+  },
+  "settings_notify_tested": "测试通知已发出。",
+  "@settings_notify_tested": {
+    "description": "Beacon UI: what the notifications page says after a test notification was sent"
+  },
+  "settings_notify_off_note": "这台机器不能发系统通知，测试也看不到。",
+  "@settings_notify_off_note": {
+    "description": "Beacon UI: the notifications page's warning when the platform has no notifications"
+  },
+  "settings_notify_denied": "系统不允许 Beacon 发通知。在系统的通知设置里允许后重试。",
+  "@settings_notify_denied": {
+    "description": "Beacon UI: what the notifications page says when the system refused the notification"
+  },
+  "settings_notify_failed": "测试通知没发出去：{reason}",
+  "@settings_notify_failed": {
+    "description": "Beacon UI: what the notifications page says when the test notification failed"
+  },
+  "notify_test_title": "Beacon 通知可以用了",
+  "@notify_test_title": {
+    "description": "Beacon UI: the title of the test notification"
+  },
+  "notify_test_body": "会话需要你、跑完或出错时，系统会在这里告诉你。",
+  "@notify_test_body": {
+    "description": "Beacon UI: the body of the test notification"
+  },
   "action_next_session": "下一个会话",
   "@action_next_session": {
     "description": "Beacon UI: action next session"

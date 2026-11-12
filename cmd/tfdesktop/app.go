@@ -435,6 +435,28 @@ func (w *window) notify(machine, id, title, body string) {
 	go n.Show()
 }
 
+// notificationsSupported and postTestNotification are the two calls the 设置 →
+// 通知 page makes to find out whether a notification would appear and to post
+// one, kept in variables for the reason updates.go gives about its three: the
+// answer comes back over the app's event loop, so a test process can neither ask
+// nor show anything. The window uses the real ones; a test replaces them and
+// reads what the page decided.
+var (
+	notificationsSupported = func() bool {
+		// A window drawn by a test has no app behind it, and the ask would wait
+		// on an event loop that never runs. An unready app has no answer yet;
+		// saying so is what a window drawn before launch would draw.
+		if !mygo.App.IsReady() {
+			return false
+		}
+		return mygo.NotificationsSupported()
+	}
+	postTestNotification = func(title, body string) error {
+		n := mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body})
+		return n.Show()
+	}
+)
+
 // raise brings the window to the person's attention: restored if it was
 // minimized, shown, and the app brought forward. It is the one answer to the
 // window being asked for from outside — a notification's click, or a second

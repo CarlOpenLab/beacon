@@ -497,6 +497,42 @@
   "@settings_notify_note": {
     "description": "Beacon UI: settings notify note"
   },
+  "settings_notify_test": "Test notification",
+  "@settings_notify_test": {
+    "description": "Beacon UI: the notifications page's row that posts one to show they work"
+  },
+  "settings_notify_test_note": "Post one to see that the system really shows them.",
+  "@settings_notify_test_note": {
+    "description": "Beacon UI: what the test notification row explains"
+  },
+  "settings_notify_send": "Send",
+  "@settings_notify_send": {
+    "description": "Beacon UI: the button that posts the test notification"
+  },
+  "settings_notify_tested": "The test notification was posted.",
+  "@settings_notify_tested": {
+    "description": "Beacon UI: what the notifications page says after a test notification was sent"
+  },
+  "settings_notify_off_note": "This machine cannot post system notifications, so a test would not be shown.",
+  "@settings_notify_off_note": {
+    "description": "Beacon UI: the notifications page's warning when the platform has no notifications"
+  },
+  "settings_notify_denied": "The system does not let Beacon post notifications. Allow them in your notification settings, then try again.",
+  "@settings_notify_denied": {
+    "description": "Beacon UI: what the notifications page says when the system refused the notification"
+  },
+  "settings_notify_failed": "The test notification was not posted: {reason}",
+  "@settings_notify_failed": {
+    "description": "Beacon UI: what the notifications page says when the test notification failed"
+  },
+  "notify_test_title": "Beacon notifications work",
+  "@notify_test_title": {
+    "description": "Beacon UI: the title of the test notification"
+  },
+  "notify_test_body": "You will be told when a session needs you, when one finishes, or when one fails.",
+  "@notify_test_body": {
+    "description": "Beacon UI: the body of the test notification"
+  },
   "action_next_session": "Next Session",
   "@action_next_session": {
     "description": "Beacon UI: action next session"

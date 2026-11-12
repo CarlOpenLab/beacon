@@ -61,6 +61,15 @@ func TestEveryMessageHasAnEnglishForm(t *testing.T) {
 		{zh.BlurSubtle(), en.BlurSubtle()},
 		{zh.BlurMedium(), en.BlurMedium()},
 		{zh.BlurDeep(), en.BlurDeep()},
+		{zh.SettingsNotifyTest(), en.SettingsNotifyTest()},
+		{zh.SettingsNotifyTestNote(), en.SettingsNotifyTestNote()},
+		{zh.SettingsNotifySend(), en.SettingsNotifySend()},
+		{zh.SettingsNotifyTested(), en.SettingsNotifyTested()},
+		{zh.SettingsNotifyOffNote(), en.SettingsNotifyOffNote()},
+		{zh.SettingsNotifyDenied(), en.SettingsNotifyDenied()},
+		{zh.SettingsNotifyFailed("why"), en.SettingsNotifyFailed("why")},
+		{zh.NotifyTestTitle(), en.NotifyTestTitle()},
+		{zh.NotifyTestBody(), en.NotifyTestBody()},
 	}
 	for _, p := range pairs {
 		if p.zh == p.en {
