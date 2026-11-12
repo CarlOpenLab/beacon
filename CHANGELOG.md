@@ -4,9 +4,9 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
-## Unreleased
+## 0.7.24
 
-**Tests that could not fail**
+**Tests that could not fail, and a descriptor that was being destroyed underneath its ioctl**
 
 - **A row's tooltip no longer answers a holder question with the machine's own name.** Four tests asked whether the holder's name appears in a session row's tooltip — but the tooltip's first line is this machine's hostname, so a runner whose name happens to contain the holder's (the macOS runner's `…153a5c9c…` contains `c9`) answered yes whether or not the lease was ever named. The assertions had no teeth at all: `TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel` failed on macOS for that reason while the tooltip was already correct. They now ask for the holder's whole line, and the lease's return is asserted as the line that says this window holds the shell, not merely as the holder's line being gone — a check that only looks at what left can pass on a tooltip that never said anything.
   — 会话行的提示不再用机器自己的名字回答持有者问题：四个测试问的是持有者的名字是否出现在提示里，但提示的第一行是本机的 hostname，于是名字里恰好含持有者名字的 runner（macOS runner 的 `…153a5c9c…` 含 `c9`）会在租约从未被命名时也答「是」。这些断言根本没有牙齿——`TestATakenShellIsMarkedInTheHeaderAndTheMachinePanel` 在 macOS 上正是因此失败，而那时的提示本来就是对的。现在它们改问持有者所在的那一整行，并把租约的归还断言为「本窗口持有」那一行出现，而不只是持有者那一行消失——只看什么消失了的检查，能在一个什么都没说的提示上通过。
@@ -18,6 +18,9 @@ pushed tag straight into the GitHub release notes, so keep the headings exactly
 
 - **A rename now waits for the name to land before the test reads it.** `TestADoubleClickOnTheRowNamesTheShell` read the tab's title the moment the rename field closed, but the hub's answer is a separate broadcast, so the title had not arrived yet — and on Windows `cmd` writes its own window title after it starts, which moved the row the test was about to click. It now waits for the name, and settles the row first, the way the two sibling tests in the same file already did.
   — 重命名现在会等名字真正落到标签上再断言：该测试在输入框关闭的那一刻就读标签标题，而 hub 的答复是另一次广播，标题那时还没到；在 Windows 上 `cmd` 启动后还会写入自己的窗口标题，把即将被点击的那一行挪走。现在它等待名字落地，并先让行稳定下来——同一文件里另外两个测试本来就是这样做的。
+
+- **The log store's mode assertion no longer asks Windows for POSIX bits.** The Windows job had been red for ten days on one assertion in `TestPersistentLogStoreSurvivesRestartAndClearsDisk`: the store writes its report through a temp file it chmods to 0600 (`logs.go:195`), but Windows has no Unix permission bits — `os.Chmod` there only moves the read-only flag, so every writable file reports 0666 and the assertion read "report permissions = 0666, want 0600". The store was never wrong; the assertion was asking a platform for something it cannot give. Four other files in the repository already guard this check with the same `runtime.GOOS != "windows"`, and this very package guards the store's own directory that way too — `logs_test.go` was the one that missed it. macOS and Linux still assert 0600.
+  — 日志库的权限断言不再向 Windows 索要 POSIX 位：Windows job 因 `TestPersistentLogStoreSurvivesRestartAndClearsDisk` 里一条断言红了十天——日志库通过一个 chmod 成 0600 的临时文件写报告（`logs.go:195`），而 Windows 没有 Unix 权限位，`os.Chmod` 在那里只挪动只读标志，于是每个可写文件都报 0666，断言读出来是「report permissions = 0666, want 0600」。日志库从来没错，是断言在向一个平台索要它给不出的东西。仓库里另外四个文件早已用同一个 `runtime.GOOS != "windows"` 守住这项检查，本包对日志库自己的目录也是这样守的——唯独 `logs_test.go` 漏了。macOS 与 Linux 仍然断言 0600。
 
 ## 0.7.23
 
