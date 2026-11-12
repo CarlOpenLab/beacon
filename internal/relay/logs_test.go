@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -83,8 +84,12 @@ func TestPersistentLogStoreSurvivesRestartAndClearsDisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode := info.Mode().Perm(); mode != 0o600 {
-		t.Fatalf("report permissions = %04o, want 0600", mode)
+	// Windows has no Unix permission bits: every writable file reports 0666
+	// there, so the mode only means something where those bits exist.
+	if runtime.GOOS != "windows" {
+		if mode := info.Mode().Perm(); mode != 0o600 {
+			t.Fatalf("report permissions = %04o, want 0600", mode)
+		}
 	}
 
 	loaded, err := NewPersistentLogStore(dir)
