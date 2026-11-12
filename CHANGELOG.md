@@ -4,10 +4,12 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
-## Unreleased
+## 0.7.23
 
-**macOS 权限在重新构建后继续保留 — Permission grants survive rebuilds on macOS**
+**Beacon 0.7.23: 设置里能试发一条通知 — A test notification you can send from Settings**
 
+- **The 通知 page answers whether a notification will appear on this machine.** The three switches — 需要你时通知, 完成时通知, 失败时通知 — decide *which* events notify, but nothing in the window could say whether the system shows one at all: a build that is not a bundle, or a macOS notification centre that says no, leaves every switch a control that quietly does nothing. The page now carries a 测试通知 row whose 发送 button posts one notification of fixed words, and the window's footer says what happened — posted, refused (with a reminder to allow notifications in the system's settings), or failed with the system's own reason. On a machine that cannot post notifications there is no button and the row says why instead, the same rule the 更新 page follows for a build that cannot update itself.
+  — 通知页现在回答「这台机器到底会不会显示通知」。三个开关——需要你时通知、完成时通知、失败时通知——决定*哪些*事件会通知，但窗口里没有任何东西能说明系统是否真的显示：不是 bundle 的构建、或 macOS 通知中心说了不，都会让每个开关都变成一个悄悄什么也不做的控件。现在这一页有一个「测试通知」行，它的「发送」按钮发出一条固定文案的通知，窗口底栏说明结果——已发出、被拒绝（附在系统的通知设置里允许的提醒）、或带着系统自己的原因失败。在发不出通知的机器上没有按钮，那一行只说原因，与更新页对不能自更新的构建采取的规则相同。
 - **Sign macOS desktop builds with a stable Apple Development identity.** Ad-hoc signatures bind TCC grants to a cdhash that changes on every build, so Screen Recording, Files & Folders and Accessibility prompts came back after each install. The release workflow now imports `MACOS_CERTIFICATE` and passes `-sign` to mygo, and `scripts/dev.sh` / `scripts/build.sh` pick the same identity for local builds.
   — macOS 桌面端改用稳定的 Apple Development 证书签名：ad-hoc 签名把 TCC 授权绑在每次构建都会变的 cdhash 上，导致每次重装后都要重新申请屏幕录制、文件与文件夹、辅助功能权限。发布流水线现在导入 `MACOS_CERTIFICATE` 并给 mygo 传 `-sign`；本地开发可用 `scripts/dev.sh` / `scripts/build.sh` 选择同一身份签名。
 - **A release no longer dies on a missing signing secret.** The signing step treated `MACOS_CERTIFICATE` as required, so with the secret absent the whole macOS job failed before a single line of our code ran and the release shipped without its installer. It now warns and falls back to an ad-hoc signature: users re-grant permissions after an install, but the download is there. The Windows job's NSIS install retries too — its runner has been unable to reach its apt mirror, which is what cost v0.7.22 its installer on four straight attempts.
