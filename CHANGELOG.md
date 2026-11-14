@@ -4,7 +4,7 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
-## Unreleased
+## 0.7.25
 
 - **Settings is a window of its own now, the way Gloss's settings window is.** Settings used to be a floating card of the page — draggable, but only within the main window's edges, and the person sizing the main window down squeezed the forms with it. Now it opens into its own window, a child of the main one, framed exactly as the main window is: the system drags it anywhere on the screen, the main window stays whole behind it, and the header carries the window's own controls — minimize, maximize, close — acting on the settings window itself. Every way out of settings funnels into one answer: the header's ✕, Escape, and the system's close, the lesson Gloss's settings window paid for. ⌘, opens it; Escape answers it; and the draft survives both, as it always has.
   — 设置现在是它自己的一个窗口，与 Gloss 的设置窗口同一种东西：以前设置是页面里的一张浮卡——能拖，但拖不出主窗口的边界，主窗口一窄表单跟着被挤。现在它开进一个主窗口的子窗口，边框与主窗口完全同一套：系统把它拖到屏幕任何位置，主窗口整个留在身后，标题栏带着窗口自己的三颗控件——最小化、最大化、关闭——作用于设置窗口本身。离开设置的所有路汇成同一个回答：标题栏的 ✕、Escape、系统的关闭——这是 Gloss 的设置窗口付过学费的教训。⌘, 打开，Escape 回答，草稿照旧两边都活着。
