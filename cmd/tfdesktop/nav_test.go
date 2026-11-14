@@ -440,8 +440,9 @@ func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
 		t.Fatalf("picking an unreachable machine did not ask for a credential (prompt %q)", w.reachPrompt)
 	}
 
-	// The dialog is on screen, with the machine's name and both answers.
-	tt := ui.NewTester(w.view, 900, 600)
+	// The dialog is on screen, with the machine's name and both answers. It is
+	// a window of its own now, so the test asks its view, not the page's.
+	tt := ui.NewTester(w.reachWindowView, reachWinW, reachWinH)
 	tt.Frame()
 	if !tt.HasText(locales.ReachTitle("other box")) {
 		t.Fatalf("the dialog does not name the machine; texts = %v", tt.Texts())
@@ -462,6 +463,46 @@ func TestPickingAnUnreachableMachineAsksFirst(t *testing.T) {
 	}
 	if w.selectedMachine() != machineLocal {
 		t.Errorf("declining left the panels on %q, want this machine", w.selectedMachine())
+	}
+}
+
+// The reach window is a window of the desktop now, not a sheet of the page: it
+// goes wherever the person drags it, off the main window included, and Escape
+// answers it no matter where it stands.
+func TestEscapeAnswersTheReachWindow(t *testing.T) {
+	f := newTestFleet(t)
+	w, _ := newTestShellWindow(t, "one")
+	w.fleet = f
+	// Enrolled, with no client link: the state before the first credential.
+	if err := f.SetRelay("wss://relay.example/relay/agent", "mac-mini", "secret", "", true); err != nil {
+		t.Fatalf("SetRelay: %v", err)
+	}
+	w.roster = []tunnel.Machine{{
+		ID: "other-box", Name: "other box", Online: true,
+		Host: protocol.Host{Platform: "linux", Arch: "amd64"},
+	}}
+
+	entry, ok := w.machineByID("other-box")
+	if !ok {
+		t.Fatal("the roster entry is not reachable by id")
+	}
+	w.selectMachine(entry)
+
+	tt := ui.NewTester(w.reachWindowView, reachWinW, reachWinH)
+	tt.Frame()
+	if !tt.HasText(locales.ReachTitle("other box")) {
+		t.Fatalf("the dialog is not up; texts = %v", tt.Texts())
+	}
+
+	// Escape is an answer: the question goes away and the panels come back to
+	// this machine, where they were.
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+	if w.reachPrompt != "" {
+		t.Errorf("按了 Escape 之后对话框还在：%q", w.reachPrompt)
+	}
+	if w.selectedMachine() != machineLocal {
+		t.Errorf("escape left the panels on %q, want this machine", w.selectedMachine())
 	}
 }
 
@@ -531,42 +572,49 @@ func TestThemeForFollowsTheSystemUnlessAsked(t *testing.T) {
 func TestSettingsOpensSwitchesPanesAndCloses(t *testing.T) {
 	w, _ := newTestShellWindow(t)
 	w.fleet = newTestFleet(t)
+	// Opening settings leaves the page: the window carries the pages now, so
+	// the test drives the settings window's own view for everything inside.
 	tt := ui.NewTester(w.view, 1000, 700)
 	if err := tt.Click(locales.ActionSettings()); err != nil {
 		t.Fatal(err)
 	}
-	if !w.settingsOpen || !tt.HasText(locales.SettingsFont()) {
-		t.Fatalf("settings did not open: %v", tt.Texts())
+	if !w.settingsOpen {
+		t.Fatal("settings did not open")
+	}
+	sw := w.settingsContent
+	st := ui.NewTester(sw.view, 820, 620)
+	st.Frame()
+	if !st.HasText(locales.SettingsFont()) {
+		t.Fatalf("the settings window does not name its pages; texts = %v", st.Texts())
 	}
 	for _, pane := range []string{
 		locales.SettingsPaneRelay(), locales.SettingsPaneServer(),
 		locales.SettingsPaneUpdates(), locales.SettingsPaneTerminal(),
 	} {
-		if err := tt.Click(pane); err != nil {
+		if err := st.Click(pane); err != nil {
 			t.Fatal(err)
 		}
 		if !w.settingsOpen {
-			t.Fatalf("pane %s closed settings: %v", pane, tt.Texts())
+			t.Fatalf("pane %s closed settings: %v", pane, st.Texts())
 		}
 	}
-	if err := tt.Click(locales.SettingsClose()); err != nil {
-		t.Fatal(err)
+	// Escape closes the window, and ⌘, opens it again: the two answers of the
+	// same door, whichever side of it the person is on.
+	st.Key(0, ui.KeyEscape)
+	st.Frame()
+	if w.settingsOpen {
+		t.Fatal("Escape did not close settings")
+	}
+	tt.Key(ui.Cmd, ui.KeyComma)
+	tt.Frame()
+	if !w.settingsOpen {
+		t.Fatal("settings shortcut did not open the window")
+	}
+	if err := st.Click(locales.SettingsClose()); err != nil {
+		t.Fatalf("settings cannot close from its own ✕: %v", err)
 	}
 	if w.settingsOpen {
 		t.Fatal("settings did not close")
-	}
-	tt.SetSize(720, 420)
-	tt.Key(ui.Cmd, ui.KeyComma)
-	if !w.settingsOpen {
-		t.Fatal("settings shortcut did not open the modal")
-	}
-	if err := tt.Click(locales.SettingsClose()); err != nil {
-		t.Fatalf("settings cannot close at the minimum window size: %v", err)
-	}
-	tt.Key(ui.Cmd, ui.KeyComma)
-	tt.Key(0, ui.KeyEscape)
-	if w.settingsOpen {
-		t.Fatal("Escape did not dismiss settings")
 	}
 }
 

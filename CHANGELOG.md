@@ -4,6 +4,14 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## Unreleased
+
+- **Settings is a window of its own now, the way Gloss's settings window is.** Settings used to be a floating card of the page — draggable, but only within the main window's edges, and the person sizing the main window down squeezed the forms with it. Now it opens into its own window, a child of the main one, framed exactly as the main window is: the system drags it anywhere on the screen, the main window stays whole behind it, and the header carries the window's own controls — minimize, maximize, close — acting on the settings window itself. Every way out of settings funnels into one answer: the header's ✕, Escape, and the system's close, the lesson Gloss's settings window paid for. ⌘, opens it; Escape answers it; and the draft survives both, as it always has.
+  — 设置现在是它自己的一个窗口，与 Gloss 的设置窗口同一种东西：以前设置是页面里的一张浮卡——能拖，但拖不出主窗口的边界，主窗口一窄表单跟着被挤。现在它开进一个主窗口的子窗口，边框与主窗口完全同一套：系统把它拖到屏幕任何位置，主窗口整个留在身后，标题栏带着窗口自己的三颗控件——最小化、最大化、关闭——作用于设置窗口本身。离开设置的所有路汇成同一个回答：标题栏的 ✕、Escape、系统的关闭——这是 Gloss 的设置窗口付过学费的教训。⌘, 打开，Escape 回答，草稿照旧两边都活着。
+
+- **The reach confirmation is a window of its own now, as Gloss's floating windows are.** Picking a machine this window cannot reach used to put a modal sheet over the whole window: the sheet's wash made the page inert under it — the shortcuts, the rail, every click answered nothing — until the question was answered, though the question concerns one machine. The dialog now lives in a little frameless window that stays above the main one and out of the taskbar: the page stays alive behind it, shortcuts included, its header drags it anywhere on the screen, off the main window included, the OS draws its shadow and its rounded corners, and it stands wherever it was put for the rest of the session. Escape, 取消 and closing the little window all put the question away; the window rebuilds itself the next time a machine needs the question.
+  — 接管确认弹窗现在是一个独立的浮窗，与 Gloss 的浮窗同一种东西：以前选一台连不上的机器会在整个窗口上盖一层模态蒙版，蒙版让底下的页面失去响应——快捷键、机器条、每一次点击都得不到回答——直到问题被答完，而这个问题只关于一台机器。现在它住在一个小的无边框窗口里，始终盖在主窗口上方、不进任务栏：背后的页面连同快捷键都保持可用，标题栏可以把它拖到屏幕任何位置，主窗口外面也一样，阴影和圆角由系统来画，位置整个会话内记住。Escape、取消和关掉这个小窗口都是回答；下次有机器需要确认时，窗口会自己再建起来。
+
 ## 0.7.24
 
 **Tests that could not fail, and a descriptor that was being destroyed underneath its ioctl**

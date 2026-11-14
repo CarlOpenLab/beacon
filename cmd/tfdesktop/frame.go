@@ -132,35 +132,49 @@ func (w *window) windowControls(c *ui.Context) {
 // of the top bar, where Windows draws them: three flat glyphs on the app's own
 // surface, the close one turning red under the pointer, as Windows 11's does.
 func (w *window) windowButtons(c *ui.Context) {
-	frame := w.frameOf()
+	windowButtonsFor(c, paletteFor(c), w.frameOf())
+}
+
+// windowButtonsFor draws the three controls acting on the window frame given.
+// The main window's overlay draws them for the main window, floating at the
+// top-right corner the way the platform keeps them.
+func windowButtonsFor(c *ui.Context, pal *uitokens.Palette, frame windowFrame) {
 	if frame == nil {
 		return
 	}
-	pal := paletteFor(c)
 	row := ui.Row(c).Key("window-controls").Absolute().
 		Right(windowButtonRight).
 		Top((uitokens.TopBar - windowButtonH) / 2).
 		Height(windowButtonH).Gap(windowButtonGap).AlignItems(ui.Center)
 	row.Children(func() {
-		windowButton(c, pal, "window-minimize", iconMinimize,
-			locales.WindowMinimize(), false, false, frame.Minimize)
-
-		maximized := frame.IsMaximized()
-		icon, label := iconMaximize, locales.WindowMaximize()
-		if maximized {
-			icon, label = iconRestore, locales.WindowRestore()
-		}
-		windowButton(c, pal, "window-maximize", icon, label, false, true, func() {
-			if maximized {
-				frame.Unmaximize()
-			} else {
-				frame.Maximize()
-			}
-		})
-
-		windowButton(c, pal, "window-close", iconClose,
-			locales.WindowClose(), true, false, frame.Close)
+		windowButtonControls(c, pal, frame)
 	})
+}
+
+// windowButtonControls draws the three glyphs themselves — minimize, maximize
+// or restore, and close — into whatever row is building, acting on frame. The
+// settings window's header calls it inline, at the right end of its own top
+// bar: that is what makes the settings window a window of the app's rather
+// than a page that merely looks like one.
+func windowButtonControls(c *ui.Context, pal *uitokens.Palette, frame windowFrame) {
+	windowButton(c, pal, "window-minimize", iconMinimize,
+		locales.WindowMinimize(), false, false, frame.Minimize)
+
+	maximized := frame.IsMaximized()
+	icon, label := iconMaximize, locales.WindowMaximize()
+	if maximized {
+		icon, label = iconRestore, locales.WindowRestore()
+	}
+	windowButton(c, pal, "window-maximize", icon, label, false, true, func() {
+		if maximized {
+			frame.Unmaximize()
+		} else {
+			frame.Maximize()
+		}
+	})
+
+	windowButton(c, pal, "window-close", iconClose,
+		locales.WindowClose(), true, false, frame.Close)
 }
 
 // windowButton is one of the window's buttons on Windows and Linux: a quiet

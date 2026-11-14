@@ -94,7 +94,9 @@ func (w *window) keyFor(id string) string {
 // pressed, first one wins. It is the one place a shortcut is read, so rebinding
 // one in Settings changes the window and not only the label there.
 func (w *window) runShortcuts(c *ui.Context) {
-	if w.settingsOpen || w.reachPrompt != "" || w.pal.open {
+	// The reach dialog does not gate these: it is a window of its own now, and
+	// the page stays alive under it, keyboard included.
+	if w.settingsOpen || w.pal.open {
 		return
 	}
 	for _, a := range appActions {

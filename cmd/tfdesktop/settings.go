@@ -153,6 +153,13 @@ type settingsWindow struct {
 	store *settings.Store
 	fleet *fleet
 
+	// win is the window the view draws in, nil until the first open and nil
+	// again once the system's close has destroyed it. frame is what the
+	// header's window controls act on — the same window in the app, a test's
+	// stand-in without one.
+	win   *mygo.Window
+	frame windowFrame
+
 	pane int
 
 	search string
@@ -376,19 +383,54 @@ func caNoteFor(path string) string {
 	return note
 }
 
+// settingsView is what the settings window's runtime gets its view through.
+// An interface rather than a method value taken in place: the keyboard page
+// reads appActions, and a static path from the action list's initialiser to
+// the view is an initialisation cycle.
+type settingsView interface {
+	content() func(*ui.Context)
+	// setFrame hands the window's own frame over, which the header's window
+	// controls act on.
+	setFrame(frame windowFrame)
+}
+
+// content is the view the settings window draws.
+func (s *settingsWindow) content() func(*ui.Context) { return s.view }
+
+// setFrame records the window whose controls the header draws.
+func (s *settingsWindow) setFrame(frame windowFrame) {
+	s.frame = frame
+	s.win, _ = frame.(*mygo.Window)
+}
+
 func (s *settingsWindow) view(c *ui.Context) {
+	if s.desk != nil && s.recording == "" && c.Shortcut(0, ui.KeyEscape) {
+		// Escape answers the window from inside it, as the system's close does
+		// from outside. The keyboard page's own recording reads its keys first:
+		// while a shortcut is being typed, Escape cancels the recording, and
+		// this stands out of its way.
+		s.desk.closeSettings()
+		return
+	}
 	applyTheme(c, s.store.Get().Theme)
 	pal := paletteFor(c)
 	t := c.Theme()
+	if s.desk != nil {
+		// The window carries the app's material, as the main window does: the
+		// acrylic shows where nothing paints over it.
+		backdrop(c, pal, float32(s.desk.backgroundOpacity()))
+	}
 	// 应用 exists for the fields that commit on it, so it is offered exactly
 	// when there is something to apply: a permanently enabled button trains the
 	// user to ignore it, and the pending marker is what says otherwise.
 	dirty := s.dirty()
 	ui.Column(c).Fill().Children(func() {
-		// 标题栏是拖动这块浮层的抓手：整块对话框由 app.go 的 settingsDialog
-		// 交给 Draggable，标题这里不再拖整个窗口。
-		ui.Row(c).Height(uitokens.HeaderH).Shrink(0).Padding(0, 12).Gap(8).
-			AlignItems(ui.Center).Cursor(ui.CursorGrab).Children(func() {
+		// 标题栏就是窗口的标题栏：它拖动整个窗口（DragWindow），左端给 macOS
+		// 的红绿灯让位（titleBarLead 读的是系统报告的空间），右端在 Windows
+		// 和 Linux 上画这三颗按钮——照主窗口那一套抄全，正是 Gloss 的设置
+		// 窗口栽过的跟头：只抄一半，系统的按钮和视图的按钮就挤在一处。
+		ui.Row(c).Height(uitokens.HeaderH).Shrink(0).Padding(0, 12, 0, titleBarLead(c.TitleBar())).Gap(8).
+			AlignItems(ui.Center).Cursor(ui.CursorGrab).DragWindow().Children(func() {
 			ui.Text(c, locales.SettingsTitle()).FontSize(14).FontWeight(600).TextColor(pal.Text)
 			ui.Spacer(c)
 			if dirty {
@@ -400,8 +442,12 @@ func (s *settingsWindow) view(c *ui.Context) {
 			if dirty && chromeButton(c, pal, "apply", locales.SettingsApply(), "", true) {
 				s.commit()
 			}
-			if iconButton(c, iconClose, locales.SettingsClose(), 28).Clicked() && s.desk != nil {
-				s.desk.settingsOpen = false
+			if s.frame != nil && controlsAtRight {
+				windowButtonControls(c, pal, s.frame)
+			} else if iconButton(c, iconClose, locales.SettingsClose(), 28).Clicked() && s.desk != nil {
+				// No frame to hang the window's own controls on — the headless
+				// tests' case — where the ✕ stays the way out.
+				s.desk.closeSettings()
 			}
 		})
 		ui.Row(c).Fill().MinHeight(0).AlignItems(ui.Stretch).Children(func() {
@@ -1261,7 +1307,10 @@ func (s *settingsWindow) pinCA(path string) {
 func (s *settingsWindow) pickCA() {
 	go func() {
 		var parent *mygo.Window
-		if s.desk != nil {
+		if s.win != nil {
+			// The chooser belongs to the window it was asked from.
+			parent = s.win
+		} else if s.desk != nil {
 			parent = s.desk.win
 		}
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{

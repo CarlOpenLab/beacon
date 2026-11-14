@@ -160,7 +160,17 @@ func TestRenderShellPreviews(t *testing.T) {
 				w.focus = w.split.b
 				w.selectTabRaw(fresh)
 			}
-			tt := ui.NewTester(func(c *ui.Context) { w.view(c) }, previewWidth, previewHeight)
+			// The reach dialog is a window of its own now: its previews draw that
+			// window, at its own size, not the page behind it.
+			view := func(c *ui.Context) { w.view(c) }
+			width, height := previewWidth, previewHeight
+			if tc.ask {
+				view, width, height = w.reachWindowView, reachWinW, reachWinH
+			}
+			tt := ui.NewTester(view, width, height)
+			// One more frame past the tester's first settle: the view's own
+			// applyTheme lands in the frame after the first one painted.
+			tt.Frame()
 			out := filepath.Join(dir, tc.name+".png")
 			file, err := os.Create(out)
 			if err != nil {

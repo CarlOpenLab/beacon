@@ -52,10 +52,19 @@ type window struct {
 
 	settingsContent *settingsWindow
 	settingsOpen    bool
-	// settingsDrag is where the settings dialog has been dragged to, from the
-	// centre of the window: the dialog is a floating one, not a sheet over the
-	// whole page, so it can be moved aside to watch what a setting changes.
-	settingsDrag  ui.Point
+	// settingsWin is the settings window itself: settings are a window of
+	// their own now, a child of the main window that the system drags, the
+	// way Gloss's settings window is. It is nil until the first open, and
+	// again after the system's close destroyed it.
+	settingsWin *mygo.Window
+	// reachWin is the reach dialog's own little window: a frameless child of
+	// the main window that stays above it and is free to be dragged anywhere
+	// on the screen, outside the main window included, as Gloss's floating
+	// windows are. A card of the page cannot leave the page's window; this
+	// one can. reachPlace remembers whether it has been put over the main
+	// window once.
+	reachWin      *mygo.Window
+	reachPlace    bool
 	sidebarHidden bool
 	dismissed     map[string]bool
 
@@ -311,10 +320,18 @@ func (w *window) drain() {
 }
 
 // invalidate asks for a repaint. The ui is immediate-mode: the next frame
-// draws the window's state as it now stands.
+// draws the window's state as it now stands — the main window's and, when
+// they are up, the settings window's and the reach dialog's own little
+// windows with it.
 func (w *window) invalidate() {
 	if w.win != nil {
 		w.win.Invalidate()
+	}
+	if w.settingsWin != nil {
+		w.settingsWin.Invalidate()
+	}
+	if w.reachWin != nil {
+		w.reachWin.Invalidate()
 	}
 }
 
@@ -742,7 +759,7 @@ func (w *window) view(c *ui.Context) {
 	// the one the window reads: see actions.go. ⌘1…⌘9 are the window's own —
 	// they name a machine in the rail, not an action — and are read here.
 	w.runShortcuts(c)
-	if !w.settingsOpen && w.reachPrompt == "" && !w.pal.open {
+	if !w.settingsOpen && !w.pal.open {
 		for i, key := range railDigits {
 			if c.Shortcut(ui.Cmd, key) {
 				w.jumpRail(c, i)
@@ -774,8 +791,6 @@ func (w *window) view(c *ui.Context) {
 		if ch.shown < 0.5 {
 			w.sidebarToolbar(c, pal, w.sidebarHidden, topControlsWidth)
 		}
-		w.settingsDialog(c)
-		w.reachDialog(c)
 		w.paletteView(c, pal)
 		// Last, so the window's own controls are over the dialogs and the
 		// palette: a window's close, minimize and maximize stay where they are
@@ -873,6 +888,10 @@ func (w *window) selectMachine(m tunnel.Machine) {
 	if w.fleet != nil && w.fleet.RelayClient() == nil {
 		w.reachErr = ""
 		w.reachPrompt = m.ID
+		// The window comes up after this frame, not in the middle of
+		// building it: raising a native window is not something a build
+		// pass should be interrupted by.
+		w.update(w.showReachWindow)
 	} else {
 		w.ensureSessionList(m.ID)
 	}
@@ -998,72 +1017,150 @@ func (w *window) askForReach() {
 				return
 			}
 			w.reachPrompt = ""
+			w.hideReachWindow()
 			w.ensureSessionList(machine)
 			w.invalidate()
 		})
 	}()
 }
 
-// settingsMargin is the gap a dragged settings dialog keeps from the window's
-// edges.
-const settingsMargin = float32(12)
+// settingsWinSize is the settings window's own size. It no longer takes the
+// main window's: a window of its own is as big as the forms need, and the
+// person sizes it after that.
+const (
+	settingsWinW    = 820
+	settingsWinH    = 620
+	settingsWinMinW = 720
+	settingsWinMinH = 460
+)
 
-func (w *window) settingsDialog(c *ui.Context) {
-	width, height := c.Size()
-	pal := paletteFor(c)
-	wash := uitokens.WashFor("frosted")
-	panelW := min(820, width-64)
-	panelH := min(620, height-64)
-	// The offset the pointer drags the dialog by is from the centre, where it
-	// starts: the bounds are the room that keeps its whole face inside the
-	// window, a margin from the edges.
-	dragBounds := ui.Rect{
-		X: settingsMargin - (width-panelW)/2,
-		Y: settingsMargin - (height-panelH)/2,
-		W: max(0, width-panelW-2*settingsMargin),
-		H: max(0, height-panelH-2*settingsMargin),
-	}
-	// A floating settings window over the shells, not a sheet on the window's
-	// wash: the wash covered the shells, so the appearance settings could not be
-	// tried against what they change. No scrim either: the dialog is a window of
-	// its own, moved by its header, and the page stays in sight behind it.
-	ui.DialogBase(c, &w.settingsOpen, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.Transparent)
-		panel.Width(panelW).Height(panelH).
-			Radius(uitokens.CardRadius).Clip()
-		floating(panel, pal)
-		panel.LinearGradient(wash.Base(pal.Dark)).
-			Draggable(&w.settingsDrag, ui.DraggableOptions{Bounds: &dragBounds, Rigid: true}).
-			Children(func() {
-				if w.settingsContent != nil {
-					w.settingsContent.view(c)
-				}
-			})
-	})
-}
-
-// reachDialog is the confirmation a person gets the first time they pick a
-// machine this window cannot reach: where the credential comes from, what it is
-// good for, and that the relay is the one checking.
-func (w *window) reachDialog(c *ui.Context) {
-	if w.reachPrompt == "" || w.fleet == nil {
+// ensureSettingsWindow creates the settings window when there is none: the
+// first open, and again after the system's close destroyed it. It is a child
+// of the main window, framed as the main window is — the same hidden title
+// bar, the same per-platform controls — so the two windows read as one app,
+// and the view inside draws its own top bar with the room the system's
+// controls report. Gloss's settings window is the shape this follows; its
+// lesson is that the frame options must be copied whole, not half.
+//
+// The view arrives through the settingsView interface, not as a method value
+// taken here: the keyboard page reads appActions, so a static path from the
+// action list's initialiser to the view would be an initialisation cycle the
+// compiler refuses to untangle. An interface call is dynamic, and the cycle
+// ends there.
+func (w *window) ensureSettingsWindow(s settingsView) {
+	if w.settingsWin != nil || w.win == nil || s == nil {
 		return
 	}
+	win := mygo.NewWindow(framedWindow(mygo.WindowOptions{
+		Title:           locales.SettingsTitle(),
+		Width:           settingsWinW,
+		Height:          settingsWinH,
+		MinWidth:        settingsWinMinW,
+		MinHeight:       settingsWinMinH,
+		BackgroundColor: windowGround(w.store.Get().Theme, mygo.Theme.IsDark()),
+		Vibrancy:        vibrancyFor(w.store.Get().Blur()),
+		Content:         ui.View(s.content()),
+	}))
+	win.OnClosed(func() {
+		w.settingsWin = nil
+		// The system's close is closing settings — Gloss's settings window
+		// learned what happens when the ways out of settings do not funnel
+		// into one: a window that is gone while the state stays.
+		if w.settingsOpen {
+			w.settingsOpen = false
+			w.invalidate()
+		}
+	})
+	// The maximize control's drawing follows the window's state, and the
+	// state can change from outside the view (a double click on the header).
+	win.OnMaximize(func() { w.invalidate() })
+	win.OnUnmaximize(func() { w.invalidate() })
+	w.settingsWin = win
+	s.setFrame(win)
+}
+
+// showSettingsWindow asks the settings window on screen, wherever the person
+// left it the last time. Tests run without real windows, and a nil one skips
+// all of it.
+func (w *window) showSettingsWindow() {
+	if w.settingsContent == nil {
+		return
+	}
+	w.ensureSettingsWindow(w.settingsContent)
+	if w.settingsWin != nil {
+		w.settingsWin.Show()
+		w.settingsWin.Focus()
+	}
+}
+
+// hideSettingsWindow puts the settings window away without destroying it: it
+// comes back where it was, at the size it was.
+func (w *window) hideSettingsWindow() {
+	if w.settingsWin != nil {
+		w.settingsWin.Hide()
+	}
+}
+
+// closeSettings puts settings away. Every way out funnels here — the header's
+// ✕, Escape, the system's close through its own OnClosed — because paths that
+// do not meet turn into a window that is gone while the state stays.
+func (w *window) closeSettings() {
+	if !w.settingsOpen {
+		return
+	}
+	w.settingsOpen = false
+	w.update(w.hideSettingsWindow)
+	w.invalidate()
+}
+
+// reachWinSize is the reach window's own size. The card fills it, and the
+// taller face — the one with an error line in it — is the room it reserves.
+const (
+	reachWinW = 440
+	reachWinH = 230
+)
+
+// reachWindowView is the reach dialog: the confirmation a person gets the first
+// time they pick a machine this window cannot reach, where the credential comes
+// from, what it is good for, and that the relay is the one checking. The whole
+// window is the card: the OS draws its shadow and rounds its corners, the wash
+// fills it, and its header drags the window itself — a floating window of the
+// desktop, as Gloss's are, not a sheet of the page, so it can go anywhere on
+// the screen, off the main window included, and the page stays alive behind it.
+func (w *window) reachWindowView(c *ui.Context) {
+	if w.reachPrompt == "" {
+		return
+	}
+	if c.Shortcut(0, ui.KeyEscape) {
+		w.declineReach()
+		return
+	}
+	// The window has its own view, and the appearance with it: the wash and
+	// the controls take the theme the person chose, as the main window's do.
+	applyTheme(c, w.store.Get().Theme)
+	pal := paletteFor(c)
+	wash := uitokens.WashFor("frosted")
 	t := c.Theme()
 	name := w.machineName(w.reachPrompt)
-	open := true
-	ui.Modal(c, &open, func() {
-		ui.Column(c).Gap(10).Padding(18).Width(430).Children(func() {
-			ui.Text(c, locales.ReachTitle(name)).FontSize(14).FontWeight(600)
+	ui.Column(c).Fill().LinearGradient(wash.Base(pal.Dark)).Children(func() {
+		// The header is the handle: it drags the window itself, wherever on
+		// the screen the person wants it.
+		ui.Row(c).Height(uitokens.HeaderH).Shrink(0).Padding(0, 14).
+			AlignItems(ui.Center).Cursor(ui.CursorGrab).DragWindow().Children(func() {
+			ui.Text(c, locales.ReachTitle(name)).FontSize(14).FontWeight(600).TextColor(pal.Text)
+		})
+		ui.Column(c).Grow(1).MinHeight(0).Padding(0, 14, 14, 14).Gap(10).Children(func() {
 			ui.Text(c, locales.ReachBody()).
 				FontSize(11).TextColor(t.TextMuted)
 			if w.reachErr != "" {
 				ui.Text(c, locales.ReachFailed(w.reachErr)).FontSize(11).TextColor(t.Danger)
 			}
+			// The answers sit at the foot of the card, wherever its height
+			// ends up: the spacer takes what an error line leaves.
+			ui.Spacer(c).Grow(1)
 			ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
 				if ui.Button(c, locales.ActionCancel()).Clicked() {
-					w.reachPrompt, w.reachErr = "", ""
-					w.machineSel = machineLocal
+					w.declineReach()
 				}
 				if ui.PrimaryButton(c, locales.ReachConfirm()).Clicked() {
 					w.askForReach()
@@ -1071,10 +1168,89 @@ func (w *window) reachDialog(c *ui.Context) {
 			})
 		})
 	})
-	if !open {
-		w.reachPrompt, w.reachErr = "", ""
-		w.machineSel = machineLocal
+}
+
+// ensureReachWindow creates the reach dialog's window when there is none: the
+// first time a machine needs the question, and again if the person closed the
+// window itself. It is a frameless child of the main window that stays above
+// it and out of the taskbar, free to be dragged anywhere on the screen, off
+// the main window included, as Gloss's floating windows are. TitleBarStyle
+// rather than Frameless keeps the OS's shadow and its rounded corners, and
+// HideWindowButtons leaves the card its own two answers.
+func (w *window) ensureReachWindow() {
+	if w.reachWin != nil || w.win == nil {
+		return
 	}
+	win := mygo.NewWindow(mygo.WindowOptions{
+		Title:             "Beacon",
+		Parent:            w.win,
+		Width:             reachWinW,
+		Height:            reachWinH,
+		Hidden:            true,
+		DisableResize:     true,
+		SkipTaskbar:       true,
+		TitleBarStyle:     mygo.TitleBarHidden,
+		HideWindowButtons: true,
+		BackgroundColor:   windowGround(w.store.Get().Theme, mygo.Theme.IsDark()),
+		Content:           ui.View(w.reachWindowView),
+	})
+	win.OnClosed(func() {
+		w.reachWin = nil
+		// The system's close is an answer too — Gloss's settings window
+		// learned this the hard way: the question must not outlive its
+		// window, or the panels would keep pointing at a machine the person
+		// can no longer answer for.
+		if w.reachPrompt != "" {
+			w.clearReach()
+		}
+	})
+	w.reachWin = win
+}
+
+// showReachWindow asks the reach window on screen: over the main window the
+// first time, and wherever the person moved it to after that, which the OS
+// remembers for itself. Tests run without real windows, and a nil one skips
+// all of it.
+func (w *window) showReachWindow() {
+	w.ensureReachWindow()
+	win := w.reachWin
+	if win == nil {
+		return
+	}
+	if !w.reachPlace {
+		w.reachPlace = true
+		if main := w.win; main != nil {
+			mx, my := main.Position()
+			mw, mh := main.Size()
+			win.SetPosition(mx+(mw-reachWinW)/2, my+(mh-reachWinH)/2)
+		}
+	}
+	win.Show()
+	win.Focus()
+}
+
+// hideReachWindow puts the reach window away.
+func (w *window) hideReachWindow() {
+	if w.reachWin != nil {
+		w.reachWin.Hide()
+	}
+}
+
+// declineReach puts the question away and the panels back on this machine: a
+// machine the person declined to reach is not the one they chose to work on.
+func (w *window) declineReach() {
+	w.clearReach()
+	// The window hides after this frame, not in the middle of building it —
+	// the answer itself is what the build is for.
+	w.update(w.hideReachWindow)
+}
+
+// clearReach resets the question's state, leaving whatever window carries it
+// alone.
+func (w *window) clearReach() {
+	w.reachPrompt, w.reachErr = "", ""
+	w.machineSel = machineLocal
+	w.invalidate()
 }
 
 // currentTermSize returns the size the active terminal view fits, in columns
@@ -2582,6 +2758,10 @@ func (w *window) openSettings() {
 		w.settingsContent = newSettingsWindow(w, w.store, w.fleet)
 	}
 	w.settingsOpen = true
+	// The window comes up after this frame, not in the middle of building
+	// it: raising a native window is not something a build pass should be
+	// interrupted by.
+	w.update(w.showSettingsWindow)
 	w.invalidate()
 }
 
