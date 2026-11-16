@@ -429,9 +429,10 @@ func (s *settingsWindow) view(c *ui.Context) {
 		// 的红绿灯让位（titleBarLead 读的是系统报告的空间），右端在 Windows
 		// 和 Linux 上画这三颗按钮——照主窗口那一套抄全，正是 Gloss 的设置
 		// 窗口栽过的跟头：只抄一半，系统的按钮和视图的按钮就挤在一处。
+		// 这里不再画窗口标题（页面自己命名），指针保持默认箭头：拖动由系统
+		// 承担，手型只会在一行不响应点击的地方承诺一个不存在的点击。
 		ui.Row(c).Height(uitokens.HeaderH).Shrink(0).Padding(0, 12, 0, titleBarLead(c.TitleBar())).Gap(8).
-			AlignItems(ui.Center).Cursor(ui.CursorGrab).DragWindow().Children(func() {
-			ui.Text(c, locales.SettingsTitle()).FontSize(14).FontWeight(600).TextColor(pal.Text)
+			AlignItems(ui.Center).Cursor(ui.CursorDefault).DragWindow().Children(func() {
 			ui.Spacer(c)
 			if dirty {
 				ui.Text(c, locales.SettingsDirty()).FontSize(12).TextColor(t.Warning)

@@ -20,6 +20,7 @@ import (
 	"github.com/CarlOpenLab/beacon/internal/relay"
 	"github.com/CarlOpenLab/beacon/internal/settings"
 	"github.com/CarlOpenLab/beacon/internal/tunnel"
+	"github.com/CarlOpenLab/beacon/internal/uitokens"
 	"github.com/CarlOpenLab/beacon/locales"
 )
 
@@ -31,6 +32,33 @@ func newTestSettingsWindow(t *testing.T) (*settingsWindow, *settings.Store) {
 	f := newTestFleet(t)
 	store := settings.Open(t.TempDir())
 	return newSettingsWindow(&window{store: store}, store, f), store
+}
+
+// The header is the dialog's drag handle, not a caption: the page below names
+// itself, so a 设置 across the top only repeats the window.
+func TestTheSettingsHeaderShowsNoTitle(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+
+	for _, text := range tt.Texts() {
+		if text == locales.SettingsTitle() {
+			t.Fatalf("the header still says %q; texts = %v", text, tt.Texts())
+		}
+	}
+}
+
+// A drag handle is not a pointer to what it drags: the header keeps the default
+// arrow, so moving over it does not promise a click that is not there.
+func TestTheSettingsHeaderKeepsTheDefaultPointer(t *testing.T) {
+	sw, _ := newTestSettingsWindow(t)
+	tt := ui.NewTester(sw.view, 640, 480)
+	tt.Frame()
+
+	tt.Move(20, uitokens.HeaderH/2)
+	if got := tt.Cursor(); got != ui.CursorDefault {
+		t.Fatalf("the pointer over the header is %v, want the default", got)
+	}
 }
 
 // The three panes are what the request was about: the terminal's font, the
