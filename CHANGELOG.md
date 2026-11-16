@@ -4,6 +4,13 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.26
+
+**The settings window's titlebar loses its caption and its grab hand**
+
+- **The 设置 title is gone, and the titlebar shows the default pointer.** The window's pages name themselves in the header below, so the word repeated what the page already said; the titlebar now carries only the window's controls, as the main window's does. The drag region also showed a grab hand although the system drags the window from it — a hand over a titlebar promises a click that is not there. The header now keeps the default arrow, and a drag from it still moves the window.
+  — 设置窗口的标题栏去掉标题，指针恢复默认：窗口的各个页面在下面的页头自己命名，标题只是在重复页面已经说过的话；现在标题栏只带窗口自己的控件，与主窗口的标题栏一致。拖动区还显示抓取手型，但拖动实际由系统承担——在标题栏上显示手型，是在承诺一个不存在的点击。现在标题栏保持默认箭头，从标题栏拖动窗口的行为不变。
+
 ## 0.7.25
 
 - **Settings is a window of its own now, the way Gloss's settings window is.** Settings used to be a floating card of the page — draggable, but only within the main window's edges, and the person sizing the main window down squeezed the forms with it. Now it opens into its own window, a child of the main one, framed exactly as the main window is: the system drags it anywhere on the screen, the main window stays whole behind it, and the header carries the window's own controls — minimize, maximize, close — acting on the settings window itself. Every way out of settings funnels into one answer: the header's ✕, Escape, and the system's close, the lesson Gloss's settings window paid for. ⌘, opens it; Escape answers it; and the draft survives both, as it always has.
