@@ -56,6 +56,12 @@ func TestSettingsLeavesThePageInSight(t *testing.T) {
 // close — and closing from there is closing settings, which is what the
 // system's close (the same frame, from outside the view) funnels into.
 func TestTheSettingsWindowCarriesItsControls(t *testing.T) {
+	// The view draws the three controls only where the system does not; on
+	// macOS the traffic lights are the system's. The test asks the view for
+	// them, as frame_test.go does, or macOS answers with no controls at all.
+	previous := controlsAtRight
+	controlsAtRight = true
+	defer func() { controlsAtRight = previous }()
 	w, _ := newTestShellWindow(t)
 	w.fleet = newTestFleet(t)
 	w.openSettings()
