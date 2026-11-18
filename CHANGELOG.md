@@ -4,6 +4,13 @@ Notable changes per release. The release workflow lifts the section matching the
 pushed tag straight into the GitHub release notes, so keep the headings exactly
 `## <version>`.
 
+## 0.7.27
+
+**The terminal pane stops freezing on a program's synchronized update**
+
+- **A terminal that holds a synchronized update no longer keeps the old frame forever.** Programs that wrap a paint in a synchronized update — Claude Code, nvim 0.12 and others send DEC mode 2026 — tell the terminal plugin to hold the last frame until the update ends. On the pinned mygo, the one-second grace ended the hold only when another frame happened, and nothing asked for that frame: the pane kept showing the old content while the window still answered clicks and switched tabs, and typing showed no echo. mygo 0.8.0 fixed it (#1305): once the grace expires, the view requests the frame that shows the update. Beacon now goes from its 2026-10-20 pin to v0.9.2, which carries the fix, and to Go 1.27.3, which mygo 0.9.x requires.
+  — 程序用同步刷新压住一次绘制时，终端不再永远停在旧帧：用同步输出（DEC mode 2026）包住绘制的程序——Claude Code、nvim 0.12 等——会让终端插件先压住上一帧，等这一轮更新结束再画。在原来的 mygo 上，一秒宽限期只会在下一帧到来时结束压帧，而没有任何东西去请求那一帧：窗格一直显示旧内容，窗口却还能点、能切标签，打字也没有回显。mygo 0.8.0 修好了这一点（#1305）：宽限期到点后，视图会主动请求显示这次更新的那一帧。Beacon 现在从 2026-10-20 的 pin 升到带此修复的 v0.9.2，Go 版本也随 mygo 0.9.x 的要求升到 1.27.3。
+
 ## 0.7.26
 
 **The settings window's titlebar loses its caption and its grab hand**
